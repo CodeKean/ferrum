@@ -36,6 +36,7 @@
 
 import { createHash, randomUUID } from "node:crypto";
 import { db, tx } from "./db.ts";
+import { normalizeHttpConfig } from "./http/httpColumn.ts";
 import { getWorkbook, type Workbook } from "./views.ts";
 import { invalidateRowCount } from "./store.ts";
 
@@ -716,8 +717,16 @@ export function importWorkbook(doc: unknown, name?: string): ImportResult {
             (c as any).maxBudgetUsd == null ? 0.05 : Number((c as any).maxBudgetUsd),
             posInt((c as any).timeoutMs, 180_000),
             JSON.stringify(Array.isArray((c as any).allowedTools) ? (c as any).allowedTools : []),
-            JSON.stringify(Array.isArray((c as any).mcpServers) ? (c as any).mcpServers : []),
-            (c as any).httpConfig ? JSON.stringify((c as any).httpConfig) : null,
+            // Ids only; anything else in the list is dropped. A file cannot describe an app — the
+            // command it runs, its environment and its address all live in this machine's own
+            // registry — so the worst an id from outside can name is an app that is not set up,
+            // which grants nothing and says so when the column runs.
+            JSON.stringify(
+              Array.isArray((c as any).mcpServers)
+                ? [...new Set(((c as any).mcpServers as unknown[]).filter((s) => typeof s === "string"))].sort()
+                : [],
+            ),
+            importHttpConfig((c as any).httpConfig, raw, notes),
             (c as any).enumValues ? JSON.stringify((c as any).enumValues) : null,
             (c as any).jsonSchema ? JSON.stringify((c as any).jsonSchema) : null,
             str((c as any).format), (c as any).width == null ? null : Number((c as any).width),
@@ -773,7 +782,10 @@ export function importWorkbook(doc: unknown, name?: string): ImportResult {
         ).run(
           fix(str((c as any).prompt)),
           fix(str((c as any).description)),
-          (c as any).httpConfig ? fix(JSON.stringify((c as any).httpConfig)) : null,
+          // Normalised again rather than read back: this rewrites the column's stored settings, and
+          // a second writer that skipped the normaliser would undo the first one's work. The notes
+          // are already recorded, so this call has nowhere to repeat them.
+          fix(importHttpConfig((c as any).httpConfig, String((c as any).name ?? ""), [])),
           lower.get(String((c as any).sourceColumn ?? "").trim().toLowerCase()) ?? null,
           // A lookup's field lives on the OTHER table, so it is resolved after the relations below.
           null,
@@ -865,6 +877,33 @@ export function importWorkbook(doc: unknown, name?: string): ImportResult {
 
 const KINDS = new Set(["people", "companies", "generic"]);
 const KIND_SET = new Set(["static", "script", "http", "mcp", "ai", "agent", "send", "lookup", "rollup"]);
+
+/**
+ * An imported column's web-request settings, through the same normaliser a saved column goes through
+ * — the one `PATCH /columns` and the AI setup lane both use.
+ *
+ * This was the one writer that stored the file's own JSON verbatim, and two of the fields in it
+ * decide what this machine contacts and for how long. `allowPrivate` on a FIXED private host —
+ * `169.254.169.254`, or this engine's own port — survived every later check, because every later
+ * check is asking whether the host was authored rather than interpolated, and a hand-written file
+ * answers yes. `timeoutMs` arrived unbounded by the same route.
+ *
+ * `allowPrivate` is additionally cleared rather than merely normalised: reaching the operator's own
+ * network is a choice only the person now holding the file can make, and it is one tick-box to make
+ * it. Same rule as scripts arriving unapproved and schedules arriving switched off.
+ */
+function importHttpConfig(raw: unknown, columnName: string, notes: string[]): string | null {
+  if (!raw || typeof raw !== "object") return null;
+  try {
+    return JSON.stringify(normalizeHttpConfig({ ...(raw as Record<string, unknown>), allowPrivate: false }));
+  } catch (e) {
+    notes.push(
+      `The web request settings on "${columnName}" could not be read ` +
+      `(${e instanceof Error ? e.message : String(e)}), so that column arrived without them.`,
+    );
+    return null;
+  }
+}
 
 const normalKey = (s: string) => s.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") || "col";
 const str = (v: unknown): string | null => (typeof v === "string" && v !== "" ? v : null);

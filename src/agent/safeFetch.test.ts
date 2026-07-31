@@ -1,13 +1,62 @@
-// The two halves of safeFetch that are not the address check.
+// safeFetch, minus the parts that need the network: the address pinning, the redirect rules and the
+// byte cap.
 //
-// Both are tested as pure functions rather than through a live fetch, deliberately: the address
+// All are tested as pure functions rather than through a live fetch, deliberately: the address
 // guard refuses private addresses, so a test server on 127.0.0.1 could not be reached past the first
 // hop anyway — and a security property that can only be demonstrated by reaching the public internet
 // is one that stops being demonstrated the moment the network is unavailable.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { headersTravel, readCapped } from "./safeFetch.ts";
+import {
+  BlockedUrlError, headersTravel, pinnedLookup, readCapped, resolveFetchable, setResolver,
+} from "./safeFetch.ts";
+
+// ── DNS rebinding ───────────────────────────────────────────────────────────
+
+/** One `dns.lookup` answer, the way `resolveFetchable` asks for it. */
+function answers(...replies: string[][]) {
+  let n = 0;
+  const calls = () => n;
+  setResolver(async () => {
+    const reply = replies[Math.min(n++, replies.length - 1)]!;
+    return reply.map((address) => ({ address }));
+  });
+  return calls;
+}
+
+test("the checked address is pinned, so a name that changes its answer cannot move the connection", async () => {
+  // The defect: the guard resolved the name, approved the public address it got back, and then
+  // handed the HOSTNAME to fetch — which resolved it a second time. An authoritative server
+  // answering with TTL 0 gives the check a public address and the socket a private one, and the
+  // request lands inside the operator's network with nothing having lied to the guard.
+  const calls = answers(["93.184.216.34"], ["127.0.0.1"]);
+  try {
+    const pin = await resolveFetchable("http://rebind.example/status");
+    assert.equal(pin.address, "93.184.216.34");
+    assert.equal(calls(), 1, "the name is resolved once — a second answer is never asked for");
+
+    // The address the connection is dialled with comes from the pin, not from DNS, so the second
+    // (private) answer is unreachable no matter how it is timed.
+    const dialled = await new Promise<string>((resolve) => {
+      pinnedLookup(pin.address)("rebind.example", { all: false }, (_e: unknown, addr: string) => resolve(addr));
+    });
+    assert.equal(dialled, "93.184.216.34");
+    assert.equal(calls(), 1);
+  } finally {
+    setResolver(null);
+  }
+});
+
+test("a private answer is still refused outright, whichever of them it is", async () => {
+  const calls = answers(["93.184.216.34", "169.254.169.254"]);
+  try {
+    await assert.rejects(() => resolveFetchable("http://mixed.example/"), BlockedUrlError);
+    assert.equal(calls(), 1);
+  } finally {
+    setResolver(null);
+  }
+});
 
 // ── credentials on a redirect ───────────────────────────────────────────────
 

@@ -6,14 +6,27 @@
 // probe `http://127.0.0.1:4317/api/...` (this app's own engine, which holds provider keys), or sweep
 // the operator's private network.
 //
-// Three properties, because any one alone is bypassable:
+// Four properties, because any one alone is bypassable:
 //   1. scheme and hostname are checked,
 //   2. the hostname is RESOLVED and the resulting IP is checked — "evil.com" can point at 127.0.0.1,
-//   3. redirects are followed manually so every hop is checked, not just the first — and neither the
+//   3. the connection is PINNED to the address that was checked, so a name that answers publicly for
+//      the check and privately a millisecond later (DNS rebinding, TTL 0) has nothing to move,
+//   4. redirects are followed manually so every hop is checked, not just the first — and neither the
 //      caller's body nor the caller's headers follow one off the host they were written for.
+//
+// Property 3 is why this file requests through `node:http`/`node:https` rather than `fetch`. `fetch`
+// takes a URL and resolves the name AGAIN inside itself, so the address the guard approved and the
+// address the socket connects to are two separate answers to the same question — and only the first
+// one was checked. `http.request` accepts a `lookup`, which lets the socket be told the address the
+// guard already validated. Certificate validation is untouched: the request still carries the real
+// hostname, so SNI and the certificate are checked against it exactly as before.
 
 import { lookup } from "node:dns/promises";
+import { request as httpRequest } from "node:http";
+import { request as httpsRequest } from "node:https";
 import { isIP } from "node:net";
+import { Readable } from "node:stream";
+import { createBrotliDecompress, createGunzip, createInflate } from "node:zlib";
 
 export interface FetchResult {
   url: string;
@@ -70,6 +83,29 @@ export function isPrivateIp(ip: string): boolean {
  * see the host-interpolation refusal in httpColumn.ts.
  */
 export async function assertFetchable(raw: string, allowPrivate = false): Promise<URL> {
+  return (await resolveFetchable(raw, allowPrivate)).url;
+}
+
+/** A URL that passed the guard, together with the address the guard checked. */
+export interface Fetchable {
+  url: URL;
+  /** Connect HERE. Re-resolving the name would re-open the window this pinning exists to close. */
+  address: string;
+}
+
+/** How a hostname is resolved. Swappable so a rebinding answer can be produced in a test. */
+export type Resolver = (hostname: string) => Promise<Array<{ address: string }>>;
+
+const dnsResolver: Resolver = (hostname) => lookup(hostname, { all: true });
+let resolver: Resolver = dnsResolver;
+
+/** For tests only. `null` restores DNS. */
+export function setResolver(next: Resolver | null): void {
+  resolver = next ?? dnsResolver;
+}
+
+/** `assertFetchable`, keeping the address it approved. */
+export async function resolveFetchable(raw: string, allowPrivate = false): Promise<Fetchable> {
   let u: URL;
   try { u = new URL(raw); } catch { throw new BlockedUrlError(raw, "not a valid URL"); }
 
@@ -83,12 +119,12 @@ export async function assertFetchable(raw: string, allowPrivate = false): Promis
   // under someone else's control can resolve wherever they like.
   if (isIP(u.hostname)) {
     if (!allowPrivate && isPrivateIp(u.hostname)) throw new BlockedUrlError(raw, "address is private or loopback");
-    return u;
+    return { url: u, address: u.hostname };
   }
 
   let addrs: Array<{ address: string }>;
   try {
-    addrs = await lookup(u.hostname, { all: true });
+    addrs = await resolver(u.hostname);
   } catch {
     throw new BlockedUrlError(raw, "host does not resolve");
   }
@@ -98,13 +134,99 @@ export async function assertFetchable(raw: string, allowPrivate = false): Promis
   for (const a of addrs) {
     if (!allowPrivate && isPrivateIp(a.address)) throw new BlockedUrlError(raw, `resolves to a private address (${a.address})`);
   }
-  return u;
+  // The first checked answer is the one the connection is pinned to, so the set that was approved
+  // and the address that is dialled cannot differ.
+  return { url: u, address: String(addrs[0]!.address) };
+}
+
+/**
+ * A `dns.lookup` replacement that always answers with one address, whatever it is asked.
+ *
+ * Handed to `http.request`, it is what makes the socket go where the guard looked. It answers
+ * asynchronously because that is the contract `dns.lookup` has, and a connector re-entered
+ * synchronously from its own call is a class of bug not worth discovering here.
+ */
+export function pinnedLookup(address: string) {
+  const family = isIP(address);
+  return (_hostname: string, options: any, callback?: any) => {
+    const cb = typeof options === "function" ? options : callback;
+    const all = typeof options === "object" && options !== null && options.all === true;
+    queueMicrotask(() => (all ? cb(null, [{ address, family }]) : cb(null, address, family)));
+  };
+}
+
+/** What the hop loop needs of a response. A subset of `Response`, so the loop reads the same. */
+export interface HopResponse {
+  status: number;
+  headers: Headers;
+  body: ReadableStream<Uint8Array> | null;
+}
+
+/**
+ * One request, to `pin.address`, addressed as `pin.url`.
+ *
+ * Redirects are never followed here — the loop above does that, checking each hop, which is the
+ * whole reason this fetcher exists.
+ *
+ * Exported for the MCP transport, which needs the same pinning but keeps the body as a stream.
+ */
+export function pinnedFetch(
+  pin: Fetchable,
+  init: { method: string; headers: Record<string, string>; body?: string; signal?: AbortSignal },
+): Promise<HopResponse> {
+  const send = pin.url.protocol === "https:" ? httpsRequest : httpRequest;
+  const headers: Record<string, string> = { ...init.headers };
+  // Set explicitly rather than left to chunked encoding: plenty of APIs answer a chunked POST with a
+  // 411, and `fetch` sent a length here before.
+  if (init.body != null) headers["Content-Length"] = String(Buffer.byteLength(init.body));
+
+  return new Promise<HopResponse>((resolve, reject) => {
+    const req = send(
+      pin.url,
+      { method: init.method, headers, signal: init.signal, lookup: pinnedLookup(pin.address) },
+      (res) => {
+        try {
+          // `node:http` hands the body over exactly as it arrived, where `fetch` decoded it. Done
+          // here so the byte cap still counts the text a caller will read rather than its
+          // compressed size.
+          const enc = String(res.headers["content-encoding"] ?? "").toLowerCase();
+          let stream: Readable = res;
+          if (enc === "gzip" || enc === "x-gzip") stream = res.pipe(createGunzip());
+          else if (enc === "deflate") stream = res.pipe(createInflate());
+          else if (enc === "br") stream = res.pipe(createBrotliDecompress());
+
+          const h = new Headers();
+          for (const [k, v] of Object.entries(res.headers)) {
+            // A header a `Headers` will not hold is a header from a server that is not following the
+            // grammar. Skipped rather than thrown on, so one odd header is not a failed fetch.
+            try {
+              if (Array.isArray(v)) for (const one of v) h.append(k, one);
+              else if (v != null) h.append(k, String(v));
+            } catch { /* not a header worth keeping */ }
+          }
+          resolve({
+            status: res.statusCode ?? 0,
+            headers: h,
+            body: Readable.toWeb(stream) as unknown as ReadableStream<Uint8Array>,
+          });
+        } catch (e) {
+          reject(e instanceof Error ? e : new Error(String(e)));
+        }
+      },
+    );
+    req.on("error", reject);
+    if (init.body != null) req.write(init.body);
+    req.end();
+  });
 }
 
 /** Sent on every hop. Identifies nothing and carries no credential, so it may follow a redirect. */
 const BASE_HEADERS: Record<string, string> = {
   "User-Agent": "Ferrum/0.1 (+local research agent)",
   Accept: "text/html,application/json;q=0.9,*/*;q=0.8",
+  // Asked for explicitly because `node:http` does not, where `fetch` did. Dropping it would quietly
+  // multiply the bytes a page costs; the response is decoded on the way in either way.
+  "Accept-Encoding": "gzip, deflate, br",
 };
 
 /**
@@ -218,22 +340,24 @@ export async function safeFetch(raw: string, opts: SafeFetchOptions = {}): Promi
     // column pointing at an external API let that API's 302 walk the fetcher into 169.254.169.254 or
     // straight back at this engine. Every hop after the first is checked as if the box were off,
     // which is what "every hop is checked again" was always supposed to mean.
-    const u = await assertFetchable(url, hop === 0 && opts.allowPrivate);
+    const pin = await resolveFetchable(url, hop === 0 && opts.allowPrivate);
+    const u = pin.url;
 
     const ac = new AbortController();
-    const timer = setTimeout(() => ac.abort(new Error("fetch timeout")), timeoutMs);
+    let timedOut = false;
+    const timer = setTimeout(() => { timedOut = true; ac.abort(new Error("fetch timeout")); }, timeoutMs);
     const onAbort = () => ac.abort(opts.signal?.reason);
     opts.signal?.addEventListener("abort", onAbort, { once: true });
 
-    let res: Response;
+    let res: HopResponse;
     // Stays null while this hop turns out to be a redirect being followed — its body is discarded
     // rather than read, so "no payload" and "keep going" are the same condition.
     let payload: { body: string; truncated: boolean } | null = null;
     try {
-      res = await fetch(u, {
-        // Manual, so each hop is re-checked. Automatic redirects are the standard way a guarded
-        // fetcher ends up on 169.254.169.254 anyway: only the first URL was ever validated.
-        redirect: "manual",
+      // Never follows a redirect of its own, so each hop is re-checked here. Automatic redirects are
+      // the standard way a guarded fetcher ends up on 169.254.169.254 anyway: only the first URL was
+      // ever validated.
+      res = await pinnedFetch(pin, {
         method,
         // The caller's headers travel only while the destination is still theirs — see
         // `headersTravel`. The defaults go everywhere; they carry nothing.
@@ -255,7 +379,9 @@ export async function safeFetch(raw: string, opts: SafeFetchOptions = {}): Promi
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      throw new Error(/abort/i.test(msg) ? `Timed out fetching ${url}` : `Could not fetch ${url}: ${msg}`);
+      // `timedOut` as well as the message: the abort reason travels through as-is here, so the text
+      // an aborted request reports is not something to depend on for telling the two apart.
+      throw new Error(timedOut || /abort/i.test(msg) ? `Timed out fetching ${url}` : `Could not fetch ${url}: ${msg}`);
     } finally {
       clearTimeout(timer);
       opts.signal?.removeEventListener("abort", onAbort);

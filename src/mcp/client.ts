@@ -15,7 +15,7 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport, getDefaultEnvironment } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { assertFetchable } from "../agent/safeFetch.ts";
+import { assertFetchable, headersTravel, pinnedFetch, resolveFetchable } from "../agent/safeFetch.ts";
 import { getMcpServer, type McpServer } from "./servers.ts";
 import { resolveSecrets, noteSecretsUsed } from "../secrets.ts";
 
@@ -94,6 +94,10 @@ export async function connectMcp(server: McpServer): Promise<Live> {
 
     const transport = new StreamableHTTPClientTransport(new URL(server.url), {
       requestInit: { headers },
+      // The check above only ever covered the FIRST address. The transport does its own requests,
+      // with its own redirects, so without this every hop after it was unchecked — and the
+      // connection went wherever DNS pointed at connect time rather than at check time.
+      fetch: guardedFetch(server.allowPrivate === true),
     });
     const client = new Client({ name: "ferrum", version: "1.0.0" }, { capabilities: {} });
     await withTimeout(client.connect(transport), CONNECT_TIMEOUT_MS, "connect");
@@ -124,6 +128,68 @@ export async function connectMcp(server: McpServer): Promise<Live> {
       : new McpError(`Could not start "${server.command}": ${e instanceof Error ? e.message : String(e)}`, "connect");
   }
   return { client, close: async () => { try { await client.close(); } catch { /* already gone */ } } };
+}
+
+/** A remote MCP server redirecting is unusual; redirecting three times is a chain worth stopping. */
+const MCP_MAX_REDIRECTS = 3;
+
+/**
+ * The fetch the HTTP transport makes its requests with.
+ *
+ * The same guard `safeFetch` applies, for the same reasons, because this lane reaches the network
+ * with the user's stored credentials attached: every hop's address is checked, the socket is pinned
+ * to the address that was checked, and a redirect that leaves the host is REFUSED rather than
+ * followed. Refused rather than followed-without-headers because an MCP endpoint that answers
+ * `initialize` with a redirect to somebody else is not a flow worth supporting — and following it
+ * blind is how a server hands this client's request to a machine the user never set up.
+ */
+function guardedFetch(allowPrivate: boolean) {
+  return async (input: string | URL, init?: RequestInit): Promise<Response> => {
+    let url = String(input);
+
+    if (init?.body != null && typeof init.body !== "string") {
+      throw new McpError("That connected app asked for a request this client cannot check.", "connect");
+    }
+
+    for (let hop = 0; hop <= MCP_MAX_REDIRECTS; hop++) {
+      const pin = await resolveFetchable(url, hop === 0 && allowPrivate);
+
+      const headers: Record<string, string> = {};
+      new Headers(init?.headers ?? {}).forEach((v, k) => { headers[k] = v; });
+
+      const res = await pinnedFetch(pin, {
+        method: String(init?.method ?? "GET").toUpperCase(),
+        headers,
+        body: typeof init?.body === "string" ? init.body : undefined,
+        signal: init?.signal ?? undefined,
+      });
+
+      if (res.status >= 300 && res.status < 400) {
+        const loc = res.headers.get("location");
+        if (loc) {
+          const next = new URL(loc, pin.url);
+          await res.body?.cancel().catch(() => {});
+          if (!headersTravel(pin.url, next)) {
+            throw new McpError(
+              `That connected app redirected to ${next.host}, which is not where it is set up to be.`,
+              "connect",
+            );
+          }
+          url = next.toString();
+          continue;
+        }
+      }
+
+      // A 1xx never reaches here (Node handles it), and `Response` refuses to be built with one.
+      if (res.status < 200) throw new McpError("That connected app answered with nothing usable.", "connect");
+      // `Response` also refuses a body on these, and the transport reads none.
+      const bodiless = res.status === 204 || res.status === 205 || res.status === 304;
+      if (bodiless) await res.body?.cancel().catch(() => {});
+      return new Response(bodiless ? null : res.body, { status: res.status, headers: res.headers });
+    }
+
+    throw new McpError("That connected app redirected too many times.", "connect");
+  };
 }
 
 function withTimeout<T>(p: Promise<T>, ms: number, what: "connect" | "call"): Promise<T> {

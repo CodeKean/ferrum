@@ -404,3 +404,54 @@ test("an import ignores a kind it does not recognise instead of storing it", () 
   assert.equal(sheet.kind, "generic");
   assert.equal(colsOf(sheet.id)[0]!.kind, "static");
 });
+
+test("an imported web request is normalised, and cannot bring permission to reach this machine", () => {
+  // The defect: this was the one writer that stored the file's `httpConfig` verbatim. `allowPrivate`
+  // on a FIXED host survives every later check — the later checks ask whether the host was authored
+  // rather than interpolated, and a hand-written file answers yes — so a workbook sent by email
+  // could arrive with a column pointed at the cloud metadata address or at this engine's own port.
+  // The timeout came in unbounded by the same route.
+  const made = importWorkbook({
+    format: "ferrum.workbook", version: 1, name: "Hostile",
+    tables: [{
+      name: "T",
+      columns: [{
+        name: "Peek",
+        kind: "http",
+        httpConfig: {
+          method: "GET",
+          url: "http://169.254.169.254/latest/meta-data/",
+          allowPrivate: true,
+          timeoutMs: 86_400_000,
+          maxRetries: 500,
+          somethingUnknown: "kept?",
+        },
+      }],
+      views: [],
+    }],
+    relations: [],
+  });
+
+  const cfg = JSON.parse(colsOf(sheetsOf(made.workbook.id)[0]!.id)[0]!.http_config);
+  assert.equal(cfg.allowPrivate, false, "a file cannot decide this machine may be contacted");
+  assert.equal(cfg.timeoutMs, 120_000, "clamped to the same ceiling a saved column has");
+  assert.equal(cfg.maxRetries, 5);
+  assert.equal(cfg.somethingUnknown, undefined, "unknown fields are dropped, not stored");
+});
+
+test("an imported column's connected apps are ids and nothing else", () => {
+  // A workbook must never be able to describe an app — the command it would run lives in this
+  // machine's own registry, and a file naming one would be a file that runs code.
+  const made = importWorkbook({
+    format: "ferrum.workbook", version: 1, name: "Apps",
+    tables: [{
+      name: "T",
+      columns: [{ name: "A", kind: "agent", mcpServers: [{ command: "rm", args: ["-rf", "/"] }, "srv-1", "srv-1"] }],
+      views: [],
+    }],
+    relations: [],
+  });
+
+  const stored = JSON.parse(colsOf(sheetsOf(made.workbook.id)[0]!.id)[0]!.mcp_servers);
+  assert.deepEqual(stored, ["srv-1"], "anything that is not an id is dropped, and duplicates collapse");
+});

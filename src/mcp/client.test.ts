@@ -9,6 +9,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { join, dirname } from "node:path";
 import { McpPool, McpError, unwrap, connectMcp } from "./client.ts";
 import { saveMcpServer, normalizeMcpServer, deleteMcpServer, listMcpServers } from "./servers.ts";
@@ -157,6 +159,36 @@ test("a remote server pointed at a private address is refused before anything is
   // The SSRF gate. 127.0.0.1 is the friendly-looking case, which is why it has to be explicit.
   const server = normalizeMcpServer({ name: "Loopback", transport: "http", url: "http://127.0.0.1:9/mcp" });
   await assert.rejects(() => connectMcp(server), (e: any) => e instanceof McpError && e.kind === "config");
+});
+
+test("a remote server's redirect is checked too, rather than followed by the transport", async () => {
+  // The gap: the address check ran ONCE, before the transport was handed the URL, and the transport
+  // then followed redirects itself — so every hop after the first was unchecked. Here the redirect
+  // is to another port on the same machine, which is a different service and a different owner; the
+  // one worth naming is this engine's own port, which holds every provider key in the app.
+  const seen: string[] = [];
+  const target = createServer((_req, res) => { seen.push("hit"); res.writeHead(500).end(); });
+  await new Promise<void>((r) => target.listen(0, "127.0.0.1", r));
+  const targetPort = (target.address() as AddressInfo).port;
+
+  const hop = createServer((_req, res) => {
+    res.writeHead(302, { location: `http://127.0.0.1:${targetPort}/mcp` }).end();
+  });
+  await new Promise<void>((r) => hop.listen(0, "127.0.0.1", r));
+  const hopPort = (hop.address() as AddressInfo).port;
+
+  try {
+    const server = normalizeMcpServer({
+      name: "Redirecting", transport: "http",
+      url: `http://127.0.0.1:${hopPort}/mcp`,
+      allowPrivate: true,
+    });
+    await assert.rejects(() => connectMcp(server));
+    assert.deepEqual(seen, [], "the redirect was refused rather than followed");
+  } finally {
+    await new Promise<void>((r) => hop.close(() => r()));
+    await new Promise<void>((r) => target.close(() => r()));
+  }
 });
 
 test("saved servers come back by name, and delete removes them", () => {
