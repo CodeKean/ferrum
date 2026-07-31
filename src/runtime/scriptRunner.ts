@@ -209,6 +209,24 @@ function writeBatch(
                         run_id = COALESCE(?, run_id), updated_at = datetime('now')${pinClear(runId)}
         WHERE row_id = ? AND column_id = ?${pinGuard(runId)}`,
     );
+    // A transform that returned nothing is `not_found`, matching the model, HTTP and MCP lanes.
+    //
+    // It used to be written as `done` with both value columns NULL, which is the worst of both: the
+    // column reports itself complete, the cell reports success, and there is nothing in it — and
+    // because `planBatch` skips anything `done` with a matching hash, the cell could never be
+    // reached again by a re-run. One database here held 11,835 of them. `not_found` says the true
+    // thing ("it ran, there is no answer for this row"), groups under its own reason in the blanks
+    // panel, and is not `done`, so the next pass computes it again.
+    //
+    // No input_hash, deliberately: only a `done` cell records what it was computed from. Leaving one
+    // on a cell the next pass is meant to retry is how a later status change turns into a skip
+    // nobody asked for.
+    const none = db.prepare(
+      `UPDATE cells SET value_text = NULL, value_json = NULL, status = 'not_found', error_type = NULL,
+                        error_msg = ?, stale = 0, input_hash = NULL, rev = rev + 1,
+                        run_id = COALESCE(?, run_id), updated_at = datetime('now')${pinClear(runId)}
+        WHERE row_id = ? AND column_id = ?${pinGuard(runId)}`,
+    );
     const skip = db.prepare(
       `UPDATE cells SET status = 'skipped', note = ?, rev = rev + 1,
                         run_id = COALESCE(?, run_id), updated_at = datetime('now')
@@ -253,9 +271,11 @@ function writeBatch(
         // gates is not its to write to.
         if (r.value) ok.run("true", JSON.stringify(true), hash, runId ?? null, r.rowId, columnId);
         else skip.run("condition returned false", runId ?? null, r.rowId, columnId);
+      } else if (r.value == null || r.value === "") {
+        none.run("The script returned nothing for this row.", runId ?? null, r.rowId, columnId);
       } else {
-        const text = r.value == null ? null : typeof r.value === "string" ? r.value : JSON.stringify(r.value);
-        ok.run(text, r.value == null ? null : JSON.stringify(r.value), hash, runId ?? null, r.rowId, columnId);
+        const text = typeof r.value === "string" ? r.value : JSON.stringify(r.value);
+        ok.run(text, JSON.stringify(r.value), hash, runId ?? null, r.rowId, columnId);
       }
       dirty.push(cellId(r.rowId, columnId));
     }

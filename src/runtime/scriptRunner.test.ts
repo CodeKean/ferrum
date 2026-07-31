@@ -126,6 +126,83 @@ test("the vm context denies filesystem and network reach-out", async () => {
   }
 });
 
+test("the sandbox holds no host object, so no expression compiles its way back to process", async () => {
+  const f = fixture("sandbox-realm", [{ Company: "X", Website: "https://x.com", Country: "US" }]);
+  const out = addColumn(f.sheet.id, { name: "Realm", kind: "script" });
+
+  // `Object.constructor` IS `Function`. When the sandbox was populated with THIS realm's built-ins,
+  // that was the host `Function` — codeGeneration:{strings:false} does not apply to it — and one
+  // expression got the whole Node API. The row object was the same hole by another door.
+  for (const attempt of [
+    `function transform(){ return String(Object.constructor("return process")().pid); }`,
+    `function transform(){ return String(Object.keys(JSON.constructor.constructor("return process")().env).length); }`,
+    `function transform(){ return String([].constructor.constructor("return process")().version); }`,
+    `function transform(row){ return String(row.constructor.constructor("return process")().pid); }`,
+  ]) {
+    const res = await runScriptColumn({
+      sheetId: f.sheet.id, columnId: Number(out.id), refColumnIds: [f.colIds[0]!],
+      code: attempt, runtime: "js", hook: "transform", rowIds: f.rowIds,
+    });
+    assert.equal(res.errors, 1, `escape attempt should fail: ${attempt}`);
+
+    const cell = db.prepare("SELECT status, value_text FROM cells WHERE column_id = ? LIMIT 1")
+      .get(Number(out.id)) as any;
+    assert.equal(cell.status, "error");
+    assert.equal(cell.value_text, null, "nothing from the host realm may end up in a cell");
+  }
+});
+
+test("URL still works inside the sandbox, built from the context's own realm", async () => {
+  const f = fixture("sandbox-url", [{ Company: "X", Website: "https://a.example.com/x?q=hi+there&q=2", Country: "US" }]);
+  const out = addColumn(f.sheet.id, { name: "Parsed", kind: "script" });
+
+  const code = `
+    function transform(row) {
+      const u = new URL(row.website);
+      return [u.hostname, u.pathname, u.searchParams.get("q"), u.searchParams.getAll("q").length].join("|");
+    }`;
+
+  const res = await runScriptColumn({
+    sheetId: f.sheet.id, columnId: Number(out.id), refColumnIds: [f.colIds[1]!],
+    code, runtime: "js", hook: "transform", rowIds: f.rowIds,
+  });
+
+  assert.equal(res.errors, 0);
+  const cell = db.prepare("SELECT value_text FROM cells WHERE column_id = ? LIMIT 1").get(Number(out.id)) as any;
+  assert.equal(cell.value_text, "a.example.com|/x|hi there|2");
+});
+
+test("a transform that returns nothing is not_found — never a `done` cell holding no value", async () => {
+  const f = fixture("script-null-return", [
+    { Company: "Keep", Website: "https://keep.com", Country: "US" },
+    { Company: "Drop", Website: "https://drop.com", Country: "US" },
+  ]);
+  const out = addColumn(f.sheet.id, { name: "Maybe", kind: "script" });
+
+  const code = `function transform(row) { return row.company === "Keep" ? "kept" : null; }`;
+  const args = {
+    sheetId: f.sheet.id, columnId: Number(out.id), refColumnIds: [f.colIds[0]!],
+    code, runtime: "js" as const, hook: "transform" as const, rowIds: f.rowIds, skipUnchanged: true,
+  };
+
+  const first = await runScriptColumn(args);
+  assert.equal(first.processed, 2);
+
+  const rows = db.prepare("SELECT status, value_text, input_hash FROM cells WHERE column_id = ? ORDER BY row_id")
+    .all(Number(out.id)) as any[];
+  assert.equal(rows[0].status, "done");
+  assert.equal(rows[0].value_text, "kept");
+  assert.notEqual(rows[1].status, "done", "an empty answer must not wear the status a real answer wears");
+  assert.equal(rows[1].status, "not_found");
+  assert.equal(rows[1].value_text, null);
+  assert.equal(rows[1].input_hash, null, "only a done cell records its inputs, so the retry can reach it");
+
+  // The point of the status: the next pass must still be able to reach that row.
+  const second = await runScriptColumn(args);
+  assert.equal(second.skipped, 1, "the real answer is left alone");
+  assert.equal(second.processed, 1, "the empty one is computed again rather than skipped forever");
+});
+
 test("approval is pinned to the exact bytes — editing the code voids it", () => {
   const f = fixture("approval", [{ Company: "A", Website: "https://a.com", Country: "US" }]);
   const col = addColumn(f.sheet.id, { name: "Slug", kind: "script" });
