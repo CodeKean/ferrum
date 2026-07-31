@@ -60,9 +60,9 @@ export interface RunScope {
 }
 
 // Numbers in the summary are formatted "en-US" explicitly rather than with the machine's locale.
-// Node picks up the OS locale, and on this machine that made the confirm dialog read
-// "10,00,000 rows" — Indian digit grouping — beside a grid that says "1,000,000". Two different
-// renderings of the same number in the same dialog reads as a bug in the count itself.
+// Node picks up the OS locale, so on some locales the confirm dialog grouped digits differently from
+// the grid beside it — two renderings of the same number in one dialog reads as a bug in the count
+// itself. The grid formats en-US, so this does too.
 export interface ResolvedScope {
   /** SQL selecting the target row ids, with `r` bound to `rows`. */
   sql: string;

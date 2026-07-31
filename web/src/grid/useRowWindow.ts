@@ -2,8 +2,8 @@
 //
 // Why this is hand-rolled rather than a virtualizer library:
 //
-// Browsers cap the height of a single element. Measured in Chrome on this machine the ceiling is
-// 22,369,622px. A million rows at 32px needs 32,000,000px of scroll space, so the spacer is silently
+// Browsers cap the height of a single element. In Chrome the ceiling is about 22,369,622px.
+// A million rows at 32px needs 32,000,000px of scroll space, so the spacer is silently
 // clamped and the last ~300,000 rows become unreachable — scrolling to the very bottom lands on row
 // 699,017. No amount of overscan tuning fixes that; the addressable space simply is not there.
 //

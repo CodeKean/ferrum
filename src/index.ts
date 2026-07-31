@@ -147,11 +147,11 @@ const server = app.listen(PORT, BIND_HOST);
 
 // The banner is bound to the `listening` EVENT, not to app.listen's callback.
 //
-// Express 5 invokes that callback even when the bind fails — verified here: against a port already
-// in use it ran with `server.listening === false`, and the EADDRINUSE error arrived afterwards. So a
-// second instance printed "Ferrum → http://127.0.0.1:4317" and only then admitted it had not
-// started. Anyone reading the top of the log would believe it was up. The `listening` event does not
-// fire on a failed bind, so it is the only honest place for this.
+// Express 5 invokes that callback even when the bind fails: against a port already in use it runs
+// with `server.listening === false`, and the EADDRINUSE error arrives afterwards. So a second
+// instance would print "Ferrum → http://127.0.0.1:4317" and only then admit it had not started, and
+// anyone reading the top of the log would believe it was up. The `listening` event does not fire on
+// a failed bind, so it is the only honest place for this.
 server.on("listening", () => {
   console.log(`Ferrum → http://${BIND_HOST === "0.0.0.0" ? "localhost" : BIND_HOST}:${PORT}`);
   console.log(`  data   ${DATA_DIR}`);

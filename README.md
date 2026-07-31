@@ -12,8 +12,13 @@ they appear — because the number you need is the one you get before you press 
 An open alternative to Clay, Bitscale and Freckle.
 
 ```
-Node 24  ·  SQLite  ·  React  ·  bound to 127.0.0.1  ·  1,000,000+ rows per table
+Node 24  ·  SQLite  ·  React  ·  127.0.0.1 by default  ·  1,000,000+ rows per table
 ```
+
+This is **v1 alpha** (`1.0.0-alpha.1`). It does the work described below today, but the database
+schema and the HTTP API can still change between alpha releases: an upgrade may ask you to migrate
+or to start a fresh database. Copy your SQLite file before upgrading, and pin a commit if something
+you build depends on it.
 
 ---
 
@@ -64,9 +69,9 @@ with 20 tests and nested and/or.
 
 ## It costs what your AI costs, and nothing more
 
-Ferrum does not sell credits, so it has no reason to let you overspend. There are twenty things it
-does to avoid spending your money and twelve of them work before you change a setting. The ones
-worth knowing about:
+Ferrum does not sell credits, so it has no reason to let you overspend. The guards below are grouped
+by when they act. They are on from the first run unless the line says you have to turn it on or set
+a number yourself:
 
 **Before you press Start**
 
@@ -139,9 +144,27 @@ automatically if present:
 | `FERRUM_DATA_DIR` | Where the database and keys live |
 | `FERRUM_DB` | Override the database path alone |
 | `PORT` | Engine port, default 4317 |
-| `OLLAMA_URL`, `LMSTUDIO_URL` | Point at a local AI on a non-default port |
+| `FERRUM_HOST` | Address to listen on, default `127.0.0.1`. Anything else turns on shared mode — see below |
+| `OLLAMA_URL`, `LMSTUDIO_URL`, `LLAMACPP_URL`, `VLLM_URL`, `JAN_URL`, `GPT4ALL_URL`, `LITELLM_URL`, `ANYTHINGLLM_URL` | Point at a local AI runtime on a non-default port. `LLAMACPP_URL` also covers LocalAI, `VLLM_URL` also covers Modular MAX — each pair shares a port, so it is one address each |
+| `FERRUM_DEV_SCRIPTS` | Set to `1` to allow `POST /api/scripts/run-direct`, which runs code nobody reviewed. Only the benchmark scripts in `scripts/` need it; leave it unset on any engine you actually use |
 
-`CLAYCODE_DATA_DIR` and `CLAYCODE_DB` are accepted as aliases.
+`CLAYCODE_DATA_DIR`, `CLAYCODE_DB` and `CLAYCODE_HOST` are accepted as aliases.
+
+### Sharing one Ferrum with other people
+
+By default Ferrum listens on `127.0.0.1`, so only your own machine can reach it and there is no
+sign-in. Set `FERRUM_HOST` to an address other machines can reach (`0.0.0.0`, or one interface) and
+it switches to shared mode: accounts, sign-in and per-person access come on, managed on the People
+screen.
+
+Two things to know before you do it:
+
+- **A fresh shared instance is open until somebody claims it.** Sign-in only exists once the first
+  account is created, so between starting the engine and creating that account, anyone who can reach
+  the address has full access to every table and every saved key. The engine prints this on boot.
+  Claim it immediately, from the machine you started it on.
+- **Sessions travel in a cookie, and Ferrum does not terminate TLS.** Put it behind HTTPS — a reverse
+  proxy, a VPN, or a private network — before you give the address to anyone.
 
 ### Where your data lives
 
@@ -185,7 +208,7 @@ virtualiser cannot address a million rows.
 ## Development
 
 ```bash
-npm test           # 1,054 tests across 78 files, each with its own database
+npm test           # 1,056 tests across 78 files, each with its own database
 npm run typecheck  # both TypeScript projects, server and browser
 npm run web:build  # production build of the grid
 ```
@@ -202,7 +225,7 @@ web/src/      the React grid, the column editor, settings
 ```
 
 Contributions are welcome. Please run `npm test` and `npm run typecheck` before opening a pull
-request.
+request. Found a security problem? Report it privately — see [`SECURITY.md`](SECURITY.md).
 
 ---
 
