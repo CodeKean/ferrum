@@ -7,7 +7,7 @@
 //
 // Each cell subscribes to ITS OWN key in the store, so one arriving value re-renders one leaf.
 
-import { memo, useCallback, useRef, useSyncExternalStore } from "react";
+import { memo, useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 import { cellStore, clock, type CellRecord } from "../store/cellStore.ts";
 import { STATUS_META } from "../types.ts";
 import { IconPlay, IconStop, IconExpand, IconAlert, IconStale, IconPencilMark } from "../ui/Icon.tsx";
@@ -269,6 +269,29 @@ function CellInput(
   const finish = (fn: () => void) => { if (done.current) return; done.current = true; fn(); };
 
   /**
+   * Commit what was typed when this box is REMOVED rather than left.
+   *
+   * Removing a focused element from the DOM does not fire blur in any browser, and the grid is
+   * virtualized: a wheel spin that carries the edited row out of the window unmounts this input, so
+   * the blur that was supposed to save the text never happens and the text is gone — silently, in
+   * the one place in the product where losing a keystroke is unforgivable. Same shape as
+   * `useAutosave`: the live value and the handler in refs, flushed from the unmount cleanup.
+   *
+   * Guarded on the text having CHANGED, not only on `done`. React runs an extra
+   * mount → cleanup → mount pass in development, and flushing an untouched box on that pass would
+   * burn the one-shot `done` flag and leave the real Enter, Tab and blur doing nothing at all.
+   */
+  const initial = useRef(seed);
+  const latest = useRef(seed);
+  const commitRef = useRef(onCommit);
+  commitRef.current = onCommit;
+  useEffect(() => () => {
+    if (done.current || latest.current === initial.current) return;
+    done.current = true;
+    commitRef.current?.(latest.current, "none");
+  }, []);
+
+  /**
    * Grow to fit what is being typed.
    *
    * An <input> does NOT size to its value — its intrinsic width comes from the `size` attribute, so
@@ -294,7 +317,7 @@ function CellInput(
       spellCheck={false}
       aria-label="Cell value"
       ref={fit}
-      onInput={(e) => fit(e.currentTarget)}
+      onInput={(e) => { latest.current = e.currentTarget.value; fit(e.currentTarget); }}
       onFocus={(e) => {
         fit(e.currentTarget);
         // Opened by typing a character: the caret goes after it rather than selecting it, so the

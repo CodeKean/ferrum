@@ -380,14 +380,43 @@ export function App() {
    * Deliberately does not reset the cell store: that would drop every loaded row and put the grid
    * back to skeletons on a single column save, which is exactly the full-surface flash the reactive
    * rule forbids. Rows that changed arrive over the stream on their own.
+   *
+   * Resolves to the columns it read, or null when it could not read them. Every caller fires this
+   * with `void` after a mutation, so a rejection had nothing on screen to attach itself to — and the
+   * answer is what tells `onColumnsChanged` below whether the sheet's SHAPE actually changed.
    */
-  const refreshSheet = useCallback(async (id: string) => {
-    const { sheet, columns } = await api.getSheet(id);
-    cellStore.setTotal(sheet.rowCount);
-    setSheet(sheet);
-    setColumns(columns);
-    void loadColumnStats(id).then((done) => { if (!done) setStatsSettled(false); });
+  const refreshSheet = useCallback(async (id: string): Promise<Column[] | null> => {
+    try {
+      const { sheet, columns } = await api.getSheet(id);
+      cellStore.setTotal(sheet.rowCount);
+      setSheet(sheet);
+      setColumns(columns);
+      void loadColumnStats(id).then((done) => { if (!done) setStatsSettled(false); });
+      return columns;
+    } catch (e) {
+      setToast(e instanceof Error ? e.message : "Could not re-read this table.");
+      return null;
+    }
   }, [loadColumnStats]);
+
+  /**
+   * Open a table from a control that cannot wait for it.
+   *
+   * Every one of those fires this with `void`, and `api.getSheet` throws on a refusal — so clicking a
+   * table while the engine was restarting did nothing visible at all: the previous table stayed on
+   * screen, the address bar had already been rewritten, and the only trace was an unhandled
+   * rejection in a console nobody is reading.
+   *
+   * `boot` deliberately keeps calling `openSheet` directly. There, the same failure belongs on the
+   * full-page "Can't read your tables" screen rather than in a toast over an empty app.
+   */
+  const goToSheet = useCallback(async (id: string) => {
+    try {
+      await openSheet(id);
+    } catch (e) {
+      setToast(e instanceof Error ? e.message : "Could not open that table.");
+    }
+  }, [openSheet]);
 
   // ── boot ──────────────────────────────────────────────────────
   //
@@ -471,11 +500,11 @@ export function App() {
     try {
       const { sheet: made } = await api.createSheet("Untitled sheet", sheet?.workbookId ?? null);
       setSheets((s) => [made, ...s]);
-      await openSheet(made.id);
+      await goToSheet(made.id);
     } catch {
       setToast("Could not make a table.");
     }
-  }, [sheet, openSheet]);
+  }, [sheet, goToSheet]);
 
   const addColumn = useCallback(async () => {
     if (!sheet) return;
@@ -540,13 +569,20 @@ export function App() {
       const { column } = await api.addColumn(sheet.id, from ? `Send ${from.name}` : "Send to table", "send");
       const holdsList = from && (from.valueType === "json" || from.valueType === "array" || !!listPath);
       if (holdsList) {
-        await fetch(`/api/columns/${column.id}`, {
+        const r = await fetch(`/api/columns/${column.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             send: { method: "per_item", listColumnId: Number(from!.id), listPath: listPath || undefined },
           }),
         });
+        const body = await r.json().catch(() => null);
+        // The column is made either way, so a refused seed is not fatal — but the editor would then
+        // open on "one row per table" while the user asked for one row per item in a list, and
+        // nothing would say the setting had not taken.
+        if (!r.ok || body?.error) {
+          setToast(String(body?.error ?? "The column was added, but its list setting could not be saved."));
+        }
       }
       cellStore.reset();
       bump();
@@ -681,7 +717,14 @@ export function App() {
    */
   const refreshDerived = useCallback(async (column: Column) => {
     try {
-      const res = await fetch(`/api/columns/${column.id}/refresh-derived`, { method: "POST" }).then((r) => r.json());
+      const r = await fetch(`/api/columns/${column.id}/refresh-derived`, { method: "POST" });
+      const res = await r.json().catch(() => null);
+      // A refused request answers with no `rows`, which counts as zero — so a failure was reported as
+      // "nothing is derived from this column", a confident statement about data that was never read.
+      if (!r.ok || res?.error) {
+        setToast(String(res?.error ?? "Could not refresh the derived columns."));
+        return;
+      }
       const n = Number(res.rows ?? 0);
       // Says what happened either way. "Nothing derived from this column" is a useful answer; a
       // silent no-op reads as the button being broken.
@@ -731,11 +774,18 @@ export function App() {
 
   const pinColumn = useCallback(async (column: Column, pinned: boolean) => {
     try {
-      await fetch(`/api/columns/${column.id}`, {
+      const r = await fetch(`/api/columns/${column.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ frozen: pinned }),
       });
+      const body = await r.json().catch(() => null);
+      // The refresh below redraws the column from the server either way, so an unread refusal put
+      // the header straight back where it was and read as the control not working.
+      if (!r.ok || body?.error) {
+        setToast(String(body?.error ?? `Could not ${pinned ? "pin" : "unpin"} that column.`));
+        return;
+      }
       await refreshSheet(column.sheetId);
     } catch {
       setToast(`Could not ${pinned ? "pin" : "unpin"} that column.`);
@@ -744,11 +794,16 @@ export function App() {
 
   const moveColumn = useCallback(async (column: Column, toIndex: number) => {
     try {
-      await fetch(`/api/columns/${column.id}`, {
+      const r = await fetch(`/api/columns/${column.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ toIndex }),
       });
+      const body = await r.json().catch(() => null);
+      if (!r.ok || body?.error) {
+        setToast(String(body?.error ?? "Could not move that column."));
+        return;
+      }
       await refreshSheet(column.sheetId);
     } catch {
       setToast("Could not move that column.");
@@ -981,12 +1036,12 @@ export function App() {
       list.push({
         id: `sheet-${s.id}`, group: "Go to", label: s.name, keywords: "table sheet open",
         hint: `${(s.rowCount ?? 0).toLocaleString()} rows`,
-        run: () => void openSheet(s.id),
+        run: () => void goToSheet(s.id),
       });
     }
 
     return list;
-  }, [sheet, sheets, view, runTitle, visibleRows, newSheet, addColumn, addRow, addSendColumn, applyView, openSheet]);
+  }, [sheet, sheets, view, runTitle, visibleRows, newSheet, addColumn, addRow, addSendColumn, applyView, goToSheet]);
 
   const sheetItems = useCallback((): MenuItem[] => {
     if (!sheet) return [];
@@ -1144,7 +1199,7 @@ export function App() {
                   title={last ? `${c.name} — double-click to rename` : `Open ${c.name}`}
                   onClick={() => {
                     if (last && !homeOpen) return;
-                    if (c.kind === "table") { setHomeOpen(false); void openSheet(c.id); return; }
+                    if (c.kind === "table") { setHomeOpen(false); void goToSheet(c.id); return; }
                     setHomeAt(c.kind === "workbook" ? { workbookId: c.id } : { folderId: c.id });
                     setHomeOpen(true);
                   }}
@@ -1197,7 +1252,7 @@ export function App() {
 
       {wizardOpen && (
         <TableWizard
-          onBuilt={(id) => { void openSheet(id); bump(); void api.listSheets().then(({ sheets }) => setSheets(sheets)); }}
+          onBuilt={(id) => { void goToSheet(id); bump(); void api.listSheets().then(({ sheets }) => setSheets(sheets)); }}
           onClose={() => setWizardOpen(false)}
         />
       )}
@@ -1247,7 +1302,7 @@ export function App() {
       ) : homeOpen ? (
         <Home
           startAt={homeAt}
-          onOpenTable={(id) => { setHomeOpen(false); void openSheet(id); bump(); }}
+          onOpenTable={(id) => { setHomeOpen(false); void goToSheet(id); bump(); }}
           onPathChange={setBrowserPath}
           // Where the browser is goes in the address bar, the same way the open table does — so a
           // reload comes back to the folder you were standing in instead of dropping you in the
@@ -1435,7 +1490,7 @@ export function App() {
                 onTrashed={async () => {
                   const { sheets } = await api.listSheets();
                   setSheets(sheets);
-                  if (sheets[0]) await openSheet(sheets[0].id); else setSheet(null);
+                  if (sheets[0]) await goToSheet(sheets[0].id); else setSheet(null);
                 }}
               />
             </div>
@@ -1559,7 +1614,7 @@ export function App() {
               sheetId={sheet.id}
               sheetName={sheet.name}
               onClose={() => setLimitsOpen(false)}
-              onOpenTable={(id) => { setLimitsOpen(false); void openSheet(id); bump(); }}
+              onOpenTable={(id) => { setLimitsOpen(false); void goToSheet(id); bump(); }}
             />
           )}
 
@@ -1594,7 +1649,7 @@ export function App() {
           <SheetTabs
             sheetId={sheet.id}
             revision={revision}
-            onOpen={(id) => { void openSheet(id); }}
+            onOpen={(id) => { void goToSheet(id); }}
             onChanged={() => { bump(); void api.listSheets().then(({ sheets }) => setSheets(sheets)); }}
           />
 
@@ -1650,7 +1705,22 @@ export function App() {
             onClose={() => setOpenCell(null)}
             // Adding a column from a field changes this sheet's shape, so the grid has to learn
             // about it — otherwise the new column exists and is invisible until a reload.
-            onColumnsChanged={() => { if (sheet) { cellStore.reset(); bump(); void refreshSheet(sheet.id); } }}
+            //
+            // The reset is what makes those cells appear: `ensurePage` will not re-read a page it
+            // already holds, so deltas for a column that did not exist when the window was fetched
+            // are dropped. But the panel fires this for a single-cell RESTORE as well, and blanking
+            // every loaded row to skeletons for one cell is exactly the full-surface flash the
+            // reactive rule forbids — and needless, since the restore marks that cell dirty and its
+            // new value arrives over the stream. So the store is only dropped when a column the grid
+            // has never seen actually turned up.
+            onColumnsChanged={() => {
+              if (!sheet) return;
+              const known = new Set(columns.map((c) => String(c.id)));
+              bump();
+              void refreshSheet(sheet.id).then((next) => {
+                if (next?.some((c) => !known.has(String(c.id)))) cellStore.reset();
+              });
+            }}
             onOverride={(current) => {
               const [rowId, columnId] = (openCell?.cellId ?? "").split(":");
               const col = columns.find((c) => String(c.id) === String(columnId));

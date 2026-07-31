@@ -284,13 +284,23 @@ export function SheetGrid({
     cellStore.reset();
     scrollRef.current?.scrollTo({ top: 0 });
     void ensurePage(0);
-  }, [viewKey, ensurePage]);
+    // `sheetId` is named even though `ensurePage` already closes over it. Switching tables
+    // invalidates the loaded rows exactly the way a view change does, and leaving that to a
+    // dependency's identity makes the most important reset in the grid an accident of how another
+    // callback happens to be memoized.
+  }, [sheetId, viewKey, ensurePage]);
 
   // Load whatever the viewport is currently over. Runs on every windowing pass, but ensurePage
   // dedupes by page so it is one fetch per page regardless of how often this fires.
+  //
+  // Depends on the window's BOUNDS, not on `win.indices` — that is a fresh array on every render, so
+  // an identity dependency re-ran this on every keystroke and every arriving cell. The indices are a
+  // contiguous run from `firstRow`, so the bounds say the same thing and only change when the window
+  // actually moves.
+  const winCount = win.indices.length;
   useEffect(() => {
-    for (const i of win.indices) void ensurePage(i);
-  }, [win.indices, ensurePage]);
+    for (let i = win.firstRow; i < win.firstRow + winCount; i++) void ensurePage(i);
+  }, [win.firstRow, winCount, ensurePage]);
 
   // First paint: pull page 0 so the grid has something before any scroll happens.
   useEffect(() => {
@@ -596,6 +606,31 @@ export function SheetGrid({
   // How many render passes the focus has waited for the virtualizer. Bounded, so a row that never
   // materialises — a page whose fetch failed — cannot spin this forever.
   const focusWaits = useRef(0);
+
+  /**
+   * Everything keyed on a ROW POSITION belongs to the rows that were just thrown away.
+   *
+   * The grid is not remounted when the app opens another table, and nothing here was tied to the
+   * sheet, so a selection, a roving focus and an open editor all survived the switch — pointing at
+   * positions in a table nobody is looking at any more. Row 500 of the new table is a different
+   * record, and a Delete on a carried-over Ctrl+A range goes through `writeBlock` against those
+   * positions. A view change has the same problem for the same reason: filtering re-numbers every
+   * row underneath the selection.
+   *
+   * `explaining` and `coloring` are worse than stale positions — they hold a `Column` from the old
+   * table outright, so the popover would edit a column that is not on screen.
+   */
+  useEffect(() => {
+    setActive(null);
+    setAnchor(null);
+    setEditing(null);
+    setRenaming(null);
+    setExplaining(null);
+    setColoring(null);
+    fillFrom.current = null;
+    setFillTo(null);
+    wantFocus.current = false;
+  }, [sheetId, viewKey]);
 
   /** Is the roving target on screen? When it is not, the scrollport takes the tab stop instead —
    *  otherwise scrolling away from the focused cell would make the grid unreachable by Tab again. */

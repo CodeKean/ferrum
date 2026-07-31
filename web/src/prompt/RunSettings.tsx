@@ -176,9 +176,15 @@ export function RunSettings({ column, columns, refOptions, paid, onSaved }: Prop
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ hook: "condition", runtime: "js", intent, code }),
       }).then((r) => r.json());
+      // `error` is the route refusing outright — a column that has gone answers with it and with no
+      // `errors` list at all, so reading only the list treated a refused save as a saved condition
+      // and stored `undefined` as the script.
+      if (res.error) { setError(String(res.error)); return; }
       if ((res.errors ?? []).length > 0) { setError(res.errors.join(" ")); return; }
       setCondition(res.script);
       onSaved();
+    } catch {
+      setError("Could not reach the engine.");
     } finally {
       setBusy(false);
     }
@@ -195,6 +201,8 @@ export function RunSettings({ column, columns, refOptions, paid, onSaved }: Prop
       }).then((r) => r.json());
       if (res.error) setError(res.error);
       else { setCondition(res.script); onSaved(); }
+    } catch {
+      setError("Could not reach the engine.");
     } finally {
       setBusy(false);
     }

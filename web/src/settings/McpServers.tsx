@@ -93,10 +93,21 @@ export function McpServers() {
 
   const remove = async (s: McpServer) => {
     setBusy(true);
+    setError(null);
     try {
-      await fetch(`/api/mcp/servers/${encodeURIComponent(s.id)}`, { method: "DELETE" });
+      // A refusal answers with a status and an `error`, and neither was read — so a removal the
+      // engine declined redrew the same list with the app still on it, which reads as the button
+      // being broken rather than as the server having said no.
+      const res = await fetch(`/api/mcp/servers/${encodeURIComponent(s.id)}`, { method: "DELETE" });
+      const body = await res.json().catch(() => null);
+      if (!res.ok || body?.error) {
+        setError(String(body?.error ?? `Could not remove "${s.name}".`));
+        return;
+      }
       setChecked((c) => { const n = { ...c }; delete n[s.id]; return n; });
       await load();
+    } catch {
+      setError("Could not reach the engine.");
     } finally {
       setBusy(false);
     }
@@ -176,6 +187,10 @@ export function McpServers() {
       {loaded && servers.length === 0 && !draft && (
         <p className="cc-set__hint">No apps yet.</p>
       )}
+
+      {/* The form below shows the error while it is open; a removal happens with no form on screen,
+          so without this its refusal had nowhere to appear. */}
+      {error && !draft && <p className="cc-set__err">{error}</p>}
 
       {draft ? (
         <div className="cc-prov__form">

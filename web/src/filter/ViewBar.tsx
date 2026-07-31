@@ -61,6 +61,14 @@ export function ViewBar({ sheetId, view, onChange, onMutated }: Props) {
   const [naming, setNaming] = useState(false);
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
+  /**
+   * The last thing that went wrong, in the menu and in the naming box.
+   *
+   * There was nowhere at all for a refusal to appear: saving, updating and deleting each threw the
+   * answer away, so a view the engine declined to save left the naming box open, unchanged and
+   * silent — which reads as the Save button not being wired up.
+   */
+  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -84,6 +92,7 @@ export function ViewBar({ sheetId, view, onChange, onMutated }: Props) {
 
   const save = async () => {
     setBusy(true);
+    setError(null);
     try {
       const body = {
         name: name.trim() || "Untitled view",
@@ -96,9 +105,15 @@ export function ViewBar({ sheetId, view, onChange, onMutated }: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       }).then((r) => r.json());
-      if (res.view) { setActiveId(res.view.id); await load(); }
+      // The box stays open on a refusal, holding the name that was typed, rather than closing as
+      // though the view had been kept.
+      if (!res.view) { setError(String(res.error ?? "Could not save this view.")); return; }
+      setActiveId(res.view.id);
+      await load();
       setNaming(false);
       setName("");
+    } catch {
+      setError("Could not reach the engine.");
     } finally {
       setBusy(false);
     }
@@ -108,8 +123,9 @@ export function ViewBar({ sheetId, view, onChange, onMutated }: Props) {
   const update = async () => {
     if (!active) return;
     setBusy(true);
+    setError(null);
     try {
-      await fetch(`/api/views/${active.id}`, {
+      const res = await fetch(`/api/views/${active.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -119,7 +135,16 @@ export function ViewBar({ sheetId, view, onChange, onMutated }: Props) {
           search: view.search.trim() || null,
         }),
       });
+      const body = await res.json().catch(() => null);
+      // Said out loud, because the name in the trigger goes on being the applied view either way —
+      // an overwrite that was refused is indistinguishable from one that worked.
+      if (!res.ok || body?.error) {
+        setError(String(body?.error ?? `Could not update “${active.name}”.`));
+        return;
+      }
       await load();
+    } catch {
+      setError("Could not reach the engine.");
     } finally {
       setBusy(false);
       setOpen(false);
@@ -128,7 +153,18 @@ export function ViewBar({ sheetId, view, onChange, onMutated }: Props) {
 
   const remove = async (v: SavedView) => {
     setOpen(false);
-    await fetch(`/api/views/${v.id}`, { method: "DELETE" });
+    setError(null);
+    try {
+      const res = await fetch(`/api/views/${v.id}`, { method: "DELETE" });
+      const body = await res.json().catch(() => null);
+      if (!res.ok || body?.error) {
+        setError(String(body?.error ?? `Could not delete “${v.name}”.`));
+        return;
+      }
+    } catch {
+      setError("Could not reach the engine.");
+      return;
+    }
     // Deleting is undoable, so this is not a confirm-dialog moment — the undo bar is the safety net,
     // and a dialog in front of a reversible action is the speed bump people click through.
     if (activeId === v.id) setActiveId(null);
@@ -159,6 +195,23 @@ export function ViewBar({ sheetId, view, onChange, onMutated }: Props) {
           <path d="m4 6.5 4 4 4-4" />
         </svg>
       </button>
+
+      {/* Beside the trigger rather than inside the menu: updating and deleting both close the menu,
+          so a message that only lived in there would be dismissed by the very action that wrote it.
+          Truncated with the full text on hover, so a long refusal cannot widen the toolbar. */}
+      {error && (
+        <span
+          role="alert"
+          title={error}
+          style={{
+            marginLeft: "var(--s-2)", maxWidth: 220, fontSize: 12,
+            color: "var(--status-error-solid)",
+            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+          }}
+        >
+          {error}
+        </span>
+      )}
 
       <Popover open={open} anchor={rect ? { rect } : null} anchorEl={trigger} onClose={() => setOpen(false)} width={260} role="menu" label="Views">
         <div className="cc-vb__menu">
@@ -191,7 +244,7 @@ export function ViewBar({ sheetId, view, onChange, onMutated }: Props) {
           )}
           <button
             className="cc-vb__item"
-            onClick={() => { setOpen(false); setNaming(true); }}
+            onClick={() => { setOpen(false); setError(null); setNaming(true); }}
             disabled={!usableFilter(view.filter) && !view.sort && !view.search.trim()}
             // Disabled with a reason: saving the unnarrowed grid produces a view identical to
             // "All rows", which is a menu entry that does nothing.
@@ -208,18 +261,26 @@ export function ViewBar({ sheetId, view, onChange, onMutated }: Props) {
 
       <Modal
         open={naming}
-        onClose={() => setNaming(false)}
+        onClose={() => { setNaming(false); setError(null); }}
         title="Save this view"
         footNote="Filters, sort and search are saved. Column widths are not."
         footer={
           <>
-            <button className="cc-btn" onClick={() => setNaming(false)}>Cancel</button>
+            <button className="cc-btn" onClick={() => { setNaming(false); setError(null); }}>Cancel</button>
             <button className="cc-btn cc-btn--primary" onClick={() => void save()} disabled={busy || !name.trim()}>
               Save view
             </button>
           </>
         }
       >
+        {/* The dialog is over the toolbar, so a refusal has to be repeated in here — the message
+            beside the trigger is behind it and would not be read. */}
+        {error && (
+          <p role="alert" style={{ margin: "0 0 var(--s-3)", fontSize: 12.5, lineHeight: 1.55, color: "var(--status-error-solid)" }}>
+            {error}
+          </p>
+        )}
+
         <label className="cc-field">
           <span className="cc-field__label">Name</span>
           <input

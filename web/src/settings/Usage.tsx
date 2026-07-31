@@ -21,7 +21,7 @@
 // A per-row price is often a fraction of a cent. Rounded to two places it reads $0.00, which is the
 // exact wrong answer: it says free about something that is not. So small numbers keep their digits.
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, type SavingsTotals, type UsageReport, type UsageScope, type UsageSlice } from "../api.ts";
 import { Select } from "../ui/Select.tsx";
 import "./Usage.css";
@@ -118,17 +118,28 @@ export function Usage({ scope, scopeId, onScope }: Props) {
       .catch(() => { /* the scope picker degrades to workspace-only; the report itself still loads */ });
   }, []);
 
+  /**
+   * Bumped on every load, so a slow answer for a scope or a range you have already moved off cannot
+   * paint over the one you are looking at now. This is the screen whose whole job is saying what a
+   * given table cost — one workspace's figures under another table's name is not a stale number, it
+   * is a wrong one, and nothing on screen would say so.
+   */
+  const ticket = useRef(0);
+
   const load = useCallback(async () => {
+    const mine = ++ticket.current;
     setLoading(true);
     try {
       const r = await api.usage(scope, scopeId, { from: rangeFrom(range) });
+      if (mine !== ticket.current) return;
       setReport(r.report);
       setSavings(r.savings ?? null);
       setError(null);
     } catch (e) {
+      if (mine !== ticket.current) return;
       setError(e instanceof Error ? e.message : "Could not read the usage history.");
     } finally {
-      setLoading(false);
+      if (mine === ticket.current) setLoading(false);
     }
   }, [scope, scopeId, range]);
 

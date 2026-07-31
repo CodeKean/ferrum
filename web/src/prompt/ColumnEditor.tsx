@@ -828,12 +828,23 @@ export function ColumnEditor({ sheetId, column, columns, sheets, rowCount, onClo
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ hook: "transform", runtime, intent, code }),
       }).then((r) => r.json());
+      // `errors` is the compiler's list; `error` is the route refusing outright — a 404 for a column
+      // that has gone answers with the second and no first, so reading only the list took the
+      // "nothing wrong, it saved" branch on a save that never happened, kept `res.script` (undefined)
+      // and dropped the footer to "unsaved" with nothing said.
+      if (res.error) {
+        if (/not found/i.test(String(res.error))) setGone(true);
+        else setErrors([String(res.error)]);
+        return;
+      }
       setErrors(res.errors ?? []);
       if ((res.errors ?? []).length === 0) {
         setSaved(res.script);
         setDryRun(null);
         onSaved();
       }
+    } catch {
+      setErrors(["Could not reach the engine to save this rule."]);
     } finally {
       setBusy(false);
     }
@@ -881,6 +892,8 @@ export function ColumnEditor({ sheetId, column, columns, sheets, rowCount, onClo
       }).then((r) => r.json());
       if (res.error) setErrors([res.error]);
       else setSaved(res.script);
+    } catch {
+      setErrors(["Could not reach the engine to approve this rule."]);
     } finally {
       setBusy(false);
     }
@@ -897,6 +910,8 @@ export function ColumnEditor({ sheetId, column, columns, sheets, rowCount, onClo
       }).then((r) => r.json());
       if (res.error) setErrors([res.error]);
       else { setDryRun(res); onSaved(); }
+    } catch {
+      setErrors(["Could not reach the engine to try this rule."]);
     } finally {
       setBusy(false);
     }
