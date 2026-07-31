@@ -9,6 +9,8 @@ import assert from "node:assert/strict";
 import { parseCatalog, seedCatalog } from "../providers/catalog.ts";
 import { getSetupSettings, setSetupSettings, resolveSetupProvider, NotFreeError, estimateSetupCost } from "./setupModel.ts";
 import { saveProviderKey, deleteProviderKey } from "../providers/keys.ts";
+import { setDefaultModelSetting } from "../providers/resolve.ts";
+import { saveSecret } from "../secrets.ts";
 
 /**
  * A key of the shape the store insists on. Not a real credential and never sent anywhere — these
@@ -88,6 +90,44 @@ test("a local model is free without needing the price list to say so", async () 
   const out = await resolveSetupProvider();
   assert.equal(out.isLocal, true);
   assert.equal(out.free, true);
+});
+
+test("'auto' follows the workspace's chosen model, including a local one", async () => {
+  // The case every other test in this file skipped, and the one everybody actually runs: setup.model
+  // left at its default of "auto".
+  //
+  // "auto" has to mean the same thing here that it means on a column — follow whatever the workspace
+  // was told to use. Resolving it to the hardcoded constant instead sends every design call to
+  // OpenRouter, so somebody who set up a local AI, or saved a key for OpenAI or Anthropic directly,
+  // is asked for an OpenRouter key by the assistant and has no idea why: they configured an AI, and
+  // the app agrees they did, and still refuses.
+  deleteProviderKey("openrouter");
+  setDefaultModelSetting("local:ollama/llama3");
+  setSetupSettings({ model: "auto", freeOnly: false });
+
+  const out = await resolveSetupProvider();
+  assert.equal(out.isLocal, true, "a local default must not be overridden by the hardcoded one");
+  assert.equal(out.providerId, "local");
+  assert.equal(out.free, true);
+
+  setDefaultModelSetting("auto");
+});
+
+test("'auto' follows a chosen model on a directly-keyed provider", async () => {
+  // Same fault, the hosted half: a key saved for Anthropic is a configured AI, and "auto" pointing
+  // at an OpenRouter id asks for a second key that has nothing to do with it.
+  primeCatalog();
+  deleteProviderKey("openrouter");
+  // "Anthropic" is the spec's secretName, which is how providerKeyFor finds it.
+  saveSecret({ name: "Anthropic", value: "sk-ant-api03-" + "0".repeat(24) });
+  setDefaultModelSetting("anthropic:claude-sonnet-4-5");
+  setSetupSettings({ model: "auto", freeOnly: false });
+
+  const out = await resolveSetupProvider();
+  assert.equal(out.providerId, "anthropic");
+  assert.equal(out.model, "claude-sonnet-4-5");
+
+  setDefaultModelSetting("auto");
 });
 
 test("the setting survives a read, so what Settings shows is what runs", () => {

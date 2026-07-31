@@ -27,11 +27,15 @@ const KEY_MODEL = "setup.model";
 const KEY_FREE_ONLY = "setup.freeOnly";
 
 /**
- * The model that designs a column when nobody has chosen one.
+ * The model that designs a column when nobody has chosen one — for DISPLAY.
  *
- * The same id the run lane defaults to, deliberately. A default that silently moved to something
+ * The same id the run lane falls back to, deliberately. A default that silently moved to something
  * pricier the day this setting was introduced would be a bill nobody agreed to; the point of this
  * module is that the choice becomes AVAILABLE, not that it is made for you.
+ *
+ * Label it, do not resolve with it. `resolveSetupProvider` passes "auto" down untouched so the
+ * workspace's own chosen model is honoured; substituting this constant there is what made every
+ * design call demand an OpenRouter key regardless of what had been set up.
  */
 export const DEFAULT_SETUP_MODEL = DEFAULT_MODEL;
 
@@ -86,7 +90,23 @@ export class NotFreeError extends Error {
  */
 export async function resolveSetupProvider(): Promise<Resolved & { free: boolean }> {
   const { model, freeOnly } = getSetupSettings();
-  const resolved = resolveProvider(model === "auto" ? DEFAULT_SETUP_MODEL : model);
+
+  // "auto" is handed STRAIGHT THROUGH, rather than swapped for DEFAULT_SETUP_MODEL first.
+  //
+  // Those are not the same thing, and the difference was the whole of a bug. `resolveProvider` only
+  // consults the workspace's chosen model when it is asked for "auto"; give it a concrete id and it
+  // resolves that id and nothing else. DEFAULT_SETUP_MODEL is an OpenRouter id, so substituting it
+  // here sent every design call to OpenRouter no matter what the workspace had been set to.
+  //
+  // What that looked like: set Ferrum up with a local model, or save a key for Anthropic or OpenAI
+  // directly, and the app agrees an AI is configured — columns run, the model picker lists it — but
+  // the assistant, the setup panel and promote-to-rule all answer "No OpenRouter key configured."
+  // Nothing on screen explains why a second, unrelated key is wanted, and the only lane the product
+  // promises is free is the one that hit it hardest.
+  //
+  // Passing "auto" down means the setup lane follows the same setting a column does, which is what
+  // the word already meant everywhere else in the app.
+  const resolved = resolveProvider(model === "auto" ? null : model);
 
   // A model running on this machine bills nothing by construction, so free-only never blocks one —
   // and it needs no price list to prove it.

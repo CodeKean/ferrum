@@ -95,12 +95,40 @@
 
 .cc-as__error {
   flex: 0 0 auto;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-2);
   margin: 0 var(--s-3);
   padding: var(--s-2);
   border-radius: var(--r-xs);
   background: var(--band-error);
   font-size: 12px;
 }
+.cc-as__error > span { flex: 1 1 auto; min-width: 0; }
+
+/* Sized to the 44px-square guidance's spirit without a 44px box inside a 12px band: the hit area is
+   padded out around a 12px glyph, and it is the only control in here, so nothing sits close enough
+   to mis-tap. */
+.cc-as__errorx {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin: -2px -2px 0 0;
+  border: 0;
+  border-radius: var(--r-xs);
+  background: transparent;
+  color: inherit;
+  opacity: 0.65;
+  cursor: pointer;
+  transition: opacity var(--dur-fast) var(--ease), background-color var(--dur-fast) var(--ease);
+}
+.cc-as__errorx:hover { opacity: 1; background: var(--control-hover); }
+.cc-as__errorx:active { transform: translateY(0.5px); }
+/* `--focus-ring` in a box-shadow, which is how every other focusable control in the app draws it. */
+.cc-as__errorx:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--focus-ring); opacity: 1; }
 
 .cc-as__context {
   flex: 0 0 auto;

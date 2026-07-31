@@ -81,6 +81,12 @@ export function effectiveDefaultModel(): string {
     // A local model is never in the published price list — that list is OpenRouter's. Asking whether
     // it is still "in the catalogue" would retire every local default the moment it was set.
     if (parseLocalModel(chosen)) return chosen;
+    // And neither is a model on a directly-keyed provider, for exactly the same reason. Asking
+    // OpenRouter's list whether `anthropic:claude-sonnet-4-5` exists gets "no" every time, which was
+    // read as "retired" — so choosing a direct provider as the workspace default silently threw the
+    // choice away and substituted an OpenRouter model, and the app then asked for an OpenRouter key
+    // that the user had no reason to have. The catalogue can only speak for its own models.
+    if (splitModelId(chosen).provider !== "openrouter") return chosen;
     if (!catalogLoaded() || cachedModel(chosen)) return chosen;
     // Falls through: the chosen model is gone, so the stand-in logic below applies to it too.
   }

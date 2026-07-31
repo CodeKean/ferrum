@@ -103,6 +103,13 @@ export function Assistant({ sheetId, columns, onClose, onChanged }: Props) {
   }, [onClose]);
 
   const send = useCallback(async (text: string) => {
+    // Kept so a failure can put things back exactly as they were. The question was shown in the
+    // transcript the moment it was sent and the box was emptied, and neither was undone when the
+    // send failed — so a failed question sat there looking asked, with no answer coming and nothing
+    // to press, and the words were gone from the box as well. Asking again meant typing it again.
+    const prevBubbles = bubbles;
+    const prevDraft = draft;
+
     const history: Bubble[] = [...bubbles, { role: "user", text }];
     setBubbles(history);
     setDraft("");
@@ -114,14 +121,23 @@ export function Assistant({ sheetId, columns, onClose, onChanged }: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ messages: history.map((b) => ({ role: b.role, text: b.text })) }),
       }).then((r) => r.json());
-      if (res.error) { setError(res.error); return; }
+      if (res.error) {
+        setError(res.error);
+        // Nothing was said, so nothing stays said. The words go back in the box, where fixing
+        // whatever the error named and pressing Send once more is the whole recovery.
+        setBubbles(prevBubbles);
+        setDraft(prevDraft || text);
+        return;
+      }
       setBubbles([...history, { role: "assistant", text: res.reply, actions: res.actions ?? [], applied: {} }]);
     } catch {
       setError("Could not reach the engine.");
+      setBubbles(prevBubbles);
+      setDraft(prevDraft || text);
     } finally {
       setBusy(false);
     }
-  }, [bubbles, sheetId]);
+  }, [bubbles, draft, sheetId]);
 
   const apply = async (bubbleIndex: number, actionIndex: number, action: Action) => {
     setBusy(true);
@@ -217,7 +233,23 @@ export function Assistant({ sheetId, columns, onClose, onChanged }: Props) {
         <div ref={endRef} />
       </div>
 
-      {error && <div className="cc-as__error" role="alert">{error}</div>}
+      {/* Dismissable. It had no control on it at all, so a message like "No OpenRouter key
+          configured." stayed on screen until the next send SUCCEEDED — which, when the error is
+          that there is no key, is never. It read as part of the panel rather than as something
+          that had just happened. */}
+      {error && (
+        <div className="cc-as__error" role="alert">
+          <span>{error}</span>
+          <button
+            className="cc-as__errorx"
+            onClick={() => setError(null)}
+            aria-label="Dismiss this message"
+            title="Dismiss"
+          >
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M4 4l8 8M12 4l-8 8" /></svg>
+          </button>
+        </div>
+      )}
 
       {showContext && (
         <pre className="cc-as__context mono">{context ?? "Reading…"}</pre>
