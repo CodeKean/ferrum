@@ -182,7 +182,47 @@ test("a member can change and spend but cannot reach the settings or the members
 
   assert.equal((await call(`/api/sheets/${c.sheet.id}/columns`, { method: "POST", cookie: member, body: { name: "New" } })).status, 200);
   assert.equal((await call("/api/people", { cookie: member })).status, 403, "the members list is everyone's email address");
-  assert.equal((await call("/api/keys", { cookie: member, method: "POST", body: {} })).status, 403);
+});
+
+test("a member cannot register a connected app, overwrite a key or clear the cache", async () => {
+  // Every path here names a REAL handler. The test this replaces posted to /api/keys, which no
+  // router has ever served — so its 403 came from the gate refusing an unknown path and would have
+  // arrived whatever the rules said. It proved nothing, and that is why this survived.
+  //
+  // The worst of them is the first: a stdio MCP server is a command this machine will spawn, so a
+  // member who could register one has code execution on the host. `provenLocal` does not cover it —
+  // that is an origin check, and it is satisfied by the member's own browser.
+  blank();
+  const owner = await claimAs("owner@x.com");
+  const member = await joinAs("member@x.com", "member", owner);
+
+  const refused: Array<[string, string, unknown?]> = [
+    ["POST",   "/api/mcp/servers", { id: "x", transport: "stdio", command: "calc.exe" }],
+    ["DELETE", "/api/mcp/servers/x"],
+    ["POST",   "/api/secrets", { name: "OpenAI", value: "sk-taken-over" }],
+    ["DELETE", "/api/secrets/OpenAI"],
+    ["POST",   "/api/providers/openrouter/key", { key: "sk-taken-over" }],
+    ["DELETE", "/api/providers/openrouter/key"],
+    ["PUT",    "/api/search/backends/exa/key", { key: "sk-taken-over" }],
+    ["POST",   "/api/cache/clear"],
+  ];
+  for (const [method, path, body] of refused) {
+    const out = await call(path, { method, cookie: member, body });
+    assert.equal(out.status, 403, `a member reached ${method} ${path}`);
+  }
+});
+
+test("an admin reaches the same routes a member is kept out of", async () => {
+  // The other half. A rule that refused everyone would pass the test above and break the product.
+  blank();
+  const owner = await claimAs("owner@x.com");
+  const admin = await joinAs("admin@x.com", "admin", owner);
+
+  assert.equal((await call("/api/secrets", { method: "POST", cookie: admin, body: { name: "Exa", value: "sk-real" } })).status, 200);
+  assert.equal((await call("/api/secrets/Exa", { method: "DELETE", cookie: admin })).status, 200);
+  assert.equal((await call("/api/cache/clear", { method: "POST", cookie: admin })).status, 200);
+  // A bad body is a 400 from the handler, which is the point: the gate let it through to be judged.
+  assert.notEqual((await call("/api/mcp/servers", { method: "POST", cookie: admin, body: {} })).status, 403);
 });
 
 test("an admin reaches the settings and the members list", async () => {

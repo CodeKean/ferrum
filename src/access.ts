@@ -195,22 +195,51 @@ const READ_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
  * the ones that reach the provider account. The GET side of a settings route is deliberately NOT
  * here: seeing that a key is configured is not the same as being able to change or read it, and the
  * routes themselves never return a key's value.
+ *
+ * EVERY PREFIX BELOW NAMES A ROUTE THAT EXISTS. This table used to list `/api/keys`, `/api/engines`
+ * and `/api/connections`, none of which the router has ever served — three entries that read like
+ * the credentials were covered while the routes that actually hold them (`/api/secrets`,
+ * `/api/providers`, `/api/llm-providers`, `/api/search`, `/api/mcp`) matched nothing and fell to the
+ * `write` default, i.e. to any member. A rule for an imaginary route is worse than no rule, because
+ * it is the reason nobody looks again. When adding one, grep the router for the prefix first.
  */
 const RULES: Array<{ prefix: string; method?: "read" | "write"; need: Capability }> = [
   { prefix: "/api/people",     need: "people" },
   { prefix: "/api/invites",    need: "people" },
-  { prefix: "/api/keys",       need: "settings" },
   { prefix: "/api/auth",       method: "write", need: "settings" },
   { prefix: "/api/settings",   method: "write", need: "settings" },
   { prefix: "/api/models",     method: "write", need: "settings" },
-  { prefix: "/api/engines",    method: "write", need: "settings" },
-  { prefix: "/api/connections", method: "write", need: "settings" },
+  // The credential stores. Writing here overwrites or deletes the keys every run pays with.
+  { prefix: "/api/secrets",    method: "write", need: "settings" },
+  { prefix: "/api/providers",  method: "write", need: "settings" },
+  { prefix: "/api/llm-providers", method: "write", need: "settings" },
+  // The search screen: the chosen engine, its per-call price and its key. Instance-wide, and the
+  // per-call price is what every budget is enforced against.
+  { prefix: "/api/search",     method: "write", need: "settings" },
+  // A stdio MCP server is a COMMAND THIS MACHINE WILL SPAWN. Registering one is the most dangerous
+  // write in the app; it is not an ordinary edit and must never sit behind the `write` default.
+  { prefix: "/api/mcp",        method: "write", need: "settings" },
+  // Emptying the cache spends money — the next run pays again for every answer thrown away — and
+  // the retention setting applies to everyone.
+  { prefix: "/api/cache",      method: "write", need: "settings" },
   { prefix: "/api/runs",       method: "write", need: "spend" },
   { prefix: "/api/schedules",  method: "write", need: "spend" },
 ];
 
-/** A path that ends a run costs nothing and must stay reachable to anyone who could start one. */
-const STOPPING = /\/(cancel|pause|stop)$/;
+/** How strict a capability is, only for breaking a tie between two rules of the same length. */
+const STRICTNESS: Record<Capability, number> = {
+  read: 0, write: 1, spend: 1, settings: 2, people: 2, own: 3,
+};
+
+/**
+ * A path that ends a run costs nothing and must stay reachable to anyone who could start one.
+ *
+ * Anchored to the run routes rather than matched on any path at all. It is tested BEFORE the table,
+ * so an unanchored version would be a way past every rule below it: a future
+ * `POST /api/mcp/servers/:id/stop` would have been decided by this line, not by the `settings` rule
+ * it sits under.
+ */
+const STOPPING = /^\/api\/runs\/[^/]+\/(cancel|pause|stop)$/;
 
 /**
  * The capability a request needs, from its method and path alone.
@@ -232,11 +261,20 @@ export function neededFor(method: string, path: string): Capability {
   const hit = RULES
     .filter((r) => path === r.prefix || path.startsWith(`${r.prefix}/`))
     .filter((r) => r.method == null || (r.method === "read") === reading)
-    // Longest prefix wins, so /api/runs/:id/cancel is decided by the more specific rule if one exists.
-    .sort((a, b) => b.prefix.length - a.prefix.length)[0];
+    // Longest prefix wins, so /api/runs/:id/cancel is decided by the more specific rule if one
+    // exists — and on a tie the STRICTER capability wins, so which of two equal-length rules was
+    // typed first can never decide the answer.
+    .sort((a, b) => b.prefix.length - a.prefix.length || STRICTNESS[b.need] - STRICTNESS[a.need])[0];
   if (hit) return hit.need;
   // Starting a run is a POST to a SHEET, not to /api/runs — the scope belongs to the table. That is
   // the one path where the method alone would get it wrong, so it is named rather than inferred.
   if (!reading && /^\/api\/sheets\/[^/]+\/runs$/.test(path)) return "spend";
+  // An unnamed write falls to `write`, NOT to `settings`, and the choice is deliberate rather than
+  // lazy. Nearly every route in this app is a member doing their job — cells, columns, tables,
+  // views, imports, folders, relations, sources, scripts — so a `settings` default would lock the
+  // ordinary person out of the product and be relaxed back within a day, one exception at a time,
+  // which ends with a table full of holes nobody can audit. The safety this default cannot give is
+  // bought above instead: every settings-grade prefix is NAMED, and the note on RULES says how to
+  // keep it that way.
   return reading ? "read" : "write";
 }

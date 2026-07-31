@@ -171,10 +171,54 @@ test("stopping a run needs no more than being able to see it", () => {
 });
 
 test("the settings that affect everyone need an admin, but only to CHANGE them", () => {
-  assert.equal(neededFor("POST", "/api/keys"), "settings");
-  assert.equal(neededFor("DELETE", "/api/keys/3"), "settings");
   assert.equal(neededFor("POST", "/api/auth/token"), "settings");
   assert.equal(neededFor("GET", "/api/auth"), "read", "seeing THAT a key is set is not reading the key");
+});
+
+test("every route that holds a credential needs an admin, named one by one", () => {
+  // Named against the ROUTER, not from memory. The table these replace asserted `/api/keys`, a path
+  // no handler has ever served, so it passed while every real credential route fell to the `write`
+  // default — reachable by the lowest role that can write at all.
+  for (const [method, path] of [
+    ["POST",   "/api/secrets"],
+    ["DELETE", "/api/secrets/OpenAI"],
+    ["POST",   "/api/providers/openrouter/key"],
+    ["DELETE", "/api/providers/openrouter/key"],
+    ["POST",   "/api/llm-providers/7/key"],
+    ["DELETE", "/api/llm-providers/7/key"],
+    ["PUT",    "/api/search/backends/exa/key"],
+    ["PUT",    "/api/settings/local-runtimes/node/key"],
+  ] as const) {
+    assert.equal(neededFor(method, path), "settings", `${method} ${path} is not admin-only`);
+  }
+  // The masked listings stay readable — recognising which key is stored is not holding it.
+  assert.equal(neededFor("GET", "/api/secrets"), "read");
+  assert.equal(neededFor("GET", "/api/search"), "read");
+});
+
+test("registering a connected app is a settings change — it is a command this machine will spawn", () => {
+  // The worst case in the whole table. A stdio MCP server is an arbitrary executable; a member being
+  // able to add one is code execution on the host, not an edit somebody can undo.
+  assert.equal(neededFor("POST", "/api/mcp/servers"), "settings");
+  assert.equal(neededFor("DELETE", "/api/mcp/servers/abc"), "settings");
+  assert.equal(neededFor("POST", "/api/mcp/servers/abc/tools"), "settings");
+  assert.equal(neededFor("GET", "/api/mcp/servers"), "read", "the list carries references, never values");
+});
+
+test("the instance-wide cost settings need an admin", () => {
+  // Clearing the cache makes the next run pay again for every answer thrown away, and a per-search
+  // price is the number every budget is enforced against.
+  assert.equal(neededFor("PATCH", "/api/cache"), "settings");
+  assert.equal(neededFor("POST", "/api/cache/clear"), "settings");
+  assert.equal(neededFor("PUT", "/api/search/price"), "settings");
+  assert.equal(neededFor("PUT", "/api/search/backend"), "settings");
+});
+
+test("a rule cannot be slipped past by the shape of the path", () => {
+  // The stopping exemption is tested before the table, so it has to be anchored to the run routes.
+  // Unanchored, any settings route ending in /stop would be decided by it instead.
+  assert.equal(neededFor("POST", "/api/mcp/servers/abc/stop"), "settings");
+  assert.equal(neededFor("POST", "/api/runs/9/cancel"), "read", "and the real one still works");
 });
 
 test("the members list is admin-only to read as well as to change", () => {
