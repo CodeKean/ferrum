@@ -1,0 +1,50 @@
+.cc-runset { display: flex; flex-direction: column; gap: var(--s-3); }
+
+/* The state of the gate, stated before anything about how to configure it. Flat and hairlined like
+   every other resting card — elevation is for things that float. */
+.cc-runset__gate {
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  padding: var(--s-3);
+  background: var(--canvas-soft);
+}
+.cc-runset__gate--on { background: var(--band-done, var(--canvas-soft)); }
+
+/* Label left, pill right — the row spans its width instead of leaving a void. */
+.cc-runset__gatehead { display: flex; align-items: center; gap: var(--s-2); margin-bottom: var(--s-1); }
+.cc-runset__gatelabel { flex: 1 1 auto; min-width: 0; font-size: 12.5px; font-weight: 600; }
+
+.cc-runset__copy { margin: 0; font-size: 11.5px; line-height: 1.55; color: var(--ink-mute); }
+
+.cc-runset__foot { display: flex; align-items: center; gap: var(--s-3); }
+.cc-runset__meta { flex: 1 1 auto; min-width: 0; font-size: 10.5px; color: var(--ink-faint); white-space: nowrap; }
+.cc-runset__actions { flex: 0 0 auto; display: flex; gap: var(--s-2); }
+
+.cc-runset__check {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-2);
+  font-size: 12px;
+  color: var(--ink);
+  cursor: pointer;
+}
+.cc-runset__check input { margin-top: 3px; flex: 0 0 auto; }
+.cc-runset__checkhint { display: block; font-size: 11px; color: var(--ink-mute); line-height: 1.45; margin-top: 2px; }
+
+/* ── arming a paid column ──────────────────────────────────────────────
+   The panel that appears between the switch and the rest when somebody lets a column that bills per
+   row start filling itself. Inset and bordered rather than floating: it is a step in this form, not
+   a dialog over it, and the run condition above stays readable while the limit is chosen. */
+.cc-runset__arm {
+  margin-top: var(--s-3);
+  padding: var(--s-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-2, 6px);
+  background: var(--canvas-soft);
+  display: grid;
+  gap: var(--s-3);
+}
+.cc-runset__armlead { margin: 0; font-size: 11.5px; line-height: 1.55; color: var(--ink); }
+/* Right-aligned so the primary action sits where the eye finishes, and wrapping is allowed because
+   three buttons plus a narrow drawer is a real combination. */
+.cc-runset__armacts { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--s-2); }

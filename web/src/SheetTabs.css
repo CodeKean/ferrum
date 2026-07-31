@@ -1,0 +1,103 @@
+/* The tab strip along the bottom.
+
+   Fixed height and always present once a workbook has any table, so the grid's available height is
+   a constant — a bar that appears and disappears would resize the virtualized grid underneath it
+   and throw the scroll position on every switch. */
+.cc-wbtabs {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+  flex: 0 0 auto;
+  height: var(--wbtabs-h);
+  padding: 0 var(--s-2);
+  border-top: 1px solid var(--hairline);
+  background: var(--canvas-soft);
+}
+
+/* The tabs scroll, the + does not. With thirty tables the add button must stay reachable rather
+   than being the thing you have to scroll furthest to find. */
+.cc-wbtabs__strip {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.cc-wbtabs__tab {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  flex: 0 0 auto;
+  max-width: 220px;
+  height: 26px;
+  padding: 0 var(--s-2);
+  border: 1px solid transparent;
+  border-radius: var(--r-xs);
+  background: transparent;
+  color: var(--ink-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.cc-wbtabs__tab:hover { background: var(--control-hover); color: var(--ink); }
+.cc-wbtabs__tab:active { transform: translateY(0.5px); }
+.cc-wbtabs__tab:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--focus-ring); }
+
+/* The open table reads as raised out of the strip and joined to the grid above it — the same idea
+   as a spreadsheet tab, done with a hairline rather than a shadow. */
+.cc-wbtabs__tab--on {
+  background: var(--canvas);
+  border-color: var(--hairline);
+  color: var(--ink);
+}
+
+/* Tabular numerals and a reserved minimum, so a count changing cannot change a tab's width and
+   shuffle every tab beside it. */
+.cc-wbtabs__count {
+  flex: 0 0 auto;
+  min-width: 22px;
+  text-align: right;
+  font-size: 10.5px;
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+}
+.cc-wbtabs__tab--on .cc-wbtabs__count { color: var(--ink-mute); }
+
+/* Same box as a tab, so renaming does not resize the strip under the pointer. */
+.cc-wbtabs__rename {
+  flex: 0 0 auto;
+  width: 160px;
+  height: 26px;
+  padding: 0 var(--s-2);
+  border: 1px solid var(--primary);
+  border-radius: var(--r-xs);
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+}
+.cc-wbtabs__rename:focus { outline: none; box-shadow: 0 0 0 3px var(--focus-ring); }
+
+.cc-wbtabs__add { flex: 0 0 auto; height: 24px; }
+
+/* The last action that did not work. Shrink-to-content, capped, and absent when there is nothing
+   to say — a permanently reserved slot here would be an empty box on a 30px strip. */
+.cc-wbtabs__error {
+  flex: 0 1 auto;
+  max-width: 280px;
+  padding: 2px var(--s-2);
+  border-radius: var(--r-xs);
+  background: var(--band-error);
+  color: var(--ink);
+  font-size: 11.5px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cc-wbtabs__tab { transition: none; }
+  .cc-wbtabs__tab:active { transform: none; }
+}

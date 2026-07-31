@@ -1,0 +1,364 @@
+.cc-grid {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  background: var(--canvas);
+}
+
+.cc-grid__scroll {
+  flex: 1 1 auto;
+  overflow: auto;
+  position: relative;
+}
+
+.cc-grid__inner { position: relative; }
+
+/* ── header ─────────────────────────────────────────────────── */
+
+.cc-grid__header {
+  display: flex;
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  height: var(--header-h);
+  background: var(--grid-header-bg);
+  border-bottom: 1px solid var(--hairline-strong);
+}
+
+.cc-th {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: var(--header-h);
+  padding: 0 var(--s-1) 0 var(--cell-pad-x);
+  border-right: 1px solid var(--grid-line);
+  flex: 0 0 auto;
+  overflow: hidden;
+}
+
+/* Sentence case, no uppercase transform, no wide tracking. Nudged up a touch to compensate for
+   losing the small-caps size. */
+.cc-th__label {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+  flex: 1 1 auto;
+  /* Full header height, not the 17px its text happens to be. Measured at 129x17, this was the
+     smallest target on the sheet and the one people aim at most — it is how a column is sorted.
+     Stretching costs nothing: the label is already centred, and --header-h grows to 44px on a
+     coarse pointer. */
+  align-self: stretch;
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-secondary);
+  text-align: left;
+  border-radius: var(--r-xs);
+  transition: color var(--dur-fast) var(--ease);
+}
+.cc-th__label:hover { color: var(--ink); }
+
+.cc-th__menu { opacity: 0; flex: 0 0 auto; width: 20px; height: 20px; }
+.cc-th:hover .cc-th__menu, .cc-th:focus-within .cc-th__menu { opacity: 1; }
+
+.cc-th__resize {
+  position: absolute;
+  right: -2px;
+  top: 0;
+  width: 5px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 2;
+}
+.cc-th__resize:hover { background: var(--primary); opacity: 0.5; }
+
+.cc-th--add { justify-content: center; padding: 0; }
+
+/* ── gutter ─────────────────────────────────────────────────── */
+
+.cc-grid__gutter {
+  flex: 0 0 var(--gutter-w);
+  width: var(--gutter-w);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: var(--s-2);
+  background: var(--grid-gutter-bg);
+  border-right: 1px solid var(--grid-line);
+  position: sticky;
+  left: 0;
+  z-index: 2;
+}
+
+.cc-grid__gutter--head { background: var(--grid-header-bg); z-index: 4; }
+
+/* --ink-mute-2, not --ink-faint. The row number is content — it is how you say which row you mean
+   — and --ink-faint is documented as placeholder-and-decoration only. Measured on the gutter it
+   sits on: --ink-faint is 2.19:1 light and 2.84:1 dark, against the 4.5:1 an 11px label needs.
+   --ink-mute-2 measures 5.02:1 and 5.71:1 on that same background. */
+.cc-tr__num {
+  font-size: 11px;
+  color: var(--ink-mute-2);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── body ───────────────────────────────────────────────────── */
+
+.cc-grid__body { position: relative; width: 100%; }
+
+.cc-tr {
+  display: flex;
+  position: absolute;
+  top: 0;
+  left: 0;
+  border-bottom: 1px solid var(--grid-line);
+  will-change: transform;
+}
+.cc-tr:hover { background: var(--row-hover); }
+.cc-tr:hover .cc-grid__gutter { background: var(--row-hover); }
+
+.cc-cell--pad { border-right: 0; }
+
+/* ── skeleton ───────────────────────────────────────────────────
+   Exactly one row high, so a page arriving replaces it with no movement. Widths are derived from
+   the row/column index rather than random, so they hold steady across frames instead of flickering. */
+
+.cc-cell--skeleton {
+  display: flex;
+  align-items: center;
+  height: var(--row-h);
+  padding: 0 var(--cell-pad-x);
+  border-right: 1px solid var(--grid-line);
+  flex: 0 0 auto;
+}
+
+.cc-skel {
+  height: 8px;
+  border-radius: var(--r-xs);
+  background: var(--canvas-sunk);
+  animation: cc-shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes cc-shimmer {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cc-skel { animation: none; }
+}
+
+/* Run affordance in the header, revealed on hover like the edit button. Reserved width, so it
+   cannot shift the label when it appears. */
+.cc-th__run { opacity: 0; flex: 0 0 auto; width: 20px; height: 20px; }
+.cc-th:hover .cc-th__run, .cc-th:focus-within .cc-th__run { opacity: 1; }
+.cc-th__run:hover { color: var(--primary); }
+
+/* Status row: sticky beneath the header, same stacking context so it never scrolls under it. */
+.cc-grid__statusrow {
+  display: flex;
+  position: sticky;
+  top: var(--header-h);
+  z-index: 3;
+  height: var(--statusrow-h);
+  background: var(--grid-header-bg);
+  border-bottom: 1px solid var(--hairline-strong);
+}
+.cc-grid__statusrow .cc-grid__gutter--head { height: var(--statusrow-h); }
+
+/* ── pinned columns ─────────────────────────────────────────────
+   A pinned column stays on screen while the rest scrolls under it. It therefore needs an OPAQUE
+   background of its own — the row's background belongs to the row, and without this the scrolling
+   cells would show straight through the pinned one. The right edge is a shade stronger than a normal
+   grid line so the seam reads as "this column is held", not as a rendering artefact. */
+.cc-grid__pinbg {
+  background: var(--canvas);
+  border-right: 1px solid var(--hairline-strong);
+}
+.cc-tr:hover .cc-grid__pinbg { background: var(--row-hover); }
+.cc-th--pinned { border-right: 1px solid var(--hairline-strong); }
+
+/* The header and status cells of a pinned column need their OWN opaque background. The header strip
+   paints one behind the whole row, which is enough while everything scrolls together — but a pinned
+   header sits above scrolling headers, and a transparent one lets them read straight through it.
+   Caught in Chrome: "Country code" rendered on top of "Incoming data payload". */
+.cc-th--pinned { background: var(--grid-header-bg); }
+.cc-grid__statusrow .cc-grid__pinbg { background: var(--grid-header-bg); }
+
+/* The rename box.
+   
+   This had NO styling at all — the element existed, took the keystrokes, renamed the column
+   correctly, and rendered its text in whatever the header happened to inherit. On the dark theme
+   that is a faint grey on a dark field, so what you typed was very nearly invisible. Reported as
+   "unreadable when renaming", and it was.
+   
+   Sized to sit inside the header row without changing its height, so double-clicking a header does
+   not shift the row. */
+.cc-th__rename {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 24px;
+  padding: 0 var(--s-2);
+  border: 1px solid var(--primary);
+  border-radius: var(--r-xs);
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+}
+.cc-th__rename:focus { outline: none; box-shadow: 0 0 0 3px var(--focus-ring); }
+.cc-th__rename::placeholder { color: var(--ink-faint); }
+/* A rejected name keeps what was typed and says so in colour as well as in the tooltip. */
+.cc-th__rename--error { border-color: var(--status-error-solid, #bc2f45); }
+
+/* ── dragging a column ──────────────────────────────────────────
+   The header is a click target (sort) and a double-click target (rename) before it is a drag
+   handle, so grab is only shown on hover — a permanent move cursor would advertise the third
+   gesture over the two people reach for constantly. */
+.cc-th:hover { cursor: grab; }
+.cc-th:hover .cc-th__label { cursor: pointer; }
+/* The column being carried: dimmed and pushed back, so it reads as lifted OUT of the row rather
+   than as having gone faint for no reason. Its cells dim with it — moving a header while its
+   thousand cells sit there at full strength is what made the first version feel like nothing was
+   happening. */
+.cc-th--dragging { cursor: grabbing; opacity: 0.4; background: var(--control-hover); }
+.cc-cell--dragging { opacity: 0.4; }
+
+/* While a drag is live, nothing else on the page should respond to the pointer or start selecting
+   text — both are what make a hand-rolled drag feel broken rather than deliberate. */
+body.cc-dragging-col { cursor: grabbing; user-select: none; }
+body.cc-dragging-col .cc-th__label, body.cc-dragging-col .cc-cell { cursor: grabbing; }
+
+/* Where it would land. Runs the FULL height of the grid rather than the header's 34px, because the
+   question being asked is "which side of this column" and a short tick at the top makes that a
+   guess. Two layers: a bright core and a soft halo, so it stays legible over a dense grid. */
+.cc-th__drop {
+  position: absolute;
+  top: 0;
+  left: -2px;
+  width: 3px;
+  height: 100vh;
+  border-radius: 2px;
+  background: var(--primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 22%, transparent);
+  pointer-events: none;
+  z-index: 5;
+}
+.cc-th__drop--after { left: auto; right: -2px; }
+
+/* A marker at the top of the line, so the insertion point is findable at a glance on a tall sheet
+   without having to trace the line back up. */
+.cc-th__drop::before {
+  content: "";
+  position: absolute;
+  top: -3px;
+  left: 50%;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--primary);
+  transform: translateX(-50%);
+}
+
+/* The thing in your hand. Follows the pointer and names both the column and where it will land,
+   which is the answer a drop line alone cannot give once the column has scrolled out of view. */
+.cc-dragchip {
+  position: fixed;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  max-width: 220px;
+  height: 26px;
+  margin-top: 14px;
+  padding: 0 var(--s-2);
+  border-radius: var(--r-sm);
+  background: var(--primary);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 500;
+  box-shadow: var(--elev-3);
+  pointer-events: none;
+  transform: translate(-50%, 0) rotate(-1.5deg);
+}
+.cc-dragchip__to {
+  flex: 0 0 auto;
+  padding: 0 5px;
+  border-radius: var(--r-xs);
+  background: rgba(255, 255, 255, 0.22);
+  font-size: 11px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* The tilt is the only motion here — everything else is a state, not an animation. Flat when
+     motion is not wanted. */
+  .cc-dragchip { transform: translate(-50%, 0); }
+}
+
+/* The add-row strip. Sticky at the left so it is reachable however far right you have scrolled,
+   and shrink-to-content so there is no button stretched across an empty width. */
+.cc-grid__addrow {
+  position: sticky;
+  left: 0;
+  width: max-content;
+  padding: var(--s-1) var(--s-2);
+}
+
+/* ── column colour picker ────────────────────────────────────────────────────────────────────── */
+
+.cc-colpick { display: flex; flex-direction: column; gap: var(--s-2); padding: var(--s-2); }
+
+.cc-colpick__grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: var(--s-2);
+}
+
+.cc-colpick__swatch {
+  height: 24px;
+  border: 1px solid rgba(0, 0, 0, 0.14);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  padding: 0;
+  transition: transform var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
+}
+.cc-colpick__swatch:hover { transform: translateY(-1px); box-shadow: var(--elev-2); }
+.cc-colpick__swatch:active { transform: translateY(0); }
+.cc-colpick__swatch:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+/* The chosen one is marked with a ring rather than a tick: a tick needs a contrasting colour, and
+   which colour contrasts depends on the swatch it sits on. */
+.cc-colpick__swatch--on {
+  box-shadow: 0 0 0 2px var(--canvas), 0 0 0 4px var(--ink);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cc-colpick__swatch { transition: none; }
+  .cc-colpick__swatch:hover { transform: none; }
+}
+
+.cc-colpick__none {
+  height: var(--control-h-sm);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  background: var(--canvas);
+  color: var(--ink);
+  font-size: 12px;
+  cursor: pointer;
+}
+.cc-colpick__none:hover { background: var(--control-hover); }
+.cc-colpick__none:active { background: var(--control-active); }
+.cc-colpick__none:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+
+/* A row holding an open cell editor paints above its neighbours.
+
+   Rows carry `will-change: transform`, which makes each one a stacking context — so a z-index on
+   the CELL is scoped to its own row and the row below still covers anything the editor overhangs.
+   The lift has to happen at the row. */
+.cc-tr--editing { z-index: 6; }
+
+/* The row number opens the record, so it has to look like it does something. It had no behaviour at
+   all before and therefore no affordance; a click target with neither is one nobody finds. */
+.cc-tr .cc-grid__gutter { cursor: pointer; }
+.cc-tr .cc-grid__gutter:hover .cc-tr__num { color: var(--primary); }
+.cc-tr .cc-grid__gutter:active { background: var(--canvas-sunk); }

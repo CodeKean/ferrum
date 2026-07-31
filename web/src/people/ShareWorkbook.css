@@ -1,0 +1,102 @@
+/* Sharing one workbook. A short list in a modal, so rows are tight and the access control shrinks
+   to its own width rather than stretching to the dialog's edge. */
+
+.cc-share {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  min-width: 0;
+}
+
+.cc-share__toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-3);
+  cursor: pointer;
+}
+
+.cc-share__toggle input { margin-top: 3px; flex: none; }
+
+.cc-share__toggle > span {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.cc-share__togglelabel {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.cc-share__hint {
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--text-muted);
+  /* Two lines held open, so the list below does not jump when the wording swaps on toggle. */
+  min-height: 39px;
+}
+
+.cc-share__error {
+  margin: 0;
+  min-height: 16px;
+  font-size: 12.5px;
+  color: var(--danger, #dc2626);
+}
+
+.cc-share__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-height: 320px;
+  overflow-y: auto;
+  background: var(--hairline);
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+}
+
+.cc-share__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding: 5px 10px;
+  background: var(--surface);
+}
+
+.cc-share__who {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.cc-share__you {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--text-muted);
+  color: #fff;
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+
+/* Reserved so a row with a dropdown and a row with this sentence are the same height. */
+.cc-share__fixed {
+  flex: none;
+  min-width: 128px;
+  text-align: right;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.cc-share__foot {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--s-2);
+}

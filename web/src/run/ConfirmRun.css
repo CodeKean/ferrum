@@ -1,0 +1,30 @@
+
+/* The one option in this dialog whose mistake destroys work rather than costing money.
+ *
+ * Laid out as a real row with the hint underneath rather than as a bare checkbox with a label — the
+ * hint changes when it is ticked, and it has to be readable at the moment of ticking.
+ */
+.cc-modal__opt {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--s-2);
+  align-items: start;
+  padding: var(--s-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  background: var(--canvas-soft);
+  cursor: pointer;
+}
+.cc-modal__opt:hover { background: var(--canvas-sunk); }
+.cc-modal__opt input { margin-top: 2px; cursor: pointer; }
+.cc-modal__opt > span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.cc-modal__opt strong { font-size: 12.5px; color: var(--ink); }
+
+.cc-modal__opthint {
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--ink-mute-2);
+  /* Reserved so the sentence swapping on tick cannot resize the dialog under the pointer that
+     just ticked it. Two lines at this size and width. */
+  min-height: 33px;
+}

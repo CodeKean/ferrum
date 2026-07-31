@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ferrum</title>
+    <!-- Iron's tile from the periodic table. SVG so it stays crisp on every display, with a
+         PNG-free fallback chain: every browser this app targets reads SVG favicons. -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/favicon.svg" />
+    <!-- Set the theme before first paint so a dark-mode user never sees a white flash. -->
+    <script>
+      try {
+        var t = localStorage.getItem("cc-theme");
+        if (t) document.documentElement.setAttribute("data-theme", t);
+      } catch (e) {}
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

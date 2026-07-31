@@ -1,0 +1,18 @@
+node_modules/
+web/dist/
+.devdata/
+.testdata/
+*.log
+
+# Benchmark fixtures — regenerate with scripts/gen-csv.mjs
+bench.csv
+*.db
+*.db-wal
+*.db-shm
+
+.env
+.env.local
+.buggie/
+
+# Throwaway QA data dirs, so a locked one can never slip into a commit.
+.qadata*/

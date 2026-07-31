@@ -1,0 +1,12 @@
+.cc-modelpick { margin-top: var(--s-3); }
+
+.cc-modelpick__warn {
+  margin-top: var(--s-1);
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-sm);
+  border: 1px solid var(--hairline);
+  background: var(--band-queued);
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--ink-secondary);
+}

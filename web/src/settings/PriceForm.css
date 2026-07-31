@@ -1,0 +1,87 @@
+/* The price a user copies off a vendor's pricing page.
+ *
+ * Laid out so the three rates sit on one line rather than stacking — they are read together, they are
+ * copied together, and stacked they would push the echo line below the fold on the row that needs it.
+ */
+
+.cc-price { display: flex; flex-direction: column; gap: var(--s-3); }
+
+.cc-price__lede {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-mute-2);
+}
+
+.cc-price__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+}
+
+.cc-price__saved {
+  display: grid;
+  /* Name takes what it needs, rate sits right, the button shrinks to itself. Nothing stretches. */
+  grid-template-columns: minmax(0, 1fr) max-content max-content;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  background: var(--canvas-soft);
+}
+
+.cc-price__savedname {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cc-price__savedrate {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--ink-secondary);
+  white-space: nowrap;
+}
+.cc-price__per { color: var(--ink-mute-2); }
+
+.cc-price__grid {
+  display: grid;
+  /* Three rate boxes and the scale, side by side. They are short numbers — a full-width field each
+     would be four rows of mostly empty box. */
+  grid-template-columns: repeat(4, minmax(110px, 1fr));
+  gap: var(--s-2) var(--s-3);
+}
+/* The model name spans the row above: it is a long value, and cramming it into a 110px track next to
+   three short numbers would truncate the one field that has to be read exactly. */
+.cc-price__wide { grid-column: 1 / -1; }
+
+.cc-price__echo {
+  margin: 0;
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-sm);
+  background: var(--band-preview);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-secondary);
+  /* Digits must not change width as they are typed, or the sentence jitters on every keystroke. */
+  font-variant-numeric: tabular-nums;
+}
+
+.cc-price__msg {
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+@media (max-width: 560px) {
+  .cc-price__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cc-price__saved { grid-template-columns: minmax(0, 1fr) max-content; }
+  .cc-price__savedrate { grid-column: 1 / -1; white-space: normal; }
+}

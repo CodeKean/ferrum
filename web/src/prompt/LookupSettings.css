@@ -1,0 +1,89 @@
+/* Where a lookup reads from. Built around the match rate, because that is the number that decides
+   whether anything built on this link is worth building. */
+
+.cc-lk { display: flex; flex-direction: column; gap: var(--s-5); }
+
+.cc-lk__sec { display: flex; flex-direction: column; gap: var(--s-2); }
+.cc-lk__title { margin: 0; font-size: 13px; font-weight: 600; color: var(--ink); }
+
+.cc-lk__links { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s-2); }
+
+.cc-lk__link {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+}
+/* The chosen one is marked by its border, not by a coloured rail down one edge. */
+.cc-lk__link--on { border-color: var(--primary); }
+
+.cc-lk__pick {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 0;
+  background: none;
+  border: 0;
+  text-align: left;
+  cursor: pointer;
+  color: var(--ink);
+}
+.cc-lk__pick:hover .cc-lk__linkname { text-decoration: underline; }
+.cc-lk__linkname { font-size: 13px; font-weight: 600; }
+.cc-lk__linksub { font-size: 11.5px; color: var(--ink-mute); }
+
+.cc-lk__health { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
+
+/* Solid, never a semi-transparent wash. Min-width so the label cannot resize the row as it changes
+   between "96% matched" and "nothing to match on". */
+.cc-lk__rate {
+  min-width: 108px;
+  padding: 2px var(--s-2);
+  border-radius: var(--r-pill);
+  font-size: 11px;
+  font-weight: 600;
+  text-align: center;
+  color: #fff;
+  background: var(--ink-mute);
+}
+.cc-lk__rate--good { background: var(--status-done-solid, #1f8a5f); }
+.cc-lk__rate--ok   { background: var(--status-pending-solid, #b0761b); }
+.cc-lk__rate--bad  { background: var(--status-error-solid, #b4322c); }
+
+.cc-lk__counts { font-size: 11.5px; color: var(--ink-mute); white-space: nowrap; }
+
+.cc-lk__warn {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-2);
+  flex: 1 1 100%;
+  font-size: 11.5px;
+  color: var(--ink);
+}
+
+.cc-lk__row { display: flex; flex-wrap: wrap; gap: var(--s-3); }
+/* Each picker takes only what it needs; the row does not stretch three short controls across a
+   drawer and leave voids between them. */
+.cc-lk__field { display: flex; flex-direction: column; gap: 4px; min-width: 180px; }
+.cc-lk__label { font-size: 11.5px; font-weight: 600; color: var(--ink-mute); }
+
+.cc-lk__hint { margin: 0; font-size: 11.5px; color: var(--ink-mute); }
+
+/* Reserved, so a message appearing cannot move the button above it. */
+.cc-lk__msg { min-height: 20px; font-size: 12px; }
+.cc-lk__err { display: inline-flex; align-items: center; gap: 6px; color: var(--status-error-solid, #b4322c); }
+.cc-lk__ok  { display: inline-flex; align-items: center; gap: 6px; color: var(--status-done-solid, #1f8a5f); }
+
+/* The strictness control sits with the match rate it moves, so loosening it and seeing the count
+   change is one glance rather than a change-then-go-and-look. */
+.cc-lk__mode { flex: 0 0 auto; }
+.cc-lk__modehint {
+  flex: 1 1 100%;
+  /* Reserved: the three descriptions are different lengths, and the row must not resize as the
+     mode changes — the control being clicked would move under the pointer. */
+  min-height: 30px;
+  font-size: 11.5px;
+  color: var(--ink-mute);
+}

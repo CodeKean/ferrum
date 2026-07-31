@@ -1,0 +1,160 @@
+/* The describe-it panel. Sits at the top of every configuration screen in the drawer. */
+
+.cc-ai {
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--r-sm);
+  background: var(--canvas-soft);
+}
+
+.cc-ai__head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  width: 100%;
+  height: var(--control-h);
+  padding: 0 var(--s-3);
+  background: none;
+  border: 0;
+  border-radius: var(--r-sm);
+  text-align: left;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease);
+}
+.cc-ai__head:hover { background: var(--control-hover); }
+.cc-ai__head:active { background: var(--control-hover); }
+.cc-ai__head:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--focus-ring); }
+
+/* The brand hue, and the only place it appears in this drawer — status colours are never brand. */
+.cc-ai__spark { flex: 0 0 auto; display: inline-flex; align-items: center; color: var(--primary); }
+.cc-ai__title { flex: 1 1 auto; min-width: 0; }
+.cc-ai__caret { flex: 0 0 auto; display: inline-flex; align-items: center; color: var(--ink-mute); }
+
+/* The non-collapsible variant: a heading, not a button. No hover, no pointer, and the title is
+   free to carry a grey sub-line beside it. */
+.cc-ai__head--fixed {
+  height: auto;
+  align-items: flex-start;
+  padding-top: var(--s-2);
+  cursor: default;
+}
+.cc-ai__head--fixed:hover { background: none; }
+.cc-ai__heading { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.cc-ai__sub {
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.45;
+  color: var(--ink-mute);
+}
+
+.cc-ai__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: 0 var(--s-3) var(--s-3);
+}
+
+/* Button left, note right, filling the row rather than leaving a void beside a short button. */
+.cc-ai__actions { display: flex; align-items: center; gap: var(--s-3); }
+.cc-ai__note { flex: 1 1 auto; min-width: 0; font-size: 11px; color: var(--ink-mute); text-align: right; }
+
+/* ── the proposal ───────────────────────────────────────────── */
+
+.cc-prop {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  background: var(--canvas);
+  animation: cc-prop-in var(--dur) var(--ease);
+}
+
+@keyframes cc-prop-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.cc-prop__why { margin: 0; font-size: 12.5px; line-height: 1.55; color: var(--ink); }
+.cc-prop__src { margin: 0; font-size: 11px; color: var(--ink-mute); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cc-prop__none { margin: 0; font-size: 12px; color: var(--ink-mute); }
+
+.cc-prop__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; }
+
+/* Label · before · arrow · after. Fixed label width so the arrows line up down the list and a long
+   label cannot push the values out of alignment row by row. */
+.cc-prop__row {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr) 14px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--s-2);
+  min-height: 22px;
+  font-size: 11.5px;
+}
+.cc-prop__label { color: var(--ink-mute); }
+.cc-prop__from { color: var(--ink-mute); text-decoration: line-through; font-family: var(--font-mono); font-size: 11px; }
+.cc-prop__arrow { color: var(--ink-faint); text-align: center; }
+.cc-prop__to { color: var(--ink); font-family: var(--font-mono); font-size: 11px; }
+
+.cc-prop__missing {
+  font-size: 11.5px;
+  line-height: 1.5;
+  padding: var(--s-2);
+  border-radius: var(--r-xs);
+  background: var(--band-queued);
+  color: var(--ink);
+}
+.cc-prop__missing ul { margin: var(--s-1) 0 0; padding-left: 16px; }
+
+.cc-prop__note { margin: 0; font-size: 11.5px; color: var(--ink-mute); line-height: 1.5; }
+
+/* Meta left, actions right — the strip spans its width instead of packing at one end. */
+.cc-prop__foot { display: flex; align-items: center; gap: var(--s-3); padding-top: var(--s-1); }
+.cc-prop__meta { flex: 1 1 auto; min-width: 0; font-size: 10.5px; color: var(--ink-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cc-prop__actions { flex: 0 0 auto; display: flex; gap: var(--s-2); }
+
+/* Columns the proposal says have to exist first.
+   Each row is label-left / button-right so it spans the panel edge to edge rather than leaving a
+   void beside a lone control, and the button carries the column's name so what it creates is
+   readable without moving the eye back to the label. */
+.cc-prop__also {
+  font-size: 11.5px;
+  line-height: 1.5;
+  padding: var(--s-2);
+  border-radius: var(--r-xs);
+  border: 1px solid var(--hairline);
+  background: var(--canvas-soft);
+  color: var(--ink);
+}
+.cc-prop__alsolist { list-style: none; margin: var(--s-2) 0 0; padding: 0; display: grid; gap: var(--s-2); }
+.cc-prop__alsorow { display: flex; align-items: flex-start; gap: var(--s-2); flex-wrap: wrap; }
+/* The only flexible element in the row, so the button sits at the edge without a gap opening up. */
+.cc-prop__alsotext { flex: 1 1 auto; min-width: 0; display: grid; gap: 1px; }
+.cc-prop__alsoname { font-weight: 600; }
+.cc-prop__alsowhy { color: var(--ink-mute); }
+/* Fixed width so "Added" replacing a button does not resize the row under the pointer. */
+.cc-prop__alsodone { flex: 0 0 auto; min-width: 58px; text-align: center; color: var(--status-done-solid); font-weight: 600; }
+.cc-prop__alsoerr { flex: 1 0 100%; color: var(--status-error-solid); }
+
+@media (prefers-reduced-motion: reduce) {
+  .cc-prop { animation: none; }
+  .cc-ai__head { transition: none; }
+}
+
+/* Closed, in button mode: a control, not a container.
+
+   The panel used to render as a bordered full-width strip at the top of EVERY tab of the drawer.
+   Nine tabs, a bordered row plus its margin on each, ahead of the fields the screen is actually for
+   — which pushed the bottom of every screen below the fold and made reaching it a scroll. Most
+   visits never open it, so the closed state now costs one button's height and nothing else. */
+.cc-ai--bare {
+  border: 0;
+  background: none;
+  /* Shrink to the button rather than stretching a transparent box the width of the drawer — a
+     full-width invisible container still eats the row it sits in. */
+  width: max-content;
+}
+.cc-ai__btn { display: inline-flex; align-items: center; gap: var(--s-2); }

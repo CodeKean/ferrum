@@ -1,0 +1,91 @@
+/* Restore points. Same dense row as the schedules list — the two are read the same way, so they look
+   the same way, rather than each inventing its own list. */
+
+.cc-rp__list {
+  container: cc-rp / inline-size;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--hairline);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+}
+
+.cc-rp__row {
+  display: flex;
+  align-items: center;
+  /* Wraps on the CONTAINER, not the viewport: a narrow modal in a wide window would otherwise let
+     the button keep its width and squeeze the label to a single letter. */
+  flex-wrap: wrap;
+  gap: var(--s-2) var(--s-3);
+  padding: var(--s-2) var(--s-3);
+  background: var(--canvas);
+  /* Reserved, so an entry gaining its "put back N min ago" line cannot change the row's height and
+     shift the rows under a pointer that is already moving toward one. */
+  min-height: 52px;
+}
+
+.cc-rp__main {
+  /* A floor rather than `auto` — flexbox will happily shrink the only part that must stay readable. */
+  flex: 1 1 200px;
+  min-width: 180px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.cc-rp__label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.cc-rp__sub {
+  font-size: 11px;
+  color: var(--ink-mute);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  /* Reserved for the same reason as the row height above. */
+  min-height: 1.35em;
+}
+
+.cc-rp__empty {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-mute);
+  /* So an empty list and a loading one occupy the same box and the modal does not jump between them. */
+  min-height: 54px;
+}
+
+.cc-rp__done {
+  margin: 0 0 var(--s-3);
+  padding: var(--s-2) var(--s-3);
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ink);
+  background: var(--ok-soft, var(--surface-2));
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+}
+
+.cc-rp__error {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin: var(--s-3) 0 0;
+  font-size: 12px;
+  color: var(--danger);
+}
+
+.cc-rp__warn {
+  margin: var(--s-2) 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-mute);
+}

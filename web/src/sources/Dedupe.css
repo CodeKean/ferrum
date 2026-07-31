@@ -1,0 +1,68 @@
+.cc-dd { display: flex; flex-direction: column; gap: var(--s-3); }
+
+.cc-dd__lead { margin: 0 0 var(--s-2); font-size: 12px; line-height: 1.55; color: var(--ink-mute); }
+.cc-dd__lead em { font-style: normal; font-weight: 600; color: var(--ink); }
+
+.cc-dd__none {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ink-faint);
+  /* Reserved, so picking the first column cannot resize the panel under the pointer. */
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+}
+
+.cc-dd__list { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; }
+
+/* Step · name · the three controls. The name takes the slack, so the controls sit together at a
+   fixed distance rather than leaving a void mid-row. */
+.cc-dd__key {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) 22px 22px 22px;
+  align-items: center;
+  gap: var(--s-2);
+  min-height: 32px;
+  padding: 0 var(--s-1);
+  border-radius: var(--r-xs);
+}
+.cc-dd__key:hover { background: var(--control-hover); }
+
+.cc-dd__step { font-size: 10.5px; color: var(--ink-faint); }
+.cc-dd__name { font-size: 12.5px; font-weight: 500; }
+
+.cc-dd__add { display: flex; align-items: center; gap: var(--s-2); margin-top: var(--s-2); color: var(--ink-faint); }
+
+.cc-dd__check { display: flex; align-items: flex-start; gap: var(--s-2); font-size: 12.5px; }
+.cc-dd__check input { margin-top: 2px; }
+.cc-dd__checkhint { display: block; font-size: 11.5px; color: var(--ink-mute); margin-top: 1px; }
+
+/* The count. Reserved height in every state — waiting, none, some, done — so the panel does not
+   jump each time a setting changes and the number is recomputed. */
+.cc-dd__report {
+  min-height: 64px;
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-sm);
+  background: var(--canvas-sunk);
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--ink-mute);
+}
+.cc-dd__report strong { color: var(--ink); font-weight: 600; }
+.cc-dd__caveat { color: var(--ink-faint); }
+
+.cc-dd__samples { display: flex; flex-direction: column; gap: 1px; margin: var(--s-2) 0 0; padding: 0; list-style: none; }
+.cc-dd__samples li {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr) max-content;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: 11.5px;
+}
+.cc-dd__samplecol { color: var(--ink-faint); }
+.cc-dd__samplekey { color: var(--ink-mute); }
+.cc-dd__samplecount { color: var(--ink); font-variant-numeric: tabular-nums; }
+
+/* Warning left, actions right — the strip spans its width instead of packing at one end. */
+.cc-dd__foot { display: flex; align-items: center; justify-content: flex-end; gap: var(--s-2); }
+.cc-dd__warn { flex: 1 1 auto; min-width: 0; font-size: 12px; color: var(--status-error-solid, #bc2f45); }

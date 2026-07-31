@@ -1,0 +1,110 @@
+.cc-csv { display: flex; flex-direction: column; gap: var(--s-3); }
+
+/* The drop target. Dashed while empty so it reads as somewhere to put something. */
+.cc-csv__drop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-2);
+  /* Reserved, so picking a file cannot resize the panel under the pointer. */
+  min-height: 108px;
+  padding: var(--s-4);
+  border: 1px dashed var(--hairline-strong);
+  border-radius: var(--r-sm);
+  background: var(--canvas-soft);
+  transition: border-color var(--dur-fast) var(--ease), background-color var(--dur-fast) var(--ease);
+}
+.cc-csv__drop--over { border-color: var(--primary); border-style: solid; background: var(--control-hover); }
+.cc-csv__droptext { margin: 0; font-size: 12.5px; color: var(--ink-mute); text-align: center; }
+
+.cc-csv__error {
+  font-size: 12px;
+  padding: var(--s-2);
+  border-radius: var(--r-xs);
+  background: var(--band-error, var(--canvas-sunk));
+}
+
+.cc-csv__warn {
+  font-size: 11.5px;
+  line-height: 1.5;
+  padding: var(--s-2);
+  border-radius: var(--r-xs);
+  background: var(--band-queued);
+}
+
+/* Facts about the file. Shrink to their content and wrap, rather than stretching across the row. */
+.cc-csv__facts { display: flex; flex-wrap: wrap; gap: var(--s-2); }
+.cc-csv__fact {
+  font-size: 11.5px;
+  color: var(--ink-mute);
+  padding: 3px var(--s-2);
+  border-radius: var(--r-xs);
+  background: var(--canvas-sunk);
+}
+.cc-csv__fact strong { color: var(--ink); font-weight: 600; }
+
+/* The sample scrolls inside its own box — a 30-column CSV must not widen the dialog. */
+.cc-csv__tablewrap { overflow-x: auto; border: 1px solid var(--hairline); border-radius: var(--r-sm); }
+.cc-csv__table { border-collapse: collapse; font-size: 11.5px; width: max-content; min-width: 100%; }
+
+.cc-csv__table th {
+  /* Sentence case, no uppercase transform: these are column headers. */
+  text-align: left;
+  font-weight: 600;
+  padding: var(--s-2);
+  border-bottom: 1px solid var(--hairline);
+  background: var(--canvas-soft);
+  white-space: nowrap;
+  max-width: 200px;
+}
+.cc-csv__table th > span:first-child { display: block; max-width: 180px; }
+.cc-csv__type { display: block; font-size: 10px; font-weight: 400; color: var(--ink-faint); margin-top: 1px; }
+
+.cc-csv__table td {
+  padding: var(--s-1) var(--s-2);
+  border-bottom: 1px solid var(--grid-line, var(--hairline));
+  color: var(--ink-mute);
+  max-width: 200px;
+}
+.cc-csv__table td > span { display: block; max-width: 180px; }
+.cc-csv__table tr:last-child td { border-bottom: 0; }
+
+/* Meta left, action right — the strip spans its width rather than packing at one end. */
+.cc-csv__foot { display: flex; align-items: center; gap: var(--s-3); }
+.cc-csv__meta { flex: 1 1 auto; min-width: 0; font-size: 10.5px; color: var(--ink-faint); }
+
+.cc-csv__done { display: flex; flex-direction: column; gap: var(--s-2); align-items: flex-start; }
+.cc-csv__note { margin: 0; font-size: 12px; color: var(--ink-mute); }
+
+@media (prefers-reduced-motion: reduce) {
+  .cc-csv__drop { transition: none; }
+}
+
+/* ── the mapping table: one row per CSV column, deciding where it lands ─────── */
+
+.cc-csv__map { display: flex; flex-direction: column; gap: 1px; }
+
+/* CSV column · arrow · destination · new-name. The first cell takes the slack; the name slot is
+   RESERVED either way, so flipping a row between "new" and an existing column cannot resize it. */
+.cc-csv__maprow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 14px max-content minmax(120px, 160px);
+  align-items: center;
+  gap: var(--s-2);
+  min-height: 34px;
+  padding: 2px var(--s-1);
+  border-radius: var(--r-xs);
+}
+.cc-csv__maprow:hover { background: var(--control-hover); }
+/* Muted, not hidden: a skipped column should still be countable at a glance. */
+.cc-csv__maprow--skip .cc-csv__csvcol { opacity: 0.45; }
+
+.cc-csv__csvcol { display: flex; flex-direction: column; min-width: 0; font-size: 12px; font-weight: 500; }
+.cc-csv__sample { font-size: 10.5px; font-weight: 400; color: var(--ink-faint); }
+.cc-csv__arrow { color: var(--ink-faint); text-align: center; }
+.cc-input.cc-csv__name { height: 26px; font-size: 11.5px; }
+.cc-csv__name--void { display: block; }
+
+/* The sample table dims what is being left out, so the decision reads back in the data itself. */
+.cc-csv__th--skip, .cc-csv__td--skip { opacity: 0.35; }

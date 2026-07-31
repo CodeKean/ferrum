@@ -1,0 +1,368 @@
+// Bringing a CSV in.
+//
+// The engine has streamed CSV imports since the first phase — encoding detection, delimiter
+// detection, batched inserts, header de-duplication, ragged-row reporting — and for one turn this
+// screen exposed exactly none of its choices: every import created every column, named whatever the
+// file said, with no way to skip a column, rename one, aim one at a column the sheet already has,
+// or drop duplicate rows. All of that was already in ImportOptions; the screen just never sent it.
+//
+// The shape is a mapping table, one row per CSV column: where does this land? Into a column the
+// sheet already has, into a new one (renameable before it exists), or nowhere. The default is not
+// neutral — a CSV header that matches an existing column is pre-aimed at it, because importing
+// "Email" into a sheet that has an Email column and getting "Email (2)" is never what anyone meant.
+
+import { useRef, useState } from "react";
+import { IconPlus } from "../ui/Icon.tsx";
+import { Select } from "../ui/Select.tsx";
+import type { Column } from "../api.ts";
+import "./CsvImport.css";
+
+interface Preview {
+  headers: string[];
+  sampleRows: string[][];
+  inferredTypes: string[];
+  delimiter: string;
+  encoding: string;
+  raggedCount: number;
+}
+
+/** Mirrors `ImportResult` in src/csv.ts, plus the row count the route appends. */
+interface Result {
+  rowsInserted: number;
+  duplicatesSkipped: number;
+  /** Rows the TABLE's own duplicate rule removed after the import, when it is set to run itself. */
+  dedupedAfter: number;
+  /** Rows whose field count differed from the header. They are PADDED or truncated and imported —
+   *  this was `raggedSkipped` back when they were discarded, and reading the old name here meant
+   *  the number rendered as nothing at all. */
+  raggedFixed: number;
+  /** Headers the file repeated. Each repeat became its own suffixed column rather than overwriting
+   *  the first one, so the user has two columns where the file said one name. */
+  duplicateHeaders: string[];
+  /** What the file was finally decoded as, after any mid-stream correction away from UTF-8. */
+  encoding: "utf8" | "latin1";
+  columnsCreated: number;
+  ms: number;
+  rowCount: number;
+}
+
+/** One CSV column's fate. Mirrors the engine's ImportMapping. */
+interface Mapping {
+  /** "new" | "skip" | an existing column id. */
+  target: string;
+  /** The name a NEW column gets. Editable before it exists — after is a rename plus a regret. */
+  name: string;
+}
+
+interface Props {
+  sheetId: string;
+  /** The sheet's existing columns — half of what a CSV column can land in. */
+  columns: Column[];
+  onImported: () => void;
+}
+
+const DELIMITER_NAME: Record<string, string> = {
+  ",": "commas",
+  ";": "semicolons",
+  "\t": "tabs",
+  "|": "bars",
+};
+
+/** Same normalization the engine keys columns by, so the auto-aim agrees with what import would do. */
+const keyOf = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
+
+export function CsvImport({ sheetId, columns, onImported }: Props) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [file, setFile] = useState<{ name: string; path: string; bytes: number } | null>(null);
+  const [preview, setPreview] = useState<Preview | null>(null);
+  const [mappings, setMappings] = useState<Mapping[]>([]);
+  /** CSV column index whose repeated values mean "same row, skip it". -1 is off. */
+  const [dedupeOn, setDedupeOn] = useState(-1);
+  const [result, setResult] = useState<Result | null>(null);
+  const [busy, setBusy] = useState<"upload" | "import" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [dragging, setDragging] = useState(false);
+
+  const take = async (f: File) => {
+    if (!f) return;
+    setBusy("upload");
+    setError(null);
+    setResult(null);
+    try {
+      const res = await fetch("/api/csv/upload", { method: "POST", body: f }).then((r) => r.json());
+      if (res.error) { setError(res.error); setPreview(null); return; }
+      setFile({ name: f.name, path: res.path, bytes: res.bytes });
+      setPreview(res.preview);
+      // Pre-aim each CSV column at an existing column when the names match. The engine would do the
+      // same quietly for "new" targets, but a default the screen SHOWS is one the user can veto.
+      const byKey = new Map(columns.map((c) => [keyOf(c.name), String(c.id)]));
+      setMappings(
+        (res.preview.headers as string[]).map((h) => ({
+          target: byKey.get(keyOf(h)) ?? "new",
+          name: h,
+        })),
+      );
+      // An email-ish column is the natural dedupe key; suggested, never forced.
+      setDedupeOn((res.preview.headers as string[]).findIndex((h) => /email/i.test(h)));
+    } catch {
+      setError("Could not read that file.");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const doImport = async () => {
+    if (!file || !preview) return;
+    setBusy("import");
+    setError(null);
+    try {
+      const res = await fetch(`/api/sheets/${sheetId}/import`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          path: file.path,
+          mappings: mappings.map((m) =>
+            m.target === "new"
+              ? { target: "new", name: m.name.trim() || undefined }
+              : { target: m.target },
+          ),
+          dedupeOnIndex: dedupeOn >= 0 && mappings[dedupeOn]?.target !== "skip" ? dedupeOn : undefined,
+        }),
+      }).then((r) => r.json());
+      if (res.error) { setError(res.error); return; }
+      setResult(res);
+      onImported();
+    } catch {
+      setError("Could not reach the engine.");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  if (result) {
+    return (
+      <div className="cc-csv__done">
+        <div className="cc-modal__stat"><span className="cc-modal__stat-label">Rows added</span><span className="cc-modal__stat-value mono">{result.rowsInserted.toLocaleString()}</span></div>
+        <div className="cc-modal__stat"><span className="cc-modal__stat-label">Columns created</span><span className="cc-modal__stat-value mono">{result.columnsCreated.toLocaleString()}</span></div>
+        {result.duplicatesSkipped > 0 && (
+          <div className="cc-modal__stat"><span className="cc-modal__stat-label">Duplicates skipped</span><span className="cc-modal__stat-value mono">{result.duplicatesSkipped.toLocaleString()}</span></div>
+        )}
+        {/* The table's OWN rule, which runs itself when it is set to. The engine has always
+            reported this and the screen never showed it — so an import into a sheet with automatic
+            deduplication on could remove rows and the summary said only how many arrived. Rows
+            leaving is the half nobody expects. */}
+        {(result.dedupedAfter ?? 0) > 0 && (
+          <div className="cc-modal__stat">
+            <span className="cc-modal__stat-label">Removed by this table's duplicate rule</span>
+            <span className="cc-modal__stat-value mono">{result.dedupedAfter.toLocaleString()}</span>
+          </div>
+        )}
+        {/* Reported rather than buried. These rows DID arrive — short ones were padded and long
+            ones lost only their extras — but a value landing in the wrong column is the failure
+            this number is the only warning of. */}
+        {(result.raggedFixed ?? 0) > 0 && (
+          <div className="cc-modal__stat"><span className="cc-modal__stat-label">Rows padded to fit the header</span><span className="cc-modal__stat-value mono">{result.raggedFixed.toLocaleString()}</span></div>
+        )}
+        {/* A column the user did not ask for. The engine suffixes a repeated header to "Email (2)"
+            rather than letting the second one overwrite the first, which is the right answer — but
+            unsaid it looks like the import invented a column. */}
+        {(result.duplicateHeaders?.length ?? 0) > 0 && (
+          <div
+            className="cc-modal__stat"
+            title="The file used the same heading more than once. Each repeat became its own column rather than overwriting the first, so nothing was lost — the arrow shows where the repeat ended up."
+          >
+            <span className="cc-modal__stat-label">Repeated headers</span>
+            {/* Truncated, not wrapped: the row is a fixed 26px and a file with eight repeats would
+                otherwise grow it and shuffle everything below. */}
+            <span className="cc-modal__stat-value truncate">{result.duplicateHeaders.join(", ")}</span>
+          </div>
+        )}
+        {/* Only when it is NOT plain UTF-8. The preview says what it expects to read the file as;
+            this says what it actually did, because the engine retries in Windows-1252 mid-stream and
+            an accent that survived is the only other evidence that happened. */}
+        {result.encoding === "latin1" && (
+          <div className="cc-modal__stat">
+            <span className="cc-modal__stat-label">Read as</span>
+            <span className="cc-modal__stat-value">Windows-1252</span>
+          </div>
+        )}
+        <p className="cc-csv__note">
+          The sheet now has {result.rowCount.toLocaleString()} rows. Took {(result.ms / 1000).toFixed(1)}s.
+        </p>
+        <button className="cc-btn cc-btn--xs" onClick={() => { setResult(null); setFile(null); setPreview(null); }}>
+          Import another file
+        </button>
+      </div>
+    );
+  }
+
+  const landing = mappings.filter((m) => m.target !== "skip").length;
+
+  return (
+    <div className="cc-csv">
+      <div
+        className={`cc-csv__drop${dragging ? " cc-csv__drop--over" : ""}`}
+        onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDragging(false);
+          const f = e.dataTransfer.files?.[0];
+          if (f) void take(f);
+        }}
+      >
+        <input
+          ref={fileRef}
+          type="file"
+          accept=".csv,.tsv,.txt,text/csv"
+          hidden
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) void take(f); }}
+        />
+        <p className="cc-csv__droptext">
+          {busy === "upload" ? "Reading…" : file ? file.name : "Drop a CSV here, or"}
+        </p>
+        {busy !== "upload" && (
+          <button className="cc-btn" onClick={() => fileRef.current?.click()}>
+            <IconPlus /> <span>{file ? "Choose a different file" : "Choose a file"}</span>
+          </button>
+        )}
+      </div>
+
+      {error && <div className="cc-csv__error" role="alert">{error}</div>}
+
+      {preview && (
+        <>
+          {/* Encoding and delimiter first, because both are silent failures. A cp1252 file read as
+              UTF-8 does not error — it just turns every é into a pair of wrong characters, in every
+              row, and nothing later in the pipeline notices. */}
+          <div className="cc-csv__facts">
+            <span className="cc-csv__fact">
+              Separated by <strong>{DELIMITER_NAME[preview.delimiter] ?? `"${preview.delimiter}"`}</strong>
+            </span>
+            <span className="cc-csv__fact">
+              Read as <strong>{preview.encoding === "latin1" ? "Windows-1252" : "UTF-8"}</strong>
+            </span>
+            <span className="cc-csv__fact">
+              <strong>{landing}</strong> of <strong>{preview.headers.length}</strong> columns coming in
+            </span>
+          </div>
+
+          {/* They are not dropped, so this must not say "skipped": the engine pads them. The warning
+              is still worth making, for the opposite reason: they all arrive, and a value shifted one
+              column left arrives looking
+              perfectly valid. */}
+          {preview.raggedCount > 0 && (
+            <div className="cc-csv__warn" role="status">
+              {preview.raggedCount} of the first rows have a different number of fields than the
+              header. They still come in — short rows are padded, long ones lose the extras — but a
+              value can land in the wrong column. Usually it means a value contains the separator and
+              is not quoted.
+            </div>
+          )}
+
+          {/* One row per CSV column: what it holds, and where it lands. */}
+          <div className="cc-csv__map">
+            {preview.headers.map((h, i) => {
+              const m = mappings[i] ?? { target: "new", name: h };
+              const sample = preview.sampleRows.find((r) => r[i])?.[i] ?? "";
+              return (
+                <div key={i} className={`cc-csv__maprow${m.target === "skip" ? " cc-csv__maprow--skip" : ""}`}>
+                  <span className="cc-csv__csvcol">
+                    <span className="truncate" title={h}>{h}</span>
+                    <span className="cc-csv__sample truncate" title={sample}>
+                      {sample || "—"} · {preview.inferredTypes[i]}
+                    </span>
+                  </span>
+                  <span className="cc-csv__arrow" aria-hidden>→</span>
+                  <Select
+                    label={`Where ${h} lands`}
+                    value={m.target}
+                    size="sm"
+                    showLabel={false}
+                    options={[
+                      { value: "new", label: "New column" },
+                      { value: "skip", label: "Leave it out" },
+                      ...columns.map((c) => ({ value: String(c.id), label: c.name })),
+                    ]}
+                    onChange={(v) => setMappings((prev) => prev.map((x, j) => (j === i ? { ...x, target: v } : x)))}
+                  />
+                  {/* Named before it exists. Fixing the header's ALL_CAPS_SNAKE here beats renaming
+                      the column after it has already spread into references. */}
+                  {m.target === "new" ? (
+                    <input
+                      className="cc-input cc-csv__name"
+                      value={m.name}
+                      aria-label={`Name for the new ${h} column`}
+                      onChange={(e) => setMappings((prev) => prev.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))}
+                    />
+                  ) : (
+                    /* Reserved, so switching between "new" and an existing column cannot resize the
+                       row and shuffle everything below the pointer. */
+                    <span className="cc-csv__name cc-csv__name--void" aria-hidden />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="cc-field cc-field--tight">
+            <span className="cc-field__label">
+              Skip rows that repeat a value
+              <span className="cc-field__sub">so importing the same file twice cannot double the sheet</span>
+            </span>
+            <Select
+              label="Dedupe on"
+              value={String(dedupeOn)}
+              size="sm"
+              showLabel={false}
+              options={[
+                { value: "-1", label: "Keep every row" },
+                ...preview.headers.map((h, i) => ({ value: String(i), label: `Same ${h} means same row` })),
+              ]}
+              onChange={(v) => setDedupeOn(Number(v))}
+            />
+          </div>
+
+          <div className="cc-csv__tablewrap">
+            <table className="cc-csv__table">
+              <thead>
+                <tr>
+                  {preview.headers.map((h, i) => (
+                    <th key={i} className={mappings[i]?.target === "skip" ? "cc-csv__th--skip" : undefined}>
+                      <span className="truncate">{h}</span>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {preview.sampleRows.slice(0, 5).map((r, i) => (
+                  <tr key={i}>
+                    {r.map((v, j) => (
+                      <td key={j} className={mappings[j]?.target === "skip" ? "cc-csv__td--skip" : undefined}>
+                        <span className="truncate">{v}</span>
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="cc-csv__foot">
+            <span className="cc-csv__meta mono">
+              {(file!.bytes / 1024 / 1024).toFixed(1)} MB · showing {Math.min(5, preview.sampleRows.length)} rows
+            </span>
+            <button
+              className="cc-btn cc-btn--primary"
+              onClick={() => void doImport()}
+              disabled={busy === "import" || landing === 0}
+              title={landing === 0 ? "Every column is being left out — nothing would arrive." : undefined}
+            >
+              {busy === "import" ? "Importing…" : "Import into this sheet"}
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}

@@ -1,0 +1,285 @@
+/* Ferrum design tokens — the single source of truth. Nothing below this file hardcodes a colour,
+   a radius, or a spacing value.
+
+   Brand anchor: #127C71 "kiln teal". Chosen under a hard constraint rather than taste — this app
+   already spends blue on RUNNING, amber on QUEUED/STALE, green on DONE and red on ERROR, and the
+   house rules rule out the violet/indigo family outright. Teal is the remaining hue with enough
+   saturation to carry an identity while staying clearly distinct from the status greens and blues at
+   12px. The brand hue is NEVER used for a status affordance. */
+
+:root {
+  /* ── spacing scale ─────────────────────────────────────────── */
+  --s-1: 4px;  --s-2: 8px;  --s-3: 12px; --s-4: 16px; --s-5: 20px;
+  --s-6: 24px; --s-7: 32px; --s-8: 40px; --s-9: 56px;
+
+  /* ── density ───────────────────────────────────────────────── */
+  --control-h-sm: 26px;
+  --control-h: 30px;
+  --control-h-lg: 36px;
+  --row-h-compact: 28px;
+  --row-h: 32px;
+  --row-h-tall: 56px;
+  --header-h: 34px;
+  /* The per-column progress strip under the header. A token because THREE rules have to agree on it
+     — the strip, the gutter cell inside it, and the chip that fills it — and a coarse pointer needs
+     all three to grow together. */
+  --statusrow-h: 22px;
+  --gutter-w: 56px;
+  --col-w-default: 180px;
+  --col-w-min: 72px;
+  --cell-pad-x: 8px;
+  --card-pad: 12px;
+  --section-gap: 16px;
+  --toolbar-h-1: 40px;
+  --runbar-h: 32px;
+  /* The table-tab strip along the bottom. A token because the right-hand panels have to stop above
+     it — docked to `bottom: 0` they covered the tabs, so the table you were editing a column of was
+     the one table you could not switch away from. */
+  --wbtabs-h: 34px;
+  --drawer-w: 480px;
+
+  /* ── radius: deliberately off the Tailwind 4/6/8/12 ladder ─── */
+  --r-xs: 3px;
+  --r-sm: 5px;   /* the signature radius: buttons, inputs, selects */
+  --r-md: 7px;   /* popovers, menus, drawers */
+  --r-lg: 10px;  /* modals, empty-state cards */
+  --r-pill: 999px;
+
+  /* ── motion ────────────────────────────────────────────────── */
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --dur-fast: 120ms;
+  --dur: 180ms;
+  --dur-slow: 260ms;
+
+  /* ── light theme ───────────────────────────────────────────── */
+  --primary: #127c71;
+  --on-primary: #ffffff;
+  --primary-deep: #0e655c;
+  --primary-soft: #1b9c8e;
+  --primary-tint: #e6f2f0;
+  /* The focus ring is an INDICATOR, not a glow, so WCAG 1.4.11 applies to it: 3:1 against whatever
+     it sits on. At the 0.30 alpha this started at, it measured 1.52:1 on the light canvas and
+     2.05:1 on the dark one — a ring you cannot see is the same as no ring, and roughly a dozen
+     rules across the app set `outline: none` and lean on it alone. Raised to near-solid, which
+     measures 3.84:1 light and 5.29:1 dark. Kept a hair off opaque so it still reads as a ring
+     around the control rather than a second border on it. */
+  --focus-ring: rgba(18, 124, 113, 0.85);
+
+  --ink: #16191c;
+  --ink-secondary: #3a4046;
+  --ink-mute: #5e666e;
+  /* Nudged down twice. #6e767e was 4.29:1 on the hovered/zebra row; #666e75 fixed that but still
+     measured 4.46:1 through a status band on a hovered row — a Running cell's elapsed timer, which
+     is muted text over --band-running over --row-hover. #646c73 clears 4.5:1 on every resting
+     surface AND through every band that sits behind muted text. tokens.test.ts holds it there. */
+  --ink-mute-2: #646c73;
+  --ink-faint: #a3abb2;      /* placeholder + decorative ONLY — below AA for content */
+
+  --canvas: #ffffff;
+  --canvas-soft: #f7f8f8;
+  --canvas-sunk: #f1f3f3;
+
+  --hairline: #e3e6e7;
+  --hairline-strong: #cfd4d6;
+
+  --grid-line: #e7eaeb;
+  --grid-header-bg: #f4f6f6;
+  --grid-gutter-bg: #f7f8f8;
+  --row-hover: #f5f7f7;
+  --row-selected: #e6f2f0;
+  --control-hover: #f1f3f3;
+  /* Press state for a full-width list row, where a scale transform would look wrong. */
+  --control-active: #e6e9e9;
+
+  /* Resting content is FLAT with a 1px hairline. Elevation is only for things that genuinely
+     float — popovers, menus, tooltips, modals, drawers. */
+  --elev-1: 0 1px 2px rgba(16, 22, 28, 0.05);
+  --elev-2: 0 4px 12px -2px rgba(16, 22, 28, 0.10), 0 2px 4px -2px rgba(16, 22, 28, 0.06);
+  --elev-3: 0 18px 36px -10px rgba(16, 22, 28, 0.18), 0 4px 10px -4px rgba(16, 22, 28, 0.09);
+
+  /* ── status: SOLID fills, defined once for BOTH themes ─────── */
+  --status-idle-solid: #5f6a70;
+  --status-queued-solid: #a96a00;
+  --status-running-solid: #1f6fcc;
+  --status-done-solid: #227a45;
+  --status-error-solid: #bc2f45;
+  /* Hover for a solid destructive control. A separate token rather than a filter/opacity trick, so
+     the hover state stays a real colour that can be checked for contrast. */
+  --status-error-deep: #9d2338;
+  --on-status: #ffffff;
+
+  /* A cell somebody touched: typed over, or diverged from what its column produces.
+   *
+   * Its OWN token rather than the queued status colour, which is a dark ochre held identical in
+   * both themes so a solid pill can carry white text on it. That is right for a pill and wrong for
+   * wrong one for a 12px mark in the corner of a cell: on a dark canvas #a96a00 is a brown smudge.
+   * This one lifts in dark, like the column swatches do, because it has to be legible rather than
+   * legible-underneath-white-text. */
+  --mark-hand: #c2740a;
+
+  /* Large soft background bands. This is the ONE permitted low-alpha use — every small affordance
+     (pill, chip, dot, badge) uses a solid token above. Kept as separate names so nobody reaches for
+     a band when building a chip. */
+  --band-queued: rgba(169, 106, 0, 0.06);
+  --band-done: rgba(34, 122, 69, 0.06);
+  --band-running: rgba(31, 111, 204, 0.06);
+  --band-error: rgba(188, 47, 69, 0.07);
+  --band-preview: rgba(18, 124, 113, 0.06);
+  --band-skipped: rgba(95, 106, 112, 0.05);
+
+  --font-ui: "Archivo", "Segoe UI", system-ui, -apple-system, sans-serif;
+  /* Every value, number, prompt and transcript is monospaced — which makes the tabular-numerals
+     guarantee structural rather than a font-feature hope. */
+  --font-mono: "JetBrains Mono", "Cascadia Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* ── column colours ───────────────────────────────────────────
+     A column stores a NAME, never a hex — see grid/columnColors.ts. Each name needs a solid
+     (the swatch and the header marker) and a BAND (a low-alpha wash behind the cells). The band is
+     deliberately faint: it marks a group of columns while the values inside still have to be read
+     and a status band still has to show through on top of it. */
+  --colcol-slate:  #64748b;  --colcol-slate-band:  rgba(100, 116, 139, 0.10);
+  --colcol-blue:   #2563eb;  --colcol-blue-band:   rgba(37, 99, 235, 0.09);
+  --colcol-teal:   #0d9488;  --colcol-teal-band:   rgba(13, 148, 136, 0.10);
+  --colcol-green:  #16a34a;  --colcol-green-band:  rgba(22, 163, 74, 0.10);
+  --colcol-amber:  #d97706;  --colcol-amber-band:  rgba(217, 119, 6, 0.11);
+  --colcol-orange: #ea580c;  --colcol-orange-band: rgba(234, 88, 12, 0.10);
+  --colcol-red:    #dc2626;  --colcol-red-band:    rgba(220, 38, 38, 0.09);
+  --colcol-purple: #7c3aed;  --colcol-purple-band: rgba(124, 58, 237, 0.09);
+  --colcol-pink:   #db2777;  --colcol-pink-band:   rgba(219, 39, 119, 0.09);
+}
+
+/* Dark theme. The primary is unchanged: white text passes AA on #127C71 against both canvases, so
+   one brand fill serves both themes. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --primary-deep: #169486;   /* in dark, hover goes LIGHTER */
+    --primary-soft: #35b3a7;
+    --primary-tint: #10312e;
+    --focus-ring: rgba(53, 179, 167, 0.85);
+
+    --ink: #e8eaeb;
+    --ink-secondary: #c7cccf;
+    --ink-mute: #9aa2a8;
+    /* Nudged up from #848c92, the mirror of the light-theme fix above. The worst surface here is a
+       selected row (#10312e), where #848c92 measured 4.16:1 — under AA for the 11px labels this is
+       used for. #8e969c measures 4.66:1 there and 5.87:1 on the plain canvas. */
+    --ink-mute-2: #8e969c;
+    --ink-faint: #5c6469;
+
+    --canvas: #17191a;
+    --canvas-soft: #101212;
+    --canvas-sunk: #1d2021;
+
+    --hairline: #2b2f30;
+    --hairline-strong: #3b4041;
+
+    --grid-line: #262a2b;
+    --grid-header-bg: #1c1f20;
+    --grid-gutter-bg: #191c1c;
+    --row-hover: #1f2223;
+    --row-selected: #10312e;
+    --control-hover: #232626;
+    --control-active: #2c3030;
+
+    --elev-1: 0 1px 2px rgba(0, 0, 0, 0.35);
+    --elev-2: 0 4px 12px -2px rgba(0, 0, 0, 0.55), 0 2px 4px -2px rgba(0, 0, 0, 0.40);
+    --elev-3: 0 18px 36px -10px rgba(0, 0, 0, 0.65), 0 4px 10px -4px rgba(0, 0, 0, 0.45);
+
+    --band-queued: rgba(169, 106, 0, 0.11);
+    --band-done: rgba(52, 168, 100, 0.11);
+    --band-running: rgba(31, 111, 204, 0.12);
+    --band-error: rgba(188, 47, 69, 0.13);
+    --band-preview: rgba(18, 124, 113, 0.12);
+    --band-skipped: rgba(154, 162, 168, 0.07);
+
+    /* Column colours, dark. The solids lift so a swatch stays visible on a dark canvas, and the bands
+       lift a little too — the same alpha over a dark background reads as almost nothing. */
+    --mark-hand: #fbbf24;
+
+    --colcol-slate:  #94a3b8;  --colcol-slate-band:  rgba(148, 163, 184, 0.12);
+    --colcol-blue:   #60a5fa;  --colcol-blue-band:   rgba(96, 165, 250, 0.12);
+    --colcol-teal:   #2dd4bf;  --colcol-teal-band:   rgba(45, 212, 191, 0.12);
+    --colcol-green:  #4ade80;  --colcol-green-band:  rgba(74, 222, 128, 0.12);
+    --colcol-amber:  #fbbf24;  --colcol-amber-band:  rgba(251, 191, 36, 0.13);
+    --colcol-orange: #fb923c;  --colcol-orange-band: rgba(251, 146, 60, 0.12);
+    --colcol-red:    #f87171;  --colcol-red-band:    rgba(248, 113, 113, 0.12);
+    --colcol-purple: #a78bfa;  --colcol-purple-band: rgba(167, 139, 250, 0.12);
+    --colcol-pink:   #f472b6;  --colcol-pink-band:   rgba(244, 114, 182, 0.12);
+  }
+}
+
+/* The theme toggle stamps data-theme on the root, and it must win in BOTH directions — so the dark
+   values are repeated here rather than relying on the media query alone. */
+:root[data-theme="dark"] {
+  --primary-deep: #169486;
+  --primary-soft: #35b3a7;
+  --primary-tint: #10312e;
+  --focus-ring: rgba(53, 179, 167, 0.85);
+
+  --ink: #e8eaeb;
+  --ink-secondary: #c7cccf;
+  --ink-mute: #9aa2a8;
+  --ink-mute-2: #8e969c;   /* see the note in the media query above */
+  --ink-faint: #5c6469;
+
+  --canvas: #17191a;
+  --canvas-soft: #101212;
+  --canvas-sunk: #1d2021;
+
+  --hairline: #2b2f30;
+  --hairline-strong: #3b4041;
+
+  --grid-line: #262a2b;
+  --grid-header-bg: #1c1f20;
+  --grid-gutter-bg: #191c1c;
+  --row-hover: #1f2223;
+  --row-selected: #10312e;
+  --control-hover: #232626;
+  --control-active: #2c3030;
+
+  --elev-1: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --elev-2: 0 4px 12px -2px rgba(0, 0, 0, 0.55), 0 2px 4px -2px rgba(0, 0, 0, 0.40);
+  --elev-3: 0 18px 36px -10px rgba(0, 0, 0, 0.65), 0 4px 10px -4px rgba(0, 0, 0, 0.45);
+
+  --band-queued: rgba(169, 106, 0, 0.11);
+  --band-done: rgba(52, 168, 100, 0.11);
+  --band-running: rgba(31, 111, 204, 0.12);
+  --band-error: rgba(188, 47, 69, 0.13);
+  --band-preview: rgba(18, 124, 113, 0.12);
+  --band-skipped: rgba(154, 162, 168, 0.07);
+
+  /* Column colours, dark. The solids lift so a swatch stays visible on a dark canvas, and the bands
+     lift a little too — the same alpha over a dark background reads as almost nothing. */
+  --mark-hand: #fbbf24;
+
+  --colcol-slate:  #94a3b8;  --colcol-slate-band:  rgba(148, 163, 184, 0.12);
+  --colcol-blue:   #60a5fa;  --colcol-blue-band:   rgba(96, 165, 250, 0.12);
+  --colcol-teal:   #2dd4bf;  --colcol-teal-band:   rgba(45, 212, 191, 0.12);
+  --colcol-green:  #4ade80;  --colcol-green-band:  rgba(74, 222, 128, 0.12);
+  --colcol-amber:  #fbbf24;  --colcol-amber-band:  rgba(251, 191, 36, 0.13);
+  --colcol-orange: #fb923c;  --colcol-orange-band: rgba(251, 146, 60, 0.12);
+  --colcol-red:    #f87171;  --colcol-red-band:    rgba(248, 113, 113, 0.12);
+  --colcol-purple: #a78bfa;  --colcol-purple-band: rgba(167, 139, 250, 0.12);
+  --colcol-pink:   #f472b6;  --colcol-pink-band:   rgba(244, 114, 182, 0.12);
+}
+
+/* ── coarse pointer ─────────────────────────────────────────────
+   A finger is not a cursor. The density above is right for a mouse and wrong for a thumb: measured
+   at 375px, every control on the sheet was under 44x44 and several were under the 24x24 floor. The
+   fix belongs at the token layer so it propagates rather than being patched control by control, and
+   it is scoped to `pointer: coarse` — which reports the PRIMARY input, so a touchscreen laptop
+   driven by a mouse keeps the dense desktop sizing.
+
+   `--row-h` is deliberately NOT bumped. SheetGrid mirrors it as a JS constant (ROW_H) to keep the
+   virtualizer's measurement pass out of the render path, so changing it here alone would leave the
+   CSS and the transforms disagreeing and every row would overlap its neighbour. */
+@media (pointer: coarse) {
+  :root {
+    --control-h-sm: 34px;
+    --control-h: 38px;
+    --control-h-lg: 44px;
+    --row-h-compact: 34px;
+    --header-h: 44px;
+    --statusrow-h: 44px;
+  }
+}

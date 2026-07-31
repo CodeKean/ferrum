@@ -1,0 +1,43 @@
+/* What this prompt will cost, shown while it is being written.
+   Label left, figure right, spanning the panel — no lone number floating at an edge with a void
+   beside it. Every figure is tabular so a cost changing as you type cannot resize the rows. */
+
+.cc-pc {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  background: var(--canvas-soft);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+/* The plain-language variants — local model, no published price — are one sentence, not a table. */
+.cc-pc--note { color: var(--ink-mute-2); }
+
+.cc-pc__head { display: flex; align-items: baseline; gap: var(--s-2); }
+.cc-pc__title { flex: 1 1 auto; min-width: 0; font-weight: 600; color: var(--ink); }
+/* Reserved so a figure going 0.04¢ → 0.4¢ → $1.20 as the prompt grows cannot shift the header. */
+.cc-pc__per { flex: 0 0 auto; min-width: 92px; text-align: right; color: var(--ink); }
+
+.cc-pc__scales { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; }
+
+.cc-pc__scale {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  min-height: 20px;
+  padding: 1px var(--s-1);
+  border-radius: var(--r-xs);
+}
+.cc-pc__scale:nth-child(odd) { background: var(--canvas); }
+/* The user's own table, which is the figure that is not hypothetical. */
+.cc-pc__scale--own { background: var(--band-preview); font-weight: 600; }
+
+.cc-pc__rows { flex: 1 1 auto; min-width: 0; color: var(--ink-mute-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cc-pc__scale--own .cc-pc__rows { color: var(--ink); }
+.cc-pc__total { flex: 0 0 auto; min-width: 78px; text-align: right; color: var(--ink); }
+
+.cc-pc__basis { margin: 0; color: var(--ink-mute); }

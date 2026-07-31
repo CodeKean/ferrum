@@ -1,0 +1,132 @@
+/* Column templates: keeping one, and picking one. */
+
+.cc-tpl__form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-3) var(--s-4);
+  align-items: flex-start;
+}
+/* Shrink to content rather than stretching — a short "Grouped under" box spanning the dialog is
+   the dead-space tell. The description is the one field that genuinely wants the width. */
+.cc-tpl__form .cc-field { flex: 1 1 200px; min-width: 0; }
+.cc-tpl__wide { flex: 1 1 100% !important; }
+.cc-tpl__area { resize: vertical; min-height: 60px; line-height: 1.5; }
+
+.cc-tpl__warn {
+  flex: 1 1 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-2);
+  margin: 0;
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  background: var(--canvas-soft);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--ink-mute);
+}
+
+/* ── the gallery ─────────────────────────────────────────────────────────────────────────────── */
+
+.cc-tpl__search { width: 100%; margin-bottom: var(--s-3); }
+
+.cc-tpl__list {
+  container: cc-tpl / inline-size;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--hairline);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+}
+
+.cc-tpl__card {
+  display: flex;
+  align-items: center;
+  /* Wraps on the CONTAINER's width, not the window's: a dialog narrower than the row would
+     otherwise crush the text column to nothing while the buttons kept their size. */
+  flex-wrap: wrap;
+  gap: var(--s-2) var(--s-3);
+  padding: var(--s-3);
+  background: var(--canvas);
+}
+
+.cc-tpl__body {
+  /* A floor, not `auto` — the part that must stay readable must not be the part that gives. */
+  flex: 1 1 240px;
+  min-width: 200px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.cc-tpl__name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cc-tpl__meta,
+.cc-tpl__desc,
+.cc-tpl__fit {
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--ink-mute);
+  /* Reserved: a card with a description must not be taller than one without. */
+  min-height: 1.45em;
+}
+.cc-tpl__desc {
+  color: var(--ink-secondary);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.cc-tpl__fit--bad { color: var(--status-error-solid); }
+
+.cc-tpl__acts {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+@container cc-tpl (max-width: 430px) {
+  .cc-tpl__acts { width: 100%; justify-content: flex-end; }
+}
+
+/* ── empty, skeleton, messages ───────────────────────────────────────────────────────────────── */
+
+.cc-tpl__empty {
+  min-height: 110px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  padding: var(--s-4);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  background: var(--canvas);
+}
+.cc-tpl__empty__h { margin: 0; font-size: 13px; font-weight: 600; color: var(--ink); }
+.cc-tpl__empty__p { margin: 0; font-size: 12px; line-height: 1.5; color: var(--ink-mute); }
+
+.cc-tpl__skel {
+  height: 132px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  background: var(--canvas-soft);
+  animation: cc-tpl-pulse 1.2s ease-in-out infinite;
+}
+@keyframes cc-tpl-pulse { 0%, 100% { opacity: 1 } 50% { opacity: 0.55 } }
+@media (prefers-reduced-motion: reduce) { .cc-tpl__skel { animation: none; } }
+
+.cc-tpl__msg { min-height: 20px; margin-top: var(--s-2); font-size: 12px; }
+.cc-tpl__err { display: inline-flex; align-items: center; gap: 6px; color: var(--status-error-solid); }

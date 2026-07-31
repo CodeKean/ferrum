@@ -1,0 +1,221 @@
+/* Web search engines.
+ *
+ * Each row carries more than a provider row does — a price, a key, an editable rate and a Try result
+ * — so it is a small grid rather than a line. The columns are sized to their content: nothing
+ * stretches, so no row ends with a control floating at the far edge over a void.
+ */
+
+.cc-srch__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  margin: var(--s-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cc-srch__row {
+  display: grid;
+  /* name · price · buttons. The price column is fixed so the figures line up down the page and can
+     be compared at a glance — which is the entire reason this screen exists. */
+  grid-template-columns: minmax(0, 1fr) max-content max-content;
+  align-items: start;
+  gap: var(--s-2) var(--s-3);
+  padding: var(--s-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  background: var(--canvas);
+}
+.cc-srch__row--on { border-color: var(--hairline-strong); background: var(--band-preview); }
+
+.cc-srch__row--skel {
+  min-height: 96px;
+  background: var(--canvas-soft);
+  border-style: dashed;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .cc-srch__row--skel { animation: cc-srch-pulse 1.4s ease-in-out infinite; }
+}
+@keyframes cc-srch-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+
+.cc-srch__main { min-width: 0; }
+
+.cc-srch__id {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  flex-wrap: wrap;
+}
+
+.cc-srch__name {
+  font-weight: 600;
+  color: var(--ink);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Solid fills. A semi-transparent status chip reads as unfinished. */
+.cc-srch__tag {
+  flex: none;
+  padding: 2px var(--s-2);
+  border-radius: 999px;
+  background: var(--status-done-solid);
+  color: var(--on-status);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+.cc-srch__tag--warn { background: var(--status-error-solid); }
+.cc-srch__tag--quiet { background: var(--status-idle-solid); }
+
+.cc-srch__note {
+  margin: var(--s-1) 0 0;
+  color: var(--ink-mute-2);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+.cc-srch__mono {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cc-srch__cost {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  /* Fixed width and tabular figures, so the prices form a column that can be read down rather than
+     jittering with each value's length. */
+  min-width: 168px;
+  font-variant-numeric: tabular-nums;
+}
+.cc-srch__price {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.cc-srch__per {
+  font-size: 11px;
+  color: var(--ink-mute-2);
+  white-space: nowrap;
+}
+
+.cc-srch__acts {
+  display: flex;
+  gap: var(--s-2);
+  align-items: center;
+  flex-wrap: nowrap;
+}
+
+.cc-srch__edit {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s-3);
+  padding-top: var(--s-3);
+  border-top: 1px solid var(--hairline);
+}
+.cc-srch__field { min-width: 0; }
+.cc-srch__inline {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-width: 0;
+}
+.cc-srch__inline .cc-input { min-width: 0; flex: 1 1 auto; }
+
+.cc-srch__sub {
+  margin: var(--s-5) 0 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-secondary);
+}
+
+.cc-srch__presetrow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  gap: var(--s-3);
+  align-items: start;
+}
+
+.cc-srch__code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 1px 4px;
+  border-radius: var(--r-sm);
+  background: var(--canvas-sunk);
+}
+
+/* ── what a real search returned ─────────────────────────────────────────── */
+
+.cc-srch__try {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  margin-top: var(--s-2);
+  padding: var(--s-3);
+  border-radius: var(--r-sm);
+  background: var(--canvas-soft);
+  font-size: 12.5px;
+}
+
+.cc-srch__hint { margin: 0; color: var(--ink-mute-2); font-size: 12px; }
+
+.cc-srch__raw {
+  margin: 0;
+  max-height: 260px;
+  overflow: auto;
+  padding: var(--s-2);
+  border-radius: var(--r-sm);
+  background: var(--canvas-sunk);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.45;
+  /* The one place horizontal scrolling is right: a JSON body must not wrap into something unreadable,
+     and it must not widen the page either. */
+  white-space: pre;
+}
+
+.cc-srch__hits {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+}
+.cc-srch__hit {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.cc-srch__hittitle {
+  font-size: 12.5px;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cc-srch__hiturl {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-mute-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .cc-srch__row { grid-template-columns: minmax(0, 1fr); }
+  .cc-srch__cost { align-items: flex-start; min-width: 0; }
+  .cc-srch__edit { grid-template-columns: minmax(0, 1fr); }
+  .cc-srch__presetrow { grid-template-columns: minmax(0, 1fr); }
+}

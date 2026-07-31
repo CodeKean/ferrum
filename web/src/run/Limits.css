@@ -1,0 +1,145 @@
+/* Speed limits — every one in the workspace, on one screen. */
+
+/* Inside a modal now, which owns the width — so this no longer sets one of its own. */
+.cc-limits { display: flex; flex-direction: column; gap: var(--s-4); }
+
+.cc-limits__head { display: flex; flex-direction: column; gap: var(--s-2); }
+.cc-limits__title { margin: 0; font-size: 15px; font-weight: 600; }
+.cc-limits__blurb { margin: 0; font-size: 12.5px; line-height: 1.55; color: var(--ink-mute); }
+
+.cc-limits__error,
+.cc-limits__warn,
+.cc-limits__empty {
+  margin: 0;
+  padding: var(--s-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+/* The workspace's own status tokens, not invented names with a fallback. `var(--danger, …)` looked
+   deliberate and silently resolved to the fallback on every screen, because no such token exists —
+   so the one thing on this page that is a problem was rendering in body-text grey. */
+.cc-limits__error { color: var(--status-error-solid); border-color: var(--status-error-solid); }
+/* Not a coloured left rail and not a transparent tint — a bordered note on the sunk surface, the
+   same treatment every other advisory in this app gets. */
+.cc-limits__warn { background: var(--canvas-sunk); color: var(--ink); }
+.cc-limits__empty { background: var(--canvas-soft); color: var(--ink-mute); }
+
+.cc-limits__list {
+  display: grid;
+  /* One hairline between rows via a 1px grid gap over a hairline background, so there is no doubled
+     border where two rows meet and no per-row border to keep in sync. */
+  gap: 1px;
+  background: var(--hairline);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+
+.cc-limits__row {
+  display: grid;
+  /* Explicit widths on the small, variable columns and a flexible name — so a three-digit limit or a
+     five-digit count cannot reflow the row. The bar column is the widest fixed one because it holds
+     both the numbers and the bar. */
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) 108px 180px 118px;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-2) var(--s-3);
+  background: var(--canvas);
+  /* Reserved, so a row gaining an "At the limit" state cannot resize the rows around it. */
+  min-height: 44px;
+  font-size: 12.5px;
+}
+
+.cc-limits__row--head {
+  background: var(--canvas-soft);
+  color: var(--ink-mute-2);
+  font-size: 11px;
+  font-weight: 600;
+  min-height: 32px;
+}
+
+.cc-limits__name { display: flex; align-items: center; gap: var(--s-2); min-width: 0; font-weight: 600; }
+/* The ellipsis goes on the TEXT, never on the flex container. On the container it clipped the tags
+   sitting beside the name — so "paid", the one word on the row that says this column costs money,
+   was the thing cut off. */
+.cc-limits__label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cc-limits__table { min-width: 0; text-align: left; }
+
+/* Solid, not a semi-transparent wash. */
+.cc-limits__tag {
+  flex: 0 0 auto;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: var(--r-xs);
+  background: var(--canvas-sunk);
+  color: var(--ink-mute);
+  white-space: nowrap;
+}
+
+/* Tabular figures everywhere a number changes, so the count ticking up cannot change a column's
+   width while you are reading it. */
+.cc-limits__num { display: flex; flex-direction: column; gap: 3px; font-variant-numeric: tabular-nums; }
+
+.cc-limits__input {
+  /* Shrink to the content it holds. Stretched to the grid track it would be a 108px box around a
+     two-digit number, which is the dead space this codebase keeps deleting. */
+  width: 72px;
+  height: var(--control-h-sm);
+  padding: 0 var(--s-2);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--r-sm);
+  background: var(--canvas);
+  color: var(--ink);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.cc-limits__input:hover { border-color: var(--ink-faint); }
+.cc-limits__input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 2px var(--primary-tint); }
+
+.cc-limits__used { font-size: 12px; }
+.cc-limits__of { color: var(--ink-mute-2); }
+
+.cc-limits__bar {
+  display: block;
+  width: 140px;
+  height: 4px;
+  border-radius: var(--r-pill);
+  background: var(--canvas-sunk);
+  overflow: hidden;
+}
+.cc-limits__fill {
+  display: block;
+  height: 100%;
+  background: var(--primary);
+  transition: width var(--dur) var(--ease);
+}
+.cc-limits__fill--near { background: var(--status-queued-solid); }
+@media (prefers-reduced-motion: reduce) { .cc-limits__fill { transition: none; } }
+
+.cc-limits__state { display: flex; align-items: center; gap: var(--s-1); font-size: 11.5px; color: var(--ink-mute); }
+.cc-limits__near { display: inline-flex; align-items: center; gap: 4px; color: var(--status-queued-solid); font-weight: 600; }
+/* A paid column with no limit. The only place on this screen that is coloured, because it is the
+   only thing here that is a problem. */
+.cc-limits__off { color: var(--status-error-solid); font-weight: 600; }
+
+/* Mobile: the row becomes two lines rather than five squeezed columns. */
+@media (max-width: 760px) {
+  .cc-limits__row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "name state" "table table" "limit used";
+    gap: var(--s-1) var(--s-3);
+  }
+  .cc-limits__row--head { display: none; }
+  .cc-limits__name { grid-area: name; }
+  .cc-limits__table { grid-area: table; }
+  .cc-limits__row > .cc-limits__num:nth-of-type(1) { grid-area: limit; }
+  .cc-limits__row > .cc-limits__num:nth-of-type(2) { grid-area: used; }
+  .cc-limits__state { grid-area: state; }
+}
+
+/* The scope switch. Shrink-to-content and pinned left, not stretched across the modal — the heading
+   above it already says which set is showing, and this is the control that changes it. */
+.cc-limits__scope { width: max-content; }

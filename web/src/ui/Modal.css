@@ -1,0 +1,167 @@
+.cc-modal-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--s-4);
+  background: rgba(16, 22, 28, 0.34);
+  animation: cc-scrim-in 140ms var(--ease);
+}
+
+/* BOTH signals. `data-theme` is only stamped when the user overrides the system setting, so an
+   attribute-only rule left every dialog on a dark OS wearing the LIGHT scrim. */
+@media (prefers-color-scheme: dark) { .cc-modal-scrim { background: rgba(0, 0, 0, 0.58); } }
+:root[data-theme="dark"] .cc-modal-scrim { background: rgba(0, 0, 0, 0.58); }
+:root[data-theme="light"] .cc-modal-scrim { background: rgba(16, 22, 28, 0.34); }
+
+.cc-modal {
+  width: 100%;
+  max-width: 420px;
+  background: var(--canvas);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-lg);
+  box-shadow: var(--elev-3);
+  overflow: hidden;
+  animation: cc-modal-in 160ms var(--ease);
+}
+
+/* Exit, not just entrance. An overlay that animates in and then vanishes on dismiss reads as a
+   glitch; the component keeps it mounted for the duration below. */
+.cc-modal-scrim--leaving { animation: cc-scrim-out 140ms var(--ease) forwards; }
+.cc-modal--leaving { animation: cc-modal-out 140ms var(--ease) forwards; }
+
+@keyframes cc-scrim-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes cc-scrim-out { from { opacity: 1; } to { opacity: 0; } }
+@keyframes cc-modal-in {
+  from { opacity: 0; transform: translateY(6px) scale(0.985); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes cc-modal-out {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to   { opacity: 0; transform: translateY(4px) scale(0.99); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cc-modal-scrim, .cc-modal,
+  .cc-modal-scrim--leaving, .cc-modal--leaving { animation: none; }
+}
+
+.cc-modal__head {
+  padding: var(--s-4) var(--s-4) var(--s-3);
+  border-bottom: 1px solid var(--hairline);
+}
+.cc-modal__title { font-size: 14px; font-weight: 600; letter-spacing: -0.006em; }
+
+.cc-modal__body {
+  padding: var(--s-3) var(--s-4) var(--s-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+}
+
+/* Label left, value right — the row spans edge to edge rather than leaving a gap in the middle. */
+.cc-modal__stat {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  /* WIDTH, or space-between has nothing to distribute. Without it the row shrink-wrapped to its two
+     children and they butted together — the import summary read "Rows added2" and "Columns
+     created4". The rule was written for the right layout and never got the width that makes it
+     possible. */
+  width: 100%;
+  /* And a floor under the gap, so a long label beside a long value still reads as two things. */
+  gap: var(--s-4);
+  height: 26px;
+  font-size: 12.5px;
+}
+.cc-modal__stat-label { color: var(--ink-mute); }
+.cc-modal__stat-value { color: var(--ink); font-weight: 500; }
+
+/* The cost sits below a rule and is the heaviest line in the block — it is the number the decision
+   turns on, and it should not read as one stat among four. */
+.cc-modal__stat--cost {
+  margin-top: var(--s-1);
+  padding-top: var(--s-2);
+  border-top: 1px solid var(--hairline);
+  height: 30px;
+}
+.cc-modal__stat--cost .cc-modal__stat-label { color: var(--ink-secondary); }
+.cc-modal__stat--cost .cc-modal__stat-value { font-size: 14px; font-weight: 600; }
+
+/* Label left, model in the middle, money right — the row spans its width instead of leaving a void
+   beside a short column name. */
+.cc-modal__breakdown {
+  list-style: none;
+  margin: var(--s-1) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.cc-modal__breakdown li {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  font-size: 11.5px;
+  color: var(--ink-mute);
+}
+.cc-modal__bd-name { flex: 0 1 auto; min-width: 0; color: var(--ink-secondary); }
+/* The model name is what the row is priced against, so it is content and not decoration —
+   --ink-faint measures 2.33:1 here. */
+.cc-modal__bd-model { flex: 1 1 auto; min-width: 0; font-size: 10.5px; color: var(--ink-mute-2); }
+/* Reserved, so a breakdown row cannot change width as the estimate resolves. */
+.cc-modal__bd-cost { flex: 0 0 auto; min-width: 68px; text-align: right; color: var(--ink); }
+
+.cc-modal__summary {
+  margin-top: var(--s-3);
+  padding-top: var(--s-3);
+  border-top: 1px solid var(--hairline);
+  font-size: 12px;
+  color: var(--ink-secondary);
+  line-height: 1.55;
+}
+
+.cc-modal__warn {
+  margin-top: var(--s-3);
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-sm);
+  background: var(--band-queued);
+  font-size: 12px;
+  color: var(--ink-secondary);
+  line-height: 1.5;
+}
+
+.cc-modal__error {
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--status-error-solid);
+  border-radius: var(--r-sm);
+  background: var(--band-error);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+/* Fixed height so resolving the scope does not resize the dialog under the pointer. */
+.cc-modal__resolving {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  min-height: 104px;
+  padding-top: var(--s-2);
+}
+
+.cc-modal__foot {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-3) var(--s-4);
+  border-top: 1px solid var(--hairline);
+  background: var(--canvas-soft);
+}
+.cc-modal__foot-note {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 11.5px;
+  color: var(--ink-mute);
+}
+.cc-modal__actions { display: flex; gap: var(--s-2); flex: 0 0 auto; }

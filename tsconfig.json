@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2023", "DOM"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "types": ["node"],
+    "baseUrl": ".",
+    // Vite resolves @shared for the browser bundle; tsx needs the same mapping HERE, because the
+    // test runner executes web/src/**/*.test.ts from this root. Without it the web typecheck passes
+    // and the tests fail to resolve the import at run time, which reads as a broken test rather
+    // than a missing config line.
+    "paths": { "@shared/*": ["./src/*"] }
+  },
+  "include": ["src"],
+  "exclude": ["node_modules", "dist", "web"]
+}

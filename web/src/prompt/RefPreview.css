@@ -1,0 +1,65 @@
+/* The hover card showing what a referenced column actually holds. */
+
+.cc-refprev {
+  position: fixed;
+  /* Above the column drawer (900), because that is where this is summoned from. At 90 it rendered
+     BEHIND the drawer and the hover appeared to do nothing at all -- the element was in the DOM,
+     which is why a check that only asked 'did it render' passed while nobody could see it. */
+  z-index: 1010;
+  width: 288px;
+  padding: 0;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  background: var(--canvas);
+  box-shadow: var(--elev-3);
+  overflow: hidden;
+  pointer-events: none;  /* a hover card must never eat the pointer that summoned it */
+}
+
+.cc-refprev__head {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--hairline);
+  background: var(--canvas-soft);
+}
+.cc-refprev__name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.cc-refprev__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+.cc-refprev__table th {
+  padding: 4px 10px;
+  text-align: left;
+  font-weight: 600;
+  font-size: 10.5px;
+  color: var(--ink-mute);
+  border-bottom: 1px solid var(--hairline);
+}
+.cc-refprev__table td {
+  padding: 3px 10px;
+  border-bottom: 1px solid var(--hairline);
+  vertical-align: top;
+}
+.cc-refprev__table tr:last-child td { border-bottom: 0; }
+
+.cc-refprev__n { width: 34px; color: var(--ink-mute); }
+.cc-refprev__v {
+  font-family: var(--font-mono);
+  color: var(--ink);
+  max-width: 0;            /* forces the cell to obey the table width so long values truncate */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cc-refprev__empty { color: var(--ink-faint); font-style: italic; font-family: var(--font-ui); }
+
+.cc-refprev__none { margin: 0; padding: 10px; font-size: 12px; color: var(--ink-mute); }
+
+/* Reserved, so the card does not resize under the pointer when the values land. */
+.cc-refprev__skel { height: 168px; background: var(--canvas-soft); }

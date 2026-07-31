@@ -1,0 +1,128 @@
+/* ⌘K.
+
+   Sits ABOVE the modal layer (1100) rather than beside it: the palette can be opened over a drawer
+   or a dialog, and one that renders underneath the thing it was opened over is worse than none.
+
+   Anchored near the top rather than centred. Centring a list that changes height as you type moves
+   the row under your cursor on every keystroke — the box stays put and only the list below it
+   grows. */
+.cc-cmdk {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 12vh var(--s-4) var(--s-4);
+  background: rgba(16, 22, 28, 0.34);
+  animation: cc-cmdk-scrim-in var(--dur-fast) var(--ease);
+}
+/* BOTH signals, not just the attribute. The theme is normally decided by `prefers-color-scheme`
+   and `data-theme` is only stamped when the user overrides it — so an attribute-only rule leaves
+   the scrim at its light value for everybody on a dark OS, which is most people who see it. */
+@media (prefers-color-scheme: dark) { .cc-cmdk { background: rgba(0, 0, 0, 0.58); } }
+:root[data-theme="dark"] .cc-cmdk { background: rgba(0, 0, 0, 0.58); }
+:root[data-theme="light"] .cc-cmdk { background: rgba(16, 22, 28, 0.34); }
+
+.cc-cmdk__panel {
+  width: 100%;
+  max-width: 560px;
+  display: flex;
+  flex-direction: column;
+  /* A ceiling, not a fixed height: with three results the panel is three rows tall rather than a
+     mostly-empty box. The list scrolls inside once it passes this. */
+  max-height: min(60vh, 480px);
+  background: var(--canvas);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-lg);
+  box-shadow: var(--elev-3);
+  overflow: hidden;
+  animation: cc-cmdk-in 140ms var(--ease);
+}
+
+.cc-cmdk--out { animation: cc-cmdk-scrim-out var(--dur-fast) var(--ease) forwards; }
+.cc-cmdk--out .cc-cmdk__panel { animation: cc-cmdk-out var(--dur-fast) var(--ease) forwards; }
+
+@keyframes cc-cmdk-scrim-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes cc-cmdk-scrim-out { from { opacity: 1; } to { opacity: 0; } }
+@keyframes cc-cmdk-in {
+  from { opacity: 0; transform: translateY(-6px) scale(0.985); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes cc-cmdk-out {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to   { opacity: 0; transform: translateY(-4px) scale(0.99); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cc-cmdk, .cc-cmdk__panel, .cc-cmdk--out, .cc-cmdk--out .cc-cmdk__panel { animation: none; }
+}
+
+/* No border and no focus ring on the input: it is the only focusable thing in the panel and it is
+   focused from the moment it opens, so a ring around the whole width is noise rather than
+   information. The hairline under it is what separates it from the list. */
+.cc-cmdk__input {
+  flex: 0 0 auto;
+  height: var(--s-9);
+  padding: 0 var(--s-4);
+  border: 0;
+  border-bottom: 1px solid var(--hairline);
+  background: transparent;
+  color: var(--ink);
+  font-size: 15px;
+  outline: none;
+}
+.cc-cmdk__input::placeholder { color: var(--ink-faint); }
+
+.cc-cmdk__list {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: var(--s-2) 0;
+  /* Reserved so a list that narrows from twelve results to one does not collapse the panel to a
+     sliver under the cursor mid-keystroke. */
+  min-height: 88px;
+}
+
+.cc-cmdk__grouphead {
+  padding: var(--s-2) var(--s-4) var(--s-1);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-mute-2);
+}
+
+.cc-cmdk__row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  height: var(--row-h);
+  padding: 0 var(--s-4);
+  cursor: pointer;
+  /* Both slots are always present at a fixed height, so moving the cursor down the list cannot
+     resize a row and shift the ones under it. */
+  color: var(--ink);
+}
+.cc-cmdk__row[data-active="true"] { background: var(--primary-tint); }
+.cc-cmdk__row:active { background: var(--canvas-sunk); }
+
+/* Offered and refused, with the reason in the hint slot. Dimmed rather than hidden — see the note
+   on `disabledReason`. */
+.cc-cmdk__row--off { cursor: not-allowed; color: var(--ink-mute); }
+.cc-cmdk__row--off[data-active="true"] { background: var(--canvas-sunk); }
+
+.cc-cmdk__label { flex: 1 1 auto; min-width: 0; }
+.cc-cmdk__hit { color: var(--primary); font-weight: 600; }
+
+.cc-cmdk__hint {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--ink-mute-2);
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cc-cmdk__empty {
+  padding: var(--s-5) var(--s-4);
+  color: var(--ink-mute);
+  font-size: 13px;
+}

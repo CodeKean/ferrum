@@ -1,0 +1,86 @@
+.cc-wiz { display: flex; flex-direction: column; gap: var(--s-3); }
+
+.cc-wiz__lead { margin: 0; font-size: 13px; line-height: 1.55; color: var(--ink); }
+.cc-wiz__note { margin: 0; font-size: 12px; line-height: 1.5; color: var(--ink-mute); }
+
+/* The conversation. Scrolls inside its own box so a long interview cannot push the answer field
+   off the bottom of the dialog. */
+.cc-wiz__thread {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  margin: 0;
+  padding: 0;
+  max-height: 200px;
+  overflow-y: auto;
+  list-style: none;
+}
+.cc-wiz__turn { display: grid; grid-template-columns: 48px minmax(0, 1fr); gap: var(--s-2); font-size: 12.5px; line-height: 1.5; }
+.cc-wiz__who { font-size: 10.5px; color: var(--ink-faint); padding-top: 2px; }
+.cc-wiz__text { white-space: pre-wrap; color: var(--ink-mute); }
+.cc-wiz__turn--user .cc-wiz__text { color: var(--ink); }
+
+.cc-wiz__questions { display: flex; flex-direction: column; gap: var(--s-2); margin: 0; padding: 0; list-style: none; }
+.cc-wiz__questions li { display: flex; flex-direction: column; gap: 1px; }
+.cc-wiz__q { font-size: 13px; font-weight: 600; color: var(--ink); }
+.cc-wiz__why { font-size: 11.5px; color: var(--ink-faint); }
+
+.cc-wiz__box {
+  width: 100%;
+  padding: var(--s-2);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--r-sm);
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  resize: vertical;
+}
+.cc-wiz__box:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--focus-ring); }
+
+/* Hint left, action right — the strip spans its width rather than packing at one end. */
+.cc-wiz__foot { display: flex; align-items: center; gap: var(--s-3); }
+.cc-wiz__hint { flex: 1 1 auto; min-width: 0; font-size: 11px; color: var(--ink-faint); }
+.cc-wiz__foot .cc-btn--xs { margin-left: auto; }
+
+.cc-wiz__facts { display: flex; flex-wrap: wrap; gap: var(--s-2); }
+.cc-wiz__fact {
+  font-size: 11.5px;
+  color: var(--ink-mute);
+  padding: 3px var(--s-2);
+  border-radius: var(--r-xs);
+  background: var(--canvas-sunk);
+}
+.cc-wiz__fact strong { color: var(--ink); font-weight: 600; }
+
+/* One line per column: name · what fills it · type · why. Fixed tracks on the small parts so a long
+   note cannot push the type out of line down the list. */
+.cc-wiz__cols { display: flex; flex-direction: column; gap: 1px; margin: 0; padding: 0; list-style: none; }
+.cc-wiz__col {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) 110px 64px minmax(0, 1.4fr);
+  align-items: center;
+  gap: var(--s-2);
+  min-height: 30px;
+  padding: 0 var(--s-1);
+  border-radius: var(--r-xs);
+  font-size: 12px;
+}
+.cc-wiz__col:hover { background: var(--control-hover); }
+.cc-wiz__colname { font-weight: 500; }
+.cc-wiz__colkind { color: var(--ink-mute); font-size: 11.5px; }
+.cc-wiz__coltype { color: var(--ink-faint); font-size: 10.5px; }
+.cc-wiz__colnote { color: var(--ink-faint); font-size: 11.5px; }
+
+.cc-wiz__missing {
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-sm);
+  background: var(--band-queued);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.cc-wiz__missinglead { font-weight: 600; color: var(--ink); }
+.cc-wiz__missing ul { margin: var(--s-1) 0 0; padding-left: 18px; color: var(--ink-mute); }
+
+.cc-wiz__plan, .cc-wiz__done { display: flex; flex-direction: column; gap: var(--s-3); }

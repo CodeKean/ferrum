@@ -1,0 +1,121 @@
+/* Segmented strip: hairline dividers via a 1px grid gap over a hairline background, so there are no
+   per-segment borders and it wraps cleanly. */
+
+.cc-runstrip {
+  display: flex;
+  align-items: stretch;
+  height: var(--runbar-h);
+  flex: 0 0 auto;
+  background: var(--hairline);
+  gap: 1px;
+  border-bottom: 1px solid var(--hairline);
+  overflow: hidden;
+  animation: cc-rs-in 200ms var(--ease);
+}
+
+@keyframes cc-rs-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cc-runstrip { animation: none; }
+}
+
+.cc-rs__seg {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: 0 var(--s-3);
+  background: var(--canvas);
+  font-size: 11.5px;
+  color: var(--ink-secondary);
+  white-space: nowrap;
+  /* Everything except the bar shrinks to its content — this is what stops a lone control floating
+     at the far edge with a void beside it. */
+  flex: 0 0 auto;
+  width: max-content;
+}
+
+.cc-rs__icon {
+  padding: 0 var(--s-2);
+  color: var(--ink-mute);
+  transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.cc-rs__icon:hover { background: var(--control-hover); color: var(--ink); }
+.cc-rs__icon:active { transform: scale(0.94); }
+.cc-rs__cancel:hover { color: var(--status-error-solid); }
+
+.cc-rs__label {
+  max-width: 320px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--ink);
+  font-weight: 500;
+}
+
+/* THE only flex:1 segment. */
+.cc-rs__bar-seg {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 160px;
+  gap: var(--s-3);
+}
+
+.cc-rs__track {
+  position: relative;
+  flex: 1 1 auto;
+  height: 4px;
+  border-radius: var(--r-pill);
+  background: var(--hairline);
+  overflow: hidden;
+}
+
+.cc-rs__fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-radius: var(--r-pill);
+  transition: width var(--dur) var(--ease);
+}
+/* Painted back-to-front: error is the widest and sits behind, done is narrowest and on top, so the
+   segments read as one stacked track rather than three bars. */
+.cc-rs__fill--done { background: var(--status-done-solid); z-index: 2; }
+.cc-rs__fill--skip { background: var(--status-idle-solid); }
+.cc-rs__fill--err  { background: var(--status-error-solid); }
+
+@media (prefers-reduced-motion: reduce) {
+  .cc-rs__fill { transition: none; }
+}
+
+/* Reserved widths, each sized to the largest value it can hold. Without these the strip resizes as
+   numbers grow, and everything to the right of a changing number jitters. */
+.cc-rs__count  { min-width: 104px; color: var(--ink); }
+.cc-rs__pct    { min-width: 40px;  justify-content: flex-end; }
+.cc-rs__cost   { min-width: 74px;  justify-content: flex-end; }
+.cc-rs__time   { min-width: 52px;  justify-content: flex-end; color: var(--ink-mute); }
+.cc-rs__eta    { min-width: 62px;  justify-content: flex-end; color: var(--ink-mute); }
+.cc-rs__skip   { min-width: 84px;  color: var(--ink-mute); }
+
+.cc-rs__errors {
+  min-width: 72px;
+  color: var(--status-error-solid);
+  font-weight: 500;
+  transition: background-color var(--dur-fast) var(--ease);
+}
+.cc-rs__errors:hover { background: var(--band-error); }
+
+.cc-rs__chip {
+  min-width: 32px;
+  justify-content: center;
+  color: var(--ink-mute);
+  font-weight: 500;
+}
+
+/* 375px: keep pause, the bar and the count; the rest collapses rather than overflowing. */
+@media (max-width: 768px) {
+  .cc-rs__pct, .cc-rs__eta, .cc-rs__time, .cc-rs__skip, .cc-rs__label { display: none; }
+  .cc-rs__seg { padding: 0 var(--s-2); }
+  .cc-rs__count { min-width: 88px; }
+}

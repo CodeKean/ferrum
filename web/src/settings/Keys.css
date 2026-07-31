@@ -1,0 +1,149 @@
+/* Saved keys. */
+
+.cc-keys__groups { display: flex; flex-direction: column; gap: var(--s-4); }
+
+.cc-keys__cat {
+  margin: 0 0 var(--s-2);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-mute);
+}
+
+.cc-keys__list {
+  container: cc-keys / inline-size;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--hairline);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+}
+
+.cc-keys__row {
+  display: flex;
+  align-items: center;
+  /* Wraps on the container, and the text column has a floor — the same rule the schedule rows
+     learned: the part that must stay readable must not be the part that gives. */
+  flex-wrap: wrap;
+  gap: var(--s-2) var(--s-3);
+  padding: var(--s-2) var(--s-3);
+  background: var(--canvas);
+  min-height: 46px;
+}
+
+.cc-keys__main {
+  flex: 1 1 200px;
+  min-width: 160px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.cc-keys__name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cc-keys__meta { font-size: 11px; color: var(--ink-mute); }
+.cc-keys__ref {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  padding: 1px 4px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-xs);
+  background: var(--canvas-soft);
+  color: var(--ink-mute);
+}
+
+/* Fixed so a longer mask cannot move the controls beside it. */
+.cc-keys__masked {
+  flex: 0 0 auto;
+  width: 116px;
+  font-size: 11.5px;
+  color: var(--ink-mute);
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cc-keys__used {
+  flex: 0 0 auto;
+  width: 104px;
+  font-size: 11px;
+  color: var(--ink-mute);
+  text-align: right;
+  white-space: nowrap;
+}
+
+@container cc-keys (max-width: 420px) {
+  .cc-keys__masked, .cc-keys__used { width: auto; text-align: left; }
+}
+
+/* ── the form ────────────────────────────────────────────────────────────────────────────────── */
+
+.cc-keys__form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-3) var(--s-4);
+  align-items: flex-end;
+  margin-top: var(--s-3);
+  padding: var(--s-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  background: var(--canvas);
+}
+.cc-keys__form .cc-field { flex: 1 1 160px; min-width: 0; }
+.cc-keys__wide { flex: 1 1 100% !important; }
+.cc-keys__acts { display: flex; gap: var(--s-2); }
+.cc-keys__add { margin-top: var(--s-3); align-self: flex-start; }
+
+/* ── confirm ─────────────────────────────────────────────────────────────────────────────────── */
+
+.cc-keys__confirm {
+  margin-top: var(--s-3);
+  padding: var(--s-3);
+  border: 1px solid var(--status-error-solid);
+  border-radius: var(--r-sm);
+  background: var(--canvas);
+}
+.cc-keys__confirm__h { margin: 0 0 4px; font-size: 13px; font-weight: 600; color: var(--ink); }
+.cc-keys__confirm__p { margin: 0 0 var(--s-2); font-size: 12px; line-height: 1.5; color: var(--ink-mute); }
+.cc-keys__confirm__list {
+  margin: 0 0 var(--s-3);
+  padding-left: var(--s-4);
+  font-size: 12px;
+  color: var(--ink);
+}
+
+/* ── empty / skeleton ────────────────────────────────────────────────────────────────────────── */
+
+.cc-keys__empty {
+  min-height: 110px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  padding: var(--s-4);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  background: var(--canvas);
+}
+.cc-keys__empty__h { margin: 0; font-size: 13px; font-weight: 600; color: var(--ink); }
+.cc-keys__empty__p { margin: 0; font-size: 12px; line-height: 1.5; color: var(--ink-mute); }
+
+.cc-keys__skel {
+  height: 110px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  background: var(--canvas-soft);
+  animation: cc-keys-pulse 1.2s ease-in-out infinite;
+}
+@keyframes cc-keys-pulse { 0%, 100% { opacity: 1 } 50% { opacity: 0.55 } }
+@media (prefers-reduced-motion: reduce) { .cc-keys__skel { animation: none; } }

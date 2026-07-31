@@ -1,0 +1,157 @@
+/* One row, as a page.
+
+   A single readable column of fields, centred, with a fixed measure. Stretching the field list to
+   the full width of a 2,000px monitor would put the label at the far left and the value at the far
+   right with a metre of nothing between them — the horizontal void the grid already suffers from,
+   reproduced by the screen built to escape it. */
+
+.cc-rec {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  background: var(--canvas);
+}
+
+.cc-rec__head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  height: var(--toolbar-h-1);
+  padding: 0 var(--s-3);
+  border-bottom: 1px solid var(--hairline);
+  flex: 0 0 auto;
+}
+
+/* Between the back button and the arrows, so the row is filled edge to edge rather than leaving the
+   nav floating at the far right with a void beside it. Tabular figures: the count changes on every
+   step and must not resize as it does. */
+.cc-rec__count {
+  flex: 1 1 auto;
+  font-size: 12px;
+  color: var(--ink-mute-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.cc-rec__nav { display: flex; gap: var(--s-1); flex: 0 0 auto; }
+
+.cc-rec__body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: var(--s-6) var(--s-4) var(--s-9);
+}
+
+.cc-rec__fields {
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+  display: grid;
+  /* A hairline grid rather than a border per field: one continuous set of rules, and no doubled
+     1px line where two fields meet. */
+  gap: 1px;
+  background: var(--hairline);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+
+.cc-rec__field {
+  display: grid;
+  /* A fixed label column, the value taking the rest, and a fixed marks column. Fixed on both edges
+     so the value's left edge is in the same place on every row — a label-width that follows its own
+     text makes the whole page ragged. */
+  grid-template-columns: 200px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--s-3);
+  background: var(--canvas);
+  padding: var(--s-3);
+  /* Reserved, so an empty field and a filled one are the same height and filling one in cannot
+     shift every field below it. */
+  min-height: 44px;
+}
+
+.cc-rec__label {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-secondary);
+  /* Nudged down so it sits on the first line of a value that wraps to three. */
+  padding-top: 5px;
+}
+
+.cc-rec__value { min-width: 0; }
+
+/* Borderless and transparent: reading is the common case, and thirty bordered boxes reads as a form
+   rather than a record. The box only appears on focus, where it is information. */
+.cc-rec__input {
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  background: transparent;
+  padding: 4px 6px;
+  margin: -1px -7px;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.45;
+  resize: none;
+  overflow: hidden;
+}
+.cc-rec__input:hover { border-color: var(--hairline-strong); }
+.cc-rec__input:focus {
+  outline: none;
+  border-color: var(--primary);
+  background: var(--canvas);
+}
+
+.cc-rec__ro {
+  padding: 4px 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--ink);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.cc-rec__empty { color: var(--ink-faint); }
+
+.cc-rec__marks {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  flex: 0 0 auto;
+  /* Reserved, so a field gaining a "stale" mark does not resize its row. */
+  min-height: 26px;
+}
+
+/* Solid, not a transparent wash — the same rule the grid's pills follow. */
+.cc-rec__mark {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: var(--r-pill);
+  background: var(--canvas-sunk);
+  color: var(--ink-mute);
+  white-space: nowrap;
+}
+
+.cc-rec__error {
+  max-width: 760px;
+  margin: 0 auto var(--s-4);
+  color: var(--ink-mute);
+  font-size: 13px;
+}
+
+/* Mobile: the label above the value, because a 200px label column leaves a 90px value on a phone. */
+@media (max-width: 640px) {
+  .cc-rec__field {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "label marks" "value value";
+    gap: var(--s-1) var(--s-3);
+  }
+  .cc-rec__label { grid-area: label; padding-top: 0; }
+  .cc-rec__value { grid-area: value; }
+  .cc-rec__marks { grid-area: marks; }
+}

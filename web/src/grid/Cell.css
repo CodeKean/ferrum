@@ -1,0 +1,319 @@
+/* The three-slot box. Every dimension here is fixed or min-width'd — nothing in a cell may grow. */
+
+.cc-cell {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+  height: var(--row-h);
+  padding: 0 var(--cell-pad-x);
+  border-right: 1px solid var(--grid-line);
+  overflow: hidden;
+  flex: 0 0 auto;
+  position: relative;
+  font-size: 12.5px;
+}
+
+/* Status slot: always present, fixed width, even when it renders nothing. This is half the reason
+   a state change costs zero layout shift. */
+.cc-cell__status {
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-mute);
+}
+
+.cc-cell__value {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Action slot: reserved at rest so revealing the button on hover cannot reflow the value.
+
+   Hidden with OPACITY, not `visibility: hidden`. Visibility takes the button out of the tab order,
+   which made the reveal a closed loop: the only other way in was `:focus-within`, and focus can
+   never reach something that is not tabbable. Measured: the button was unreachable by keyboard on
+   all 440 rendered cells. Opacity is what `.cc-th__run` and `.cc-th__menu` already use, and those
+   stay tabbable. */
+.cc-cell__action {
+  flex: 0 0 20px;
+  width: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease);
+}
+.cc-cell:hover .cc-cell__action,
+.cc-cell:focus-within .cc-cell__action { opacity: 1; }
+
+.cc-cell__btn { width: 20px; height: 20px; }
+
+/* ── corner marks ───────────────────────────────────────────────────────────
+   What is true of a cell ALONGSIDE its status: you typed this, and it no longer agrees with what
+   the column produces.
+
+   In the corner rather than in the value, because the cell is for the value — a value with an
+   explanation appended is one nobody can copy, sort or trust. And alongside the status rather than
+   instead of it: both of these used to REPLACE the status glyph, so the two states most worth
+   knowing about a cell were the two that hid what the cell had actually done. An errored cell could
+   render as a hand.
+
+   Absolutely positioned, so they cost the value no width at any size. Bottom-RIGHT, tucked under the
+   baseline of the text and clear of the details button, which is vertically centred. */
+.cc-cell__marks {
+  position: absolute;
+  right: 2px;
+  bottom: 1px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  pointer-events: none;
+}
+
+.cc-cell__mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* Pointer events back ON for the mark itself, so the title still appears on hover — the wrapper
+     turns them off so the marks never swallow a click meant for the cell. */
+  pointer-events: auto;
+  cursor: help;
+}
+
+/* Amber for both. They are the same class of fact — "a human is involved in why this looks like
+   this" — and neither is an error: an overridden cell is working as asked, and a diverged one is a
+   disagreement to settle rather than a failure to fix. Red would say otherwise. */
+.cc-cell__mark--hand,
+.cc-cell__mark--stale { color: var(--mark-hand); }
+
+/* The details button sits over this corner when it appears. The marks fade rather than jump so the
+   button lands on a clean field, and nothing moves. */
+.cc-cell:hover .cc-cell__marks,
+.cc-cell:focus-within .cc-cell__marks { opacity: 0.55; }
+.cc-cell__marks { transition: opacity var(--dur-fast) var(--ease); }
+
+/* Carried to a screen reader in the ordinary way, since the marks themselves are aria-hidden. */
+.cc-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* The roving-focus target. Drawn INSIDE the cell: at the global +1px offset the ring lands on the
+   neighbouring cell's border, and at the edge of the scrollport it is clipped away entirely. */
+.cc-cell:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+  border-radius: 0;
+}
+
+/* Secondary text — queued/skipped labels and the elapsed timer. min-width is sized to the widest
+   value each can reach so the number changing cannot resize the cell's internals. */
+.cc-cell__meta {
+  color: var(--ink-mute-2);
+  font-size: 11px;
+  display: inline-block;
+  min-width: 52px;
+}
+.cc-cell__value .mono.cc-cell__meta { min-width: 40px; } /* fits up to 99:59 */
+
+.cc-cell__err {
+  color: var(--status-error-solid);
+  font-size: 11px;
+  display: inline-block;
+  min-width: 52px;
+}
+
+/* Large soft bands — the one permitted low-alpha use. Small affordances stay solid. */
+.cc-cell--band.cc-cell--queued  { background: var(--band-queued); }
+.cc-cell--band.cc-cell--running { background: var(--band-running); }
+.cc-cell--band.cc-cell--error   { background: var(--band-error); }
+.cc-cell--band.cc-cell--idle    { background: var(--band-skipped); }
+
+/* ── glyphs ─────────────────────────────────────────────────── */
+
+.cc-glyph { display: inline-block; }
+
+.cc-glyph--ring {
+  width: 10px; height: 10px;
+  border: 1.5px solid var(--status-queued-solid);
+  border-radius: 50%;
+}
+
+.cc-glyph--arc {
+  width: 12px; height: 12px;
+  border: 1.5px solid transparent;
+  border-top-color: var(--status-running-solid);
+  border-right-color: var(--status-running-solid);
+  border-radius: 50%;
+  animation: cc-spin 1s linear infinite;
+}
+
+.cc-glyph--dash {
+  width: 8px; height: 1.5px;
+  background: var(--status-idle-solid);
+  border-radius: var(--r-pill);
+}
+
+@keyframes cc-spin { to { transform: rotate(360deg); } }
+
+/* Under reduced motion the arc stops rotating and reads as a static three-quarter arc; the elapsed
+   timer still ticks, so liveness is never conveyed by movement alone. */
+@media (prefers-reduced-motion: reduce) {
+  .cc-glyph--arc { animation: none; }
+}
+
+/* ── arrival ────────────────────────────────────────────────────
+   The "the sheet is filling itself in" moment. Both the fade and the underline wipe are composited
+   (opacity + transform on a pseudo-element), so this costs zero layout and cannot shift a row. */
+
+.cc-cell[data-status="done"] .cc-cell__value { animation: cc-fade-in 140ms var(--ease); }
+
+.cc-cell[data-status="done"]::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 1px;
+  background: var(--status-done-solid);
+  transform-origin: left;
+  animation: cc-wipe 1100ms var(--ease) forwards;
+  pointer-events: none;
+}
+
+@keyframes cc-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes cc-wipe {
+  0%   { transform: scaleX(0); opacity: 1; }
+  18%  { transform: scaleX(1); opacity: 1; }
+  73%  { transform: scaleX(1); opacity: 1; }
+  100% { transform: scaleX(1); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cc-cell[data-status="done"] .cc-cell__value { animation: none; }
+  .cc-cell[data-status="done"]::after { animation: none; opacity: 0; }
+}
+
+
+/* ── typing into a cell ──────────────────────────────────────────────────────────────────────────
+
+   The editor is an OVERLAY of the whole cell, not a box squeezed into the value slot. Three things
+   follow from that, and each was wrong in the first version:
+
+   1. It sits at the cell's own edges and inherits the cell's font and padding, so the text does not
+      jump sideways or change size the instant editing starts. An editor that moves the text it is
+      about to edit is disorienting in a way that is hard to name and easy to feel.
+   2. It may GROW to the right past the column's width, the way a spreadsheet does, because column
+      width is a viewing decision and has nothing to do with how much you are allowed to type.
+   3. It is LIFTED — a crisp ring in the brand colour plus a real shadow — so it reads as a thing
+      floating over the grid rather than a cell that has changed colour.
+
+   The cell stops clipping and rises above its neighbours only while this is on. */
+.cc-cell--editing {
+  overflow: visible;
+  z-index: 5;
+}
+/* The two side slots go while editing. They are reserved space for a status glyph and a hover
+   button, and neither means anything to a cell that is mid-edit — leaving them in only narrows the
+   box the user is typing into. */
+.cc-cell--editing .cc-cell__status,
+.cc-cell--editing .cc-cell__action { display: none; }
+.cc-cell--editing .cc-cell__value {
+  position: static;
+  overflow: visible;
+}
+
+.cc-cell__edit {
+  position: absolute;
+  /* -1px so it covers the grid line on every side rather than sitting inside it, which would leave
+     a one-pixel frame of the old cell showing around the editor. */
+  inset: -1px auto -1px -1px;
+  min-width: calc(100% + 2px);
+  width: max-content;
+  max-width: 520px;
+  /* The cell's own metrics, so nothing shifts when the input appears. */
+  padding: 0 var(--cell-pad-x);
+  border: 0;
+  border-radius: var(--r-xs);
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: var(--row-h);
+  /* Ring by shadow rather than outline: an outline is drawn outside the box and would be clipped by
+     the scrollport at the edges of the grid, which is exactly where a cell most often is. */
+  box-shadow: 0 0 0 2px var(--primary), var(--elev-2);
+  outline: none;
+}
+.cc-cell__edit::selection { background: var(--primary-tint); }
+
+/* The hand-typed marker sits in the status slot at rest and gets out of the way on hover, where the
+   slot's ordinary job — showing what happened to the cell — matters more. */
+.cc-cell__status--hand { color: var(--ink-faint); }
+.cc-cell:hover .cc-cell__status--hand { color: var(--ink-mute); }
+
+/* ── the selected range ────────────────────────────────────────────────────────
+   
+   A tint plus a border drawn only on the OUTSIDE edges, so a 400-row selection reads as one block
+   rather than 400 outlined boxes. Inset box-shadows rather than borders: a border changes the box
+   and every selected cell would shift its content by a pixel as the selection moved over it, which
+   is exactly the layout shift the zero-CLS contract in this file exists to prevent.
+   
+   The tint is the brand tint, which is a real solid token in both themes — not a color-mix wash. */
+.cc-cell--sel { background: var(--primary-tint); }
+/* The active cell keeps its own focus ring on top of the tint, so it is always clear where typing
+   will land inside a multi-cell selection. */
+.cc-cell--sel-t { box-shadow: inset 0 1px 0 0 var(--primary); }
+.cc-cell--sel-r { box-shadow: inset -1px 0 0 0 var(--primary); }
+.cc-cell--sel-b { box-shadow: inset 0 -1px 0 0 var(--primary); }
+.cc-cell--sel-l { box-shadow: inset 1px 0 0 0 var(--primary); }
+/* Corners need both edges at once, and box-shadow does not accumulate across rules — the last one
+   wins. So every combination that a rectangle can actually produce is written out. */
+.cc-cell--sel-t.cc-cell--sel-r { box-shadow: inset 0 1px 0 0 var(--primary), inset -1px 0 0 0 var(--primary); }
+.cc-cell--sel-t.cc-cell--sel-l { box-shadow: inset 0 1px 0 0 var(--primary), inset 1px 0 0 0 var(--primary); }
+.cc-cell--sel-b.cc-cell--sel-r { box-shadow: inset 0 -1px 0 0 var(--primary), inset -1px 0 0 0 var(--primary); }
+.cc-cell--sel-b.cc-cell--sel-l { box-shadow: inset 0 -1px 0 0 var(--primary), inset 1px 0 0 0 var(--primary); }
+.cc-cell--sel-t.cc-cell--sel-b { box-shadow: inset 0 1px 0 0 var(--primary), inset 0 -1px 0 0 var(--primary); }
+.cc-cell--sel-l.cc-cell--sel-r { box-shadow: inset 1px 0 0 0 var(--primary), inset -1px 0 0 0 var(--primary); }
+.cc-cell--sel-t.cc-cell--sel-r.cc-cell--sel-l { box-shadow: inset 0 1px 0 0 var(--primary), inset -1px 0 0 0 var(--primary), inset 1px 0 0 0 var(--primary); }
+.cc-cell--sel-b.cc-cell--sel-r.cc-cell--sel-l { box-shadow: inset 0 -1px 0 0 var(--primary), inset -1px 0 0 0 var(--primary), inset 1px 0 0 0 var(--primary); }
+.cc-cell--sel-t.cc-cell--sel-b.cc-cell--sel-l { box-shadow: inset 0 1px 0 0 var(--primary), inset 0 -1px 0 0 var(--primary), inset 1px 0 0 0 var(--primary); }
+.cc-cell--sel-t.cc-cell--sel-b.cc-cell--sel-r { box-shadow: inset 0 1px 0 0 var(--primary), inset 0 -1px 0 0 var(--primary), inset -1px 0 0 0 var(--primary); }
+.cc-cell--sel-t.cc-cell--sel-b.cc-cell--sel-l.cc-cell--sel-r {
+  box-shadow: inset 0 1px 0 0 var(--primary), inset 0 -1px 0 0 var(--primary),
+              inset 1px 0 0 0 var(--primary), inset -1px 0 0 0 var(--primary);
+}
+
+/* The fill handle. Positioned over the bottom-right corner of the selection and deliberately small —
+   it sits inside a 32px row and must not become a thing the pointer keeps catching on its way past.
+   The hit area is padded out beyond the visible square by a transparent border. */
+.cc-cell__fill {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  width: 7px;
+  height: 7px;
+  background: var(--primary);
+  border: 2px solid var(--canvas);
+  box-sizing: content-box;
+  cursor: crosshair;
+  z-index: 6;
+}
+/* The cell holding the handle stops clipping, or the handle — which deliberately overhangs the
+   corner so it can be grabbed without being inside the text — is cut in half by `overflow: hidden`
+   on `.cc-cell`. Only this one cell, and only while the handle is on it. */
+.cc-cell:has(> .cc-cell__fill) {
+  overflow: visible;
+  z-index: 4;
+}

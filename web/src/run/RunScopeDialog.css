@@ -1,0 +1,83 @@
+.cc-rsd { display: flex; flex-direction: column; gap: 2px; }
+
+.cc-rsd__row {
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  transition: background var(--dur-fast) var(--ease);
+}
+.cc-rsd__row--on { border-color: var(--primary); background: var(--primary-tint); }
+
+.cc-rsd__pick {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  width: 100%;
+  padding: var(--s-2) var(--s-3);
+  background: none;
+  border: 0;
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--r-sm);
+}
+.cc-rsd__row:not(.cc-rsd__row--on) .cc-rsd__pick:hover { background: var(--control-hover); }
+.cc-rsd__row:not(.cc-rsd__row--on) .cc-rsd__pick:active { background: var(--control-active); }
+
+.cc-rsd__label { font-size: 12.5px; font-weight: 500; color: var(--ink); }
+.cc-rsd__hint { font-size: 11px; color: var(--ink-mute); line-height: 1.45; }
+
+/* The redo modifier. Separated from the row list by a hairline rather than sitting inside it, because
+   it is not a fifth way to choose rows — it changes what the chosen one costs. */
+.cc-rsd__again {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  margin-bottom: var(--s-2);
+  border-bottom: 1px solid var(--hairline);
+  cursor: pointer;
+  border-radius: var(--r-sm);
+  transition: background var(--dur-fast) var(--ease);
+}
+.cc-rsd__again:hover { background: var(--control-hover); }
+.cc-rsd__again:active { background: var(--control-active); }
+.cc-rsd__again input { margin-top: 2px; flex: 0 0 auto; accent-color: var(--primary); }
+.cc-rsd__again-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+/* Both hint sentences are held at the same height so ticking the box cannot resize the dialog and
+   shift the row list under the pointer mid-decision. */
+.cc-rsd__again .cc-rsd__hint { min-height: 32px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .cc-rsd__again { transition: none; }
+}
+
+.cc-rsd__inputs {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--s-3);
+  padding: 0 var(--s-3) var(--s-2);
+}
+
+.cc-rsd__field { display: flex; flex-direction: column; gap: 2px; }
+.cc-rsd__field > span { font-size: 10.5px; color: var(--ink-mute); }
+
+/* Three classes to outrank `.cc-input { width: 100% }` — a full-width box for a row number is the
+   dead space the density rule exists to stop. */
+.cc-input.cc-input--num.cc-rsd__n {
+  height: 26px;
+  width: 82px;
+  min-width: 82px;
+  padding: 0 var(--s-2);
+  font-size: 12px;
+  text-align: right;
+}
+
+/* Right of the inputs, so the strip spans its width instead of trailing off into a void. */
+.cc-rsd__count {
+  margin-left: auto;
+  padding-bottom: 5px;
+  font-size: 11.5px;
+  color: var(--ink-secondary);
+  /* Reserved: "1 row" and "999,999 rows" must not resize the strip as the numbers are typed. */
+  min-width: 92px;
+  text-align: right;
+}

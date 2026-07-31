@@ -1,0 +1,93 @@
+.cc-sel { padding: var(--s-1) 0; max-height: 50vh; overflow-y: auto; }
+
+.cc-sel__item {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  width: 100%;
+  height: 30px;
+  padding: 0 var(--s-3);
+  background: none;
+  border: 0;
+  text-align: left;
+  font-size: 12.5px;
+  color: var(--ink);
+  cursor: pointer;
+}
+.cc-sel__item[data-active="true"] { background: var(--control-hover); }
+.cc-sel__item:active { background: var(--control-active); }
+.cc-sel__item--on { font-weight: 600; }
+
+/* Always present, never conditionally rendered — a tick that appears on selection would shift the
+   label sideways on every change. */
+.cc-sel__tick {
+  flex: 0 0 14px;
+  display: inline-flex;
+  justify-content: center;
+  color: var(--primary);
+}
+
+.cc-sel__label { flex: 1 1 auto; min-width: 0; }
+
+.cc-sel__hint {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--ink-mute);
+  /* Reserved so a count going 9 -> 1,000 cannot resize the row. */
+  min-width: 48px;
+  text-align: right;
+}
+
+/* ── search ────────────────────────────────────────────────────────────────────────────────────
+   Sticky rather than scrolling away with the list: on a 300-option menu the box you are typing into
+   must not leave the screen the moment you arrow into the results. */
+.cc-sel__search {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: var(--s-2);
+  background: var(--canvas);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.cc-sel__searchbox {
+  width: 100%;
+  height: var(--control-h-sm);
+  padding: 0 var(--s-2);
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--ink);
+  background: var(--control-bg);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+}
+.cc-sel__searchbox::placeholder { color: var(--ink-mute); }
+.cc-sel__searchbox:hover { background: var(--control-hover); }
+.cc-sel__searchbox:focus-visible,
+.cc-sel__searchbox:focus {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+  border-color: transparent;
+}
+
+/* ── groups ──────────────────────────────────────────────────────────────────────────────────── */
+.cc-sel__grouphead {
+  padding: var(--s-2) var(--s-3) var(--s-1);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-mute);
+}
+/* No rule above the first heading — a divider at the very top of a menu is a line under nothing. */
+.cc-sel__group + .cc-sel__group .cc-sel__grouphead {
+  margin-top: var(--s-1);
+  border-top: 1px solid var(--hairline);
+  padding-top: var(--s-2);
+}
+
+.cc-sel__empty {
+  padding: var(--s-4) var(--s-3);
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--ink-mute);
+  text-align: center;
+}

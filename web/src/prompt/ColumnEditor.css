@@ -1,0 +1,384 @@
+/* Right-docked drawer. No backdrop — the grid stays live behind it so a dry run is visible. */
+
+.cc-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  /* Full height — the shell reserves this width now (App.css `--dock-w`), so the tab strip ends at
+     the drawer's left edge rather than running under it. See CellPanel.css for the long version. */
+  bottom: 0;
+  width: var(--drawer-w);
+  max-width: 100vw;
+  display: flex;
+  flex-direction: column;
+  background: var(--canvas);
+  border-left: 1px solid var(--hairline);
+  box-shadow: var(--elev-3);
+  z-index: 900;
+  animation: cc-drawer-in 200ms var(--ease);
+}
+
+/* Exit, not just entrance. The rule is stated at Popover.css:16 and every other overlay in the app
+   keeps to it — this one had a 200ms entrance and no `-out` keyframe at all, so the most-used panel
+   in the product was removed from the DOM 7ms after Close while everything else faded. The drawer
+   keeps itself mounted for the duration; see EXIT_MS in ColumnEditor.tsx. */
+.cc-drawer--leaving { animation: cc-drawer-out 160ms var(--ease) forwards; }
+
+@keyframes cc-drawer-in {
+  from { transform: translateX(16px); opacity: 0; }
+  to   { transform: translateX(0); opacity: 1; }
+}
+@keyframes cc-drawer-out {
+  from { transform: translateX(0); opacity: 1; }
+  to   { transform: translateX(16px); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cc-drawer, .cc-drawer--leaving { animation: none; }
+}
+
+.cc-drawer__head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  height: 44px;
+  padding: 0 var(--s-3);
+  border-bottom: 1px solid var(--hairline);
+  flex: 0 0 auto;
+}
+
+.cc-drawer__title {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.006em;
+}
+
+.cc-drawer__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--s-4) var(--s-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-5);
+}
+
+.cc-drawer__foot {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  height: 48px;
+  padding: 0 var(--s-3);
+  border-top: 1px solid var(--hairline);
+  flex: 0 0 auto;
+}
+
+/* Label left, actions right — the strip spans edge to edge rather than leaving a void. */
+.cc-foot__meta {
+  flex: 1 1 auto;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-mute);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cc-foot__actions { display: flex; gap: var(--s-2); flex: 0 0 auto; }
+
+/* "Try [ 50 ] rows" — one phrase, so the count and the action never look unrelated. Tight gaps
+   inside, no wrap, and the number box hugs its digits rather than stretching. */
+.cc-try {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+  flex-wrap: nowrap;
+}
+.cc-try__label { font-size: 12px; color: var(--ink-mute); }
+
+/* Three classes, to outrank `.cc-input { width: 100% }`. Matching its specificity would leave the
+   winner decided by stylesheet import order, and losing that race gives a 105px box holding the
+   digit "3" — dead space by any measure. Same trap as .cc-input--num in SearchSettings.css. */
+.cc-input.cc-input--num.cc-try__n {
+  height: 26px;
+  min-width: 64px;
+  width: 64px;
+  padding: 0 var(--s-2);
+  font-size: 12px;
+  text-align: right;
+}
+
+/* ── status pills: SOLID fills, never a semi-transparent wash ── */
+
+.cc-pill {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 var(--s-2);
+  border-radius: var(--r-pill);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--on-status);
+  white-space: nowrap;
+  /* Reserved so "Not saved" -> "Needs review" -> "Approved" cannot resize the header. */
+  min-width: 84px;
+  justify-content: center;
+}
+.cc-pill--idle   { background: var(--status-idle-solid); }
+.cc-pill--queued { background: var(--status-queued-solid); }
+.cc-pill--done   { background: var(--status-done-solid); }
+
+/* ── tabs ───────────────────────────────────────────────────── */
+
+.cc-tabs {
+  display: flex;
+  gap: var(--s-4);
+  padding: 0 var(--s-3);
+  border-bottom: 1px solid var(--hairline);
+  flex: 0 0 auto;
+}
+
+.cc-tab {
+  position: relative;
+  height: 34px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--ink-mute);
+  transition: color var(--dur-fast) var(--ease);
+}
+.cc-tab:hover { color: var(--ink); }
+.cc-tab--on { color: var(--ink); }
+/* A 2px underline, not a filled pill. */
+.cc-tab--on::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; bottom: -1px;
+  height: 2px;
+  background: var(--primary);
+  border-radius: var(--r-pill) var(--r-pill) 0 0;
+}
+
+/* ── fields ─────────────────────────────────────────────────── */
+
+.cc-field { display: flex; flex-direction: column; gap: var(--s-2); }
+
+.cc-field__label {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-secondary);
+}
+.cc-field__sub { font-size: 11px; font-weight: 400; color: var(--ink-mute); }
+.cc-field__hint { font-size: 11.5px; color: var(--ink-mute); line-height: 1.5; }
+
+.cc-field__hint kbd {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  padding: 1px 4px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--r-xs);
+  background: var(--canvas-sunk);
+}
+
+.cc-textarea, .cc-code {
+  width: 100%;
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--r-sm);
+  background: var(--canvas);
+  color: var(--ink);
+  font-size: 12.5px;
+  line-height: 1.6;
+  resize: vertical;
+  transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
+}
+.cc-textarea:hover, .cc-code:hover { border-color: var(--ink-faint); }
+.cc-textarea:focus, .cc-code:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+.cc-code { font-family: var(--font-mono); font-size: 11.5px; background: var(--canvas-soft); }
+
+/* ── resolved preview ───────────────────────────────────────── */
+
+.cc-preview {
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  background: var(--canvas-soft);
+  padding: var(--s-2) var(--s-3);
+}
+.cc-preview__label { font-size: 10.5px; font-weight: 600; color: var(--ink-mute-2); margin-bottom: var(--s-1); }
+.cc-preview__code {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--ink-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ── segmented control ──────────────────────────────────────── */
+
+.cc-seg {
+  display: inline-flex;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+  width: max-content;   /* shrink to content — never a stretched bar with a void */
+}
+.cc-seg__btn {
+  height: var(--control-h-sm);
+  padding: 0 var(--s-3);
+  font-size: 12px;
+  color: var(--ink-mute);
+  border-right: 1px solid var(--hairline);
+  transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.cc-seg__btn:last-child { border-right: 0; }
+.cc-seg__btn:hover { background: var(--control-hover); color: var(--ink); }
+.cc-seg__btn--on { background: var(--primary); color: var(--on-primary); }
+.cc-seg__btn--on:hover { background: var(--primary-deep); color: var(--on-primary); }
+
+/* ── type grid ──────────────────────────────────────────────── */
+
+.cc-typegrid { display: flex; flex-wrap: wrap; gap: var(--s-1); }
+
+.cc-type {
+  height: var(--control-h-sm);
+  padding: 0 var(--s-3);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--r-xs);   /* square chip — shape-differentiated from a status pill */
+  font-size: 11.5px;
+  color: var(--ink-secondary);
+  transition: background-color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+}
+.cc-type:hover { background: var(--control-hover); }
+.cc-type--on { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
+
+/* ── errors + results ───────────────────────────────────────── */
+
+.cc-errors {
+  border: 1px solid var(--status-error-solid);
+  border-radius: var(--r-sm);
+  background: var(--band-error);
+  padding: var(--s-2) var(--s-3);
+}
+.cc-errors__row { font-size: 12px; color: var(--ink); line-height: 1.55; }
+.cc-errors__row + .cc-errors__row { margin-top: var(--s-1); }
+
+.cc-result {
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  background: var(--canvas-soft);
+  padding: var(--s-2) var(--s-3);
+  font-size: 12px;
+  color: var(--ink-secondary);
+}
+
+.cc-empty-note { font-size: 12px; color: var(--ink-mute); line-height: 1.6; }
+
+/* Full-screen on mobile: a 480px drawer on a 375px viewport is not a drawer. */
+@media (max-width: 768px) {
+  .cc-drawer { width: 100vw; border-left: 0; }
+}
+
+/* A tab whose settings are real but not currently in effect. Muted, not disabled — it still opens,
+   because a tab you can see and cannot click reads as the app being broken. */
+.cc-tab--inactive { color: var(--ink-mute); }
+
+/* The banner that says so, with the action that fixes it. Amber: nothing is wrong, but nothing here
+   is running either. */
+.cc-inactive {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s-2);
+  margin-bottom: var(--s-3);
+  padding: var(--s-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  background: var(--band-queued);
+}
+.cc-inactive__text { margin: 0; font-size: 12px; line-height: 1.55; color: var(--ink-secondary); }
+
+/* Marks a tab whose setting is active. Absolutely positioned so it cannot change the tab's width
+   and shuffle the row. */
+.cc-tab__dot {
+  position: absolute;
+  top: 7px;
+  right: -7px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--primary);
+}
+
+/* The column being edited no longer exists. A dead end needs a way out, not just a red line. */
+.cc-gone {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s-2);
+  padding: var(--s-3);
+  border: 1px solid var(--status-error-solid);
+  border-radius: var(--r-sm);
+  background: var(--canvas);
+}
+.cc-gone__h { margin: 0; font-size: 13px; font-weight: 600; color: var(--ink); }
+.cc-gone__p { margin: 0; font-size: 12px; line-height: 1.5; color: var(--ink-mute); }
+
+/* ── the cheap model that goes first ──────────────────────────
+ *
+ * Set apart from the model picker above it by a hairline rather than a box: it is a refinement of
+ * that choice, not a separate setting, and a second bordered card would read as two unrelated
+ * decisions stacked.
+ */
+.cc-first {
+  margin-top: var(--s-3);
+  padding-top: var(--s-3);
+  border-top: 1px solid var(--hairline);
+}
+/* The nested picker brings its own field spacing; this strips the duplicate so the caption above it
+   is not floating a full gap away from the control it names. */
+.cc-first .cc-modelpick { margin-top: var(--s-2); }
+
+/* The switch that turns web search on, above the settings that describe how it would search. Given
+   the same treatment as the auto-run checkbox so the two read as the same kind of decision. */
+.cc-searchon { margin-bottom: var(--s-2); }
+
+/* ── connected-app tools on the agent lane ──────────────────────────────────
+   One block per app, one checkbox per tool. Grouped rather than run together
+   because two apps can publish a tool with the same name, and a flat list of
+   "lookup, lookup" is unreadable. */
+.cc-agenttools__wrap { margin-bottom: var(--s-4); }
+.cc-agenttools { display: flex; flex-direction: column; gap: var(--s-3); margin-top: var(--s-2); }
+.cc-agenttools__app {
+  border: 1px solid var(--hairline);
+  padding: var(--s-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+.cc-agenttools__name {
+  margin: 0;
+  font-weight: 600;
+  font-size: 12px;
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+}
+/* The app's own name can be any length, so it truncates rather than wrapping and
+   making one card taller than its neighbours. */
+.cc-agenttools__name { min-width: 0; }
+.cc-agenttools__where {
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  white-space: nowrap;
+}

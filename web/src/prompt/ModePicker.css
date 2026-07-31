@@ -1,0 +1,187 @@
+.cc-mode { display: flex; flex-direction: column; gap: var(--s-4); }
+
+.cc-mode__intro,
+.cc-mode__basis {
+  font-size: 12px;
+  color: var(--ink-mute);
+  line-height: 1.55;
+}
+.cc-mode__basis {
+  font-size: 11px;
+  padding-top: var(--s-2);
+  border-top: 1px solid var(--hairline);
+}
+
+.cc-mode__list { display: flex; flex-direction: column; gap: var(--s-2); }
+
+/* Flat, hairline-bordered, no shadow — a resting card does not float. */
+.cc-mode__card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  width: 100%;
+  padding: var(--s-3);
+  text-align: left;
+  background: var(--canvas);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+}
+.cc-mode__card:hover:not(:disabled) { background: var(--control-hover); }
+.cc-mode__card:active:not(:disabled) { background: var(--control-active); }
+.cc-mode__card:disabled { cursor: default; opacity: 0.6; }
+
+/* The selected card is marked by the brand hue, which is never used for a status affordance —
+   this is a selection, not a state. */
+.cc-mode__card--on {
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
+  background: var(--primary-tint);
+}
+
+/* Label left, price right — the card spans its full width rather than leaving a void. */
+.cc-mode__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-3);
+}
+
+.cc-mode__title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/* The lane's mark, first on the card.
+   The head aligns its children on the BASELINE so the title and the price sit on one line; an
+   inline-flex icon has no text baseline of its own and would hang below it, so this one is
+   centred against the row instead. */
+.cc-mode__head .cc-kindicon { align-self: center; }
+/* On the chosen card the whole head goes to the accent, and a paid mark in the same accent stops
+   being a distinction — so it follows the title's colour there rather than keeping its own. */
+.cc-mode__card--on .cc-kindicon { color: var(--ink); }
+
+/* The industry name for this lane, next to the plain-English one.
+
+   `margin-right: auto` is what pushes the price to the far edge: title and tag sit together on the
+   left as one group, the price stays pinned right, and there is no void between a short title and
+   its price. A solid fill rather than a tint, like every other small affordance here. */
+.cc-mode__tag {
+  flex: 0 0 auto;
+  margin-right: auto;
+  padding: 1px 6px;
+  border-radius: var(--r-xs);
+  background: var(--canvas-sunk);
+  border: 1px solid var(--hairline);
+  color: var(--ink-mute);
+  font-size: 10px;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+.cc-mode__card--on .cc-mode__tag {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--on-primary);
+}
+
+.cc-search.cc-mode__search { width: 100%; }
+
+.cc-mode__none {
+  margin: 0;
+  padding: var(--s-3);
+  border: 1px dashed var(--hairline-strong);
+  border-radius: var(--r-sm);
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--ink-mute);
+}
+
+/* Reserved so a card whose price changes from "free" to "$7,000" does not resize. Sized to the
+   longest thing that can land here, which is "their rate" — the external-lane badge — not a
+   dollar figure. It must never wrap: a two-line price would grow the card's height instead. */
+.cc-mode__price {
+  flex: 0 0 auto;
+  min-width: 84px;
+  text-align: right;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.cc-mode__price--free { color: var(--ink-mute); font-weight: 500; }
+
+.cc-mode__test { font-size: 12px; color: var(--ink-secondary); line-height: 1.5; }
+.cc-mode__detail { font-size: 11.5px; color: var(--ink-mute); line-height: 1.55; }
+
+.cc-mode__eg {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--ink-faint);
+  padding-top: var(--s-1);
+}
+
+/* Text, then the action, as two rows — structurally, not by asking the button to behave.
+
+   The button carries `.cc-btn` and `.cc-mode__cond`, which are the same specificity, so whichever
+   stylesheet loads last decides its `display`. `.cc-btn`'s `inline-flex` was winning, and the
+   `display: block` below never applied: the control rendered mid-sentence, right after a full stop.
+   A flex column cannot lose that argument, because the parent decides. */
+.cc-mode__warn,
+.cc-mode__note {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-sm);
+  border: 1px solid var(--hairline);
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--ink-secondary);
+}
+.cc-mode__notetext { margin: 0; }
+.cc-mode__warn { background: var(--band-queued); }
+.cc-mode__note { background: var(--canvas-sunk); }
+
+/* The chosen card carries its explanation; the rest stay one line each. Reserved minimum height so
+   selecting a different mode grows the card that gains the text rather than jolting the whole list
+   — the six cards were a wall of prose read once and skipped forever after. */
+.cc-mode__card { min-height: 58px; }
+.cc-mode__card--on { min-height: 58px; }
+
+/* The row this sits on is the parent's job now (see the flex column above), which is why the
+   `display: block` does not belong here — it never wins against `.cc-btn`'s `inline-flex`,
+   so the control rendered mid-sentence after a full stop and read as a typo rather than as the
+   action the sentence was recommending. */
+.cc-mode__cond { flex: 0 0 auto; }
+
+/* The next step. Label left, action right, so the strip spans its width rather than leaving a void
+   beside a short button. */
+.cc-mode__next {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  background: var(--canvas-soft);
+}
+.cc-mode__nexttext { font-size: 11.5px; color: var(--ink-mute); min-width: 0; }
+
+/* Reference material, folded away. It is worth having and not worth reading twice. */
+.cc-mode__basis { margin: 0; }
+.cc-mode__basis > summary {
+  font-size: 11px;
+  color: var(--ink-faint);
+  cursor: pointer;
+  list-style: none;
+  padding: var(--s-1) 0;
+}
+.cc-mode__basis > summary::-webkit-details-marker { display: none; }
+.cc-mode__basis > summary::before { content: "▸ "; }
+.cc-mode__basis[open] > summary::before { content: "▾ "; }
+.cc-mode__basis > summary:hover { color: var(--ink-mute); }
+.cc-mode__basis > p { margin: 0; font-size: 11px; line-height: 1.5; color: var(--ink-faint); }

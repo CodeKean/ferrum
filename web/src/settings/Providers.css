@@ -1,0 +1,147 @@
+/* Buy-direct providers.
+ *
+ * A list of rows rather than a grid of cards: the interesting column is the NAME, every row holds the
+ * same two controls, and a card grid would stretch a one-line note across half a screen of nothing.
+ *
+ * Every token here is one that exists in styles/tokens.css. A `var(--invented, fallback)` renders
+ * fine and looks deliberate while quietly using the fallback forever, which is how a surface drifts
+ * off the design system without anything appearing to be wrong.
+ */
+
+.cc-prov__caveat {
+  display: flex;
+  gap: var(--s-2);
+  align-items: flex-start;
+  margin: var(--s-3) 0 var(--s-4);
+  padding: var(--s-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  background: var(--band-queued);
+  color: var(--ink-secondary);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.cc-prov__caveat svg { flex: none; margin-top: 1px; color: var(--status-queued-solid); }
+
+.cc-prov__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cc-prov__row {
+  display: grid;
+  /* The name column takes what it needs; the actions shrink to their content. Nothing stretches, so
+     no row can end up with a lone button floating at the far edge over a void. */
+  grid-template-columns: minmax(0, 1fr) max-content;
+  align-items: start;
+  gap: var(--s-2) var(--s-3);
+  padding: var(--s-3);
+  /* Flat, defined by a hairline. Resting content does not float. */
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  background: var(--canvas);
+}
+.cc-prov__row--on { border-color: var(--hairline-strong); }
+
+/* Loading placeholders match a real row's height, so the list arriving shifts nothing. */
+.cc-prov__row--skel {
+  min-height: 72px;
+  background: var(--canvas-soft);
+  border-style: dashed;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .cc-prov__row--skel { animation: cc-prov-pulse 1.4s ease-in-out infinite; }
+}
+@keyframes cc-prov-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+
+.cc-prov__main { min-width: 0; }
+
+.cc-prov__id {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  flex-wrap: wrap;
+}
+
+.cc-prov__name {
+  font-weight: 600;
+  color: var(--ink);
+  /* A long provider name truncates rather than wrapping, so it cannot grow the row's height. */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Solid, not a tint. A semi-transparent status fill reads as unfinished. */
+.cc-prov__tag {
+  flex: none;
+  padding: 2px var(--s-2);
+  border-radius: 999px;
+  background: var(--status-done-solid);
+  color: var(--on-status);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+.cc-prov__tag--warn { background: var(--status-queued-solid); }
+
+.cc-prov__note {
+  margin: var(--s-1) 0 0;
+  color: var(--ink-mute-2);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.cc-prov__acts {
+  display: flex;
+  gap: var(--s-2);
+  align-items: center;
+  flex-wrap: nowrap;
+}
+
+.cc-prov__form {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding-top: var(--s-3);
+  border-top: 1px solid var(--hairline);
+}
+.cc-prov__formacts {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+}
+
+/* Collapsed until there is something to say.
+ *
+ * Reserving the height unconditionally cost 17px on each of twenty rows — measured, 340px of empty
+ * strip down the page — to prevent a shift that can only ever happen on the ONE row whose button was
+ * just clicked, directly under the pointer that clicked it. Permanent dead space on every row is the
+ * worse of the two, so the strip has no height until it holds a message. */
+.cc-prov__msg {
+  grid-column: 1 / -1;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.cc-prov__msg:not(:empty) { margin-top: var(--s-1); }
+
+.cc-prov__warn {
+  display: inline-flex;
+  gap: var(--s-1);
+  align-items: flex-start;
+  color: var(--status-queued-solid);
+}
+.cc-prov__warn svg { flex: none; margin-top: 2px; }
+
+@media (max-width: 560px) {
+  .cc-prov__row { grid-template-columns: minmax(0, 1fr); }
+  .cc-prov__acts { justify-content: flex-start; }
+}

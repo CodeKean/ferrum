@@ -1,0 +1,165 @@
+/* Right-docked, no backdrop — the grid stays live behind it, which is the point: a suggestion is
+   applied and its effect watched in the same breath. Below the cell panel in the stack (950) and
+   above the column drawer (900), because both can be open at once. */
+.cc-as {
+  position: fixed;
+  top: 0;
+  right: 0;
+  /* Stops above the table-tab strip rather than covering it — see --wbtabs-h. */
+  bottom: var(--wbtabs-h);
+  z-index: 940;
+  display: flex;
+  flex-direction: column;
+  width: min(420px, 100vw);
+  background: var(--canvas);
+  border-left: 1px solid var(--hairline);
+  box-shadow: var(--elev-3);
+  animation: cc-as-in 160ms var(--ease);
+}
+
+@keyframes cc-as-in { from { transform: translateX(12px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+.cc-as__head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  flex: 0 0 auto;
+  height: 48px;
+  padding: 0 var(--s-3);
+  border-bottom: 1px solid var(--hairline);
+}
+.cc-as__title { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+.cc-as__title strong { font-size: 13px; font-weight: 600; }
+.cc-as__sub { font-size: 11px; color: var(--ink-faint); }
+
+.cc-as__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--s-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+.cc-as__empty { margin: 0 0 var(--s-1); font-size: 12px; line-height: 1.5; color: var(--ink-mute); }
+
+.cc-as__starters { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s-1); }
+.cc-as__starter {
+  max-width: 100%;
+  padding: var(--s-1) var(--s-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  background: var(--canvas-soft);
+  color: var(--ink-mute);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.cc-as__starter:hover { background: var(--control-hover); color: var(--ink); }
+.cc-as__starter:active { transform: translateY(0.5px); }
+
+.cc-as__bubble { display: flex; flex-direction: column; gap: var(--s-2); font-size: 12.5px; line-height: 1.55; }
+.cc-as__text { white-space: pre-wrap; }
+/* The user's own words sit in a tinted block so the two sides of the conversation are separable at
+   a glance without a coloured chat bubble on each side. */
+.cc-as__bubble--user .cc-as__text {
+  align-self: flex-end;
+  max-width: 92%;
+  padding: var(--s-2);
+  border-radius: var(--r-sm);
+  background: var(--canvas-sunk);
+  color: var(--ink);
+}
+.cc-as__bubble--assistant .cc-as__text { color: var(--ink-mute); }
+
+.cc-as__actions { display: flex; flex-direction: column; gap: var(--s-1); margin: 0; padding: 0; list-style: none; }
+
+/* What · Apply. The description takes the slack so the button sits at a fixed distance rather than
+   leaving a void mid-row. */
+.cc-as__action {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  background: var(--canvas-soft);
+}
+.cc-as__what { display: flex; flex-direction: column; min-width: 0; gap: 1px; }
+.cc-as__doing { font-size: 12px; font-weight: 500; color: var(--ink); }
+.cc-as__why { font-size: 11px; color: var(--ink-faint); }
+.cc-as__done { font-size: 11px; color: var(--status-done-solid, var(--primary)); }
+
+.cc-as__error {
+  flex: 0 0 auto;
+  margin: 0 var(--s-3);
+  padding: var(--s-2);
+  border-radius: var(--r-xs);
+  background: var(--band-error);
+  font-size: 12px;
+}
+
+.cc-as__context {
+  flex: 0 0 auto;
+  max-height: 180px;
+  margin: 0 var(--s-3);
+  padding: var(--s-2);
+  overflow: auto;
+  border-radius: var(--r-xs);
+  background: var(--canvas-sunk);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--ink-mute);
+  white-space: pre-wrap;
+}
+
+.cc-as__foot {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-3);
+  border-top: 1px solid var(--hairline);
+}
+
+/* The field renders its own portalled reference menu as a sibling, so it needs a wrapper to carry
+   the keyboard handler. Contents-display, so it adds no box of its own to the footer's column. */
+.cc-as__boxwrap { display: contents; }
+
+.cc-as__box {
+  width: 100%;
+  padding: var(--s-2);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--r-sm);
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 12.5px;
+  line-height: 1.5;
+  resize: vertical;
+}
+.cc-as__box:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--focus-ring); }
+
+.cc-as__footrow { display: flex; align-items: center; gap: var(--s-2); }
+.cc-as__peek {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: left;
+  font-size: 11px;
+  color: var(--ink-faint);
+  cursor: pointer;
+}
+.cc-as__peek:hover { color: var(--ink-mute); text-decoration: underline; }
+
+@media (prefers-reduced-motion: reduce) {
+  .cc-as { animation: none; }
+  .cc-as__starter { transition: none; }
+  .cc-as__starter:active { transform: none; }
+}
+
+@media (max-width: 560px) {
+  .cc-as { width: 100vw; }
+}

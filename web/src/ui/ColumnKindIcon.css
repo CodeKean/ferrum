@@ -1,0 +1,28 @@
+/* The mark for a kind of column. Same size, same colours, wherever it appears.
+ *
+ * Fixed dimensions rather than shrink-to-content, so a row of headers — some with a mark, some
+ * without — still lines its names up on one left edge instead of reading as ragged.
+ */
+.cc-kindicon {
+  flex: 0 0 14px;
+  width: 14px;
+  height: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-mute-2);
+  cursor: help;
+}
+
+/* Shape says what the column is; colour says whether it spends. The two questions anyone has about
+   a column they did not create, answered by one mark. */
+.cc-kindicon--paid { color: var(--primary); }
+
+/* A field pulled out of another column's answer. Nudged right by the width of the glyph's own hook,
+   so a run of expanded fields visibly hangs off the column above rather than sitting flush with it. */
+.cc-kindicon--derived { margin-left: 2px; }
+
+/* Hover on a header lifts the whole row of marks a step, so the one you are pointing at reads as
+   live without any of them competing with the name beside it at rest. */
+.cc-th:hover .cc-kindicon { color: var(--ink-mute); }
+.cc-th:hover .cc-kindicon--paid { color: var(--primary); }

@@ -1,0 +1,61 @@
+.cc-vb { display: flex; align-items: center; flex: 0 0 auto; }
+
+/* Shrink-to-content with a ceiling: a long view name truncates rather than pushing the toolbar. */
+.cc-vb__trigger {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  height: 28px;
+  max-width: 220px;
+  padding: 0 var(--s-2);
+  background: none;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  font-size: 12px;
+  color: var(--ink);
+  cursor: pointer;
+}
+.cc-vb__trigger:hover { background: var(--control-hover); }
+.cc-vb__trigger:active { background: var(--control-active); }
+
+.cc-vb__name { min-width: 0; }
+
+/* The brand hue: "this differs from the saved view" is a selection state, not a status. Fixed size
+   and always in the flow's gap, so appearing cannot resize the trigger. */
+.cc-vb__dot {
+  flex: 0 0 auto;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--primary);
+}
+
+.cc-vb__menu { padding: var(--s-1) 0; }
+
+.cc-vb__item {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  width: 100%;
+  min-width: 0;
+  height: 28px;
+  padding: 0 var(--s-3);
+  background: none;
+  border: 0;
+  text-align: left;
+  font-size: 12.5px;
+  color: var(--ink);
+  cursor: pointer;
+}
+.cc-vb__item:hover:not(:disabled) { background: var(--control-hover); }
+.cc-vb__item:disabled { color: var(--ink-faint); cursor: default; }
+.cc-vb__item--on { color: var(--primary); font-weight: 500; }
+
+/* Name left, delete right — the row spans its width rather than leaving a gap beside a short name. */
+.cc-vb__row { display: flex; align-items: center; }
+.cc-vb__row--on .cc-vb__item { color: var(--primary); font-weight: 500; }
+.cc-vb__del { flex: 0 0 auto; margin-right: var(--s-2); opacity: 0; }
+.cc-vb__row:hover .cc-vb__del,
+.cc-vb__del:focus-visible { opacity: 1; }
+
+.cc-vb__sep { height: 1px; margin: var(--s-1) 0; background: var(--hairline); }

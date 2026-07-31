@@ -1,0 +1,25 @@
+.cc-menu2 { padding: var(--s-1) 0; }
+
+.cc-menu2__item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 30px;
+  padding: 0 var(--s-3);
+  background: none;
+  border: 0;
+  text-align: left;
+  font-size: 12.5px;
+  color: var(--ink);
+  text-decoration: none;
+  cursor: pointer;
+}
+.cc-menu2__item:hover { background: var(--control-hover); }
+.cc-menu2__item:active { background: var(--control-active); }
+.cc-menu2__item--danger { color: var(--status-error-solid); }
+
+.cc-menu2__sep {
+  height: 1px;
+  margin: var(--s-1) 0;
+  background: var(--hairline);
+}

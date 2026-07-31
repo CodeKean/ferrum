@@ -1,0 +1,118 @@
+/* A field whose references are inline chips. */
+
+.cc-reffield { position: relative; }
+
+.cc-reffield__box {
+  width: 100%;
+  min-height: var(--control-h);
+  padding: 6px 10px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--r-sm);
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.55;
+  /* Chips sit on the text baseline and must be able to wrap with it. */
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  outline: none;
+  cursor: text;
+}
+.cc-reffield__box--multi { overflow-y: auto; max-height: 320px; }
+.cc-reffield__box:hover { border-color: var(--ink-mute); }
+.cc-reffield__box:focus { border-color: var(--primary); box-shadow: 0 0 0 2px var(--focus-ring); }
+
+.cc-reffield--off .cc-reffield__box {
+  background: var(--canvas-sunk);
+  color: var(--ink-mute);
+  cursor: not-allowed;
+}
+
+/* The placeholder. A contenteditable has none of its own, and an empty one is otherwise a blank box
+   with no clue that "/" does anything. */
+.cc-reffield__box[data-empty]::before {
+  content: attr(data-placeholder);
+  color: var(--ink-faint);
+  pointer-events: none;
+}
+
+/* ── the chip ────────────────────────────────────────────────────────────────────────────────── */
+
+.cc-ref {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  /* Vertical padding stays tiny: a chip that is taller than the line it sits on makes every line of
+     a wrapped prompt a different height. */
+  padding: 0 4px 0 6px;
+  margin: 0 1px;
+  border-radius: var(--r-xs);
+  background: var(--primary);
+  color: var(--on-primary);
+  font-family: var(--font-ui);
+  font-size: 11.5px;
+  line-height: 1.5;
+  white-space: nowrap;
+  vertical-align: baseline;
+  user-select: none;
+  cursor: default;
+}
+.cc-ref__name { font-weight: 600; max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+
+/* Optional reads as quieter, because it is the weaker guarantee. */
+.cc-ref--opt { background: var(--ink-mute); }
+/* A reference whose column is gone is a fault, and looks like one. */
+.cc-ref--gone { background: var(--status-error-solid); }
+
+/* The required switch. A real switch, small: it is the one control that decides whether a row is
+   paid for, and it has to be readable at a glance across a prompt full of chips. */
+.cc-ref__toggle {
+  position: relative;
+  flex: 0 0 auto;
+  width: 20px;
+  height: 12px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.9);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease);
+}
+.cc-ref__toggle::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 10px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--primary);
+  transition: left var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
+}
+/* Off = optional: the knob slides left and the track dims. */
+.cc-ref--opt .cc-ref__toggle { background: rgba(255, 255, 255, 0.45); }
+.cc-ref--opt .cc-ref__toggle::after { left: 2px; background: var(--ink-mute); }
+.cc-ref__toggle:focus-visible { outline: 2px solid var(--canvas); outline-offset: 1px; }
+
+.cc-ref__x {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-xs);
+  background: transparent;
+  color: inherit;
+  font-size: 13px;
+  line-height: 1;
+  opacity: 0.7;
+  cursor: pointer;
+}
+.cc-ref__x:hover { opacity: 1; background: rgba(255, 255, 255, 0.22); }
+.cc-ref__x:focus-visible { outline: 2px solid var(--canvas); outline-offset: 1px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .cc-ref__toggle, .cc-ref__toggle::after { transition: none; }
+}

@@ -1,0 +1,96 @@
+/* Floating layers are the ONLY things that get elevation. Resting content stays flat with a 1px
+   hairline — see tokens.css. */
+
+.cc-pop {
+  position: fixed;
+  z-index: 1000;
+  background: var(--canvas);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  box-shadow: var(--elev-3);
+  overflow: hidden;
+  animation: cc-pop-in 140ms var(--ease);
+  transform-origin: top left;
+}
+
+/* Exit is not optional: an overlay that vanishes on dismiss reads as a glitch. */
+.cc-pop--leaving { animation: cc-pop-out 140ms var(--ease) forwards; }
+
+@keyframes cc-pop-in {
+  from { opacity: 0; transform: translateY(-4px) scale(0.985); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes cc-pop-out {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to   { opacity: 0; transform: translateY(-3px) scale(0.99); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cc-pop { animation: cc-fade-only 80ms linear; }
+  .cc-pop--leaving { animation: cc-fade-out-only 80ms linear forwards; }
+  @keyframes cc-fade-only { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes cc-fade-out-only { from { opacity: 1; } to { opacity: 0; } }
+}
+
+/* ── menu / listbox rows ────────────────────────────────────── */
+
+.cc-menu { padding: var(--s-1); max-height: 320px; overflow-y: auto; }
+
+.cc-menu__item {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  width: 100%;
+  height: var(--control-h);
+  padding: 0 var(--s-2);
+  border-radius: var(--r-sm);
+  font-size: 12.5px;
+  text-align: left;
+  color: var(--ink);
+  transition: background-color var(--dur-fast) var(--ease);
+}
+.cc-menu__item:hover:not(:disabled),
+.cc-menu__item[data-active="true"] { background: var(--control-hover); }
+.cc-menu__item:active:not(:disabled) { transform: scale(0.99); }
+
+/* Disabled options stay VISIBLE and explain themselves. Hiding a column the user is looking for
+   makes them think it vanished. */
+.cc-menu__item:disabled { color: var(--ink-faint); cursor: not-allowed; }
+
+.cc-menu__icon { flex: 0 0 16px; color: var(--ink-mute); display: inline-flex; }
+.cc-menu__label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* The live sample value — the thing that actually prevents mistakes, because you can see whether
+   Website holds "acme.com" or "https://acme.com/about" before you reference it. */
+.cc-menu__sample {
+  flex: 0 1 auto;
+  max-width: 46%;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-mute);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cc-menu__note {
+  flex: 0 0 auto;
+  font-size: 10.5px;
+  color: var(--status-error-solid);
+  white-space: nowrap;
+}
+
+.cc-menu__divider { height: 1px; background: var(--hairline); margin: var(--s-1) 0; }
+
+.cc-menu__section {
+  padding: var(--s-2) var(--s-2) var(--s-1);
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--ink-mute-2);
+}
+
+.cc-menu__empty {
+  padding: var(--s-3) var(--s-2);
+  font-size: 12px;
+  color: var(--ink-mute);
+}

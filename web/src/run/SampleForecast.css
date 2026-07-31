@@ -1,0 +1,116 @@
+/* The sample forecast panel.
+ *
+ * Every dimension here is reserved. The panel fills in over a few seconds as rows finish, and the
+ * confirm dialog's buttons sit directly beneath it — a panel that grows a line at a time moves the
+ * primary button under the cursor between the decision and the click.
+ */
+
+.cc-fc {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding: var(--s-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  background: var(--canvas-soft);
+  /* The tally, the per-row strip, the projection and one note. Held from the first paint so the
+     skeleton and the filled panel are the same height. */
+  min-height: 232px;
+}
+
+.cc-fc--waiting { justify-content: center; gap: var(--s-2); }
+
+.cc-fc__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-3);
+}
+
+.cc-fc__label { font-size: 12.5px; font-weight: 600; color: var(--ink); }
+.cc-fc__spent { font-size: 12px; color: var(--ink-mute-2); white-space: nowrap; }
+
+/* How the sample went, before what it cost. */
+.cc-fc__tally {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1) var(--s-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 11.5px;
+  color: var(--ink-mute-2);
+  min-height: 17px;
+}
+.cc-fc__tally .mono { color: var(--ink); font-weight: 600; }
+.cc-fc__tally--bad .mono { color: var(--danger); }
+
+/* Three segments over a hairline background, so the dividers come from the gap rather than from a
+   border on each cell. */
+.cc-fc__rows {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  margin: 0;
+  background: var(--hairline);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+}
+.cc-fc__rows > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--s-2) var(--s-3);
+  background: var(--canvas);
+  min-width: 0;
+}
+.cc-fc__rows dt { font-size: 10.5px; color: var(--ink-mute-2); white-space: nowrap; }
+.cc-fc__rows dd { margin: 0; font-size: 13px; color: var(--ink); }
+/* The one that matters is the one the projection is built from. */
+.cc-fc__rows--key dd { font-weight: 700; }
+
+.cc-fc__proj {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  align-items: baseline;
+  gap: 2px var(--s-3);
+  padding: var(--s-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  background: var(--canvas);
+}
+.cc-fc__proj-label { font-size: 12px; color: var(--ink-mute-2); }
+.cc-fc__proj-value { font-size: 19px; font-weight: 700; color: var(--ink); text-align: right; }
+.cc-fc__proj-range {
+  grid-column: 2;
+  font-size: 11px;
+  color: var(--ink-mute-2);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.cc-fc__warn {
+  padding: var(--s-3);
+  border: 1px solid var(--warn-line, var(--hairline));
+  border-radius: var(--r-sm);
+  background: var(--warn-soft, var(--canvas));
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+.cc-fc__note {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--ink-mute-2);
+}
+
+@media (max-width: 520px) {
+  /* Three labels at 10.5px do not survive a 375px dialog. Stacked, the values stay readable and the
+     panel simply gets taller — which is fine here because it is taller from the first paint. */
+  .cc-fc__rows { grid-template-columns: minmax(0, 1fr); }
+  .cc-fc__rows > div { flex-direction: row; align-items: baseline; justify-content: space-between; }
+  .cc-fc { min-height: 300px; }
+}

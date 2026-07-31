@@ -1,0 +1,294 @@
+// The toolbar's overflow menu.
+//
+// It existed as an icon with no handler — a control that looks like it opens something and does
+// nothing. The low-frequency sheet-level actions live here rather than as more buttons in the
+// toolbar, per the two-tier toolbar rule.
+
+import { useCallback, useRef, useState } from "react";
+import { Popover } from "./ui/Popover.tsx";
+import { Modal } from "./ui/Modal.tsx";
+import { IconMore } from "./ui/Icon.tsx";
+import { api, type Sheet } from "./api.ts";
+import { isNarrowed, viewQuery, type GridView } from "./view.ts";
+import "./SheetMenu.css";
+
+interface Props {
+  sheet: Sheet;
+  /**
+   * How the grid is currently narrowed, so the export can be the rows on screen.
+   *
+   * It used to export the whole table no matter what was filtered — the same headers, the same
+   * shape, and a hundred times the rows. The failure is silent at the moment it happens and only
+   * shows up wherever the file was sent next, so the menu now offers the filtered set BY NAME and
+   * with its count, and keeps the whole-table export as a separate, separately-labelled item.
+   */
+  view: GridView;
+  /** The count AFTER narrowing — the number the grid is showing. Put in the label so the user
+   *  approves a row count rather than inferring one. */
+  visibleRows: number;
+  onRenamed: (name: string) => void;
+  onTrashed: () => void | Promise<void>;
+  /** The saved sheet comes back so the menu label and the engine agree on the current limit. */
+  onBudgetSet?: (budgetUsd: number | null) => void;
+  /** Open the duplicate-rows screen. A table-level job, so it belongs on the table's own menu. */
+  onDedupe?: () => void;
+  /**
+   * Open the cost report scoped to THIS table.
+   *
+   * Beside the spending limit deliberately: the limit is what you are allowed to spend and this is
+   * what you have spent, and setting the first without being able to see the second is guesswork.
+   */
+  onUsage?: () => void;
+  /** Open the scheduled-runs screen. A table-level rule, so it lives on the table menu. */
+  onSchedules?: () => void;
+  /**
+   * Open the speed limits for this table.
+   *
+   * HERE, not in Settings. It first shipped in the workspace settings rail between Models and Keys —
+   * which made it read as a workspace preference while listing columns from every table, so there
+   * was no way to tell which of the two it was about. A limit belongs to a column, a column belongs
+   * to a table, and this is the table's menu.
+   */
+  onLimits?: () => void;
+  /**
+   * Open the restore points — the values a run replaced.
+   *
+   * Beside the run-level actions rather than beside Undo, and named for what it does rather than
+   * "Undo run": the values come back and the money does not, and a menu item saying "Undo" would
+   * promise a refund that is not coming.
+   */
+  onRestorePoints?: () => void;
+}
+
+export function SheetMenu({ sheet, view, visibleRows, onRenamed, onTrashed, onBudgetSet, onDedupe, onUsage, onSchedules, onRestorePoints, onLimits }: Props) {
+  const ref = useRef<HTMLButtonElement>(null);
+  const [open, setOpen] = useState(false);
+  const [rect, setRect] = useState<DOMRect | null>(null);
+  const [renaming, setRenaming] = useState(false);
+  const [name, setName] = useState(sheet.name);
+  const [confirmTrash, setConfirmTrash] = useState(false);
+  const [budgeting, setBudgeting] = useState(false);
+  const [budget, setBudget] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const narrowed = isNarrowed(view);
+
+  const show = useCallback(() => {
+    if (!ref.current) return;
+    setRect(ref.current.getBoundingClientRect());
+    setOpen(true);
+  }, []);
+
+  const rename = async () => {
+    const next = name.trim();
+    if (!next || next === sheet.name) { setRenaming(false); return; }
+    setBusy(true);
+    setError(null);
+    try {
+      await api.renameSheet(sheet.id, next);
+      onRenamed(next);
+      setRenaming(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /** null removes the limit. The server validates; a rejection stays on screen rather than closing. */
+  const saveBudget = async (value: number | null) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/sheets/${sheet.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ budgetUsd: value }),
+      }).then((r) => r.json());
+      if (res.error) { setError(res.error); return; }
+      onBudgetSet?.(res.sheet?.budgetUsd ?? null);
+      setBudgeting(false);
+    } catch {
+      setError("Could not reach the engine to save the limit.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const trash = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.trashSheet(sheet.id);
+      setConfirmTrash(false);
+      await onTrashed();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <button
+        ref={ref}
+        className="hk-icon-btn"
+        aria-label="More actions"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        title="More actions"
+        onClick={() => (open ? setOpen(false) : show())}
+      >
+        <IconMore />
+      </button>
+
+      <Popover open={open} anchor={rect ? { rect } : null} anchorEl={ref} onClose={() => setOpen(false)} width={220} role="menu" label="Sheet actions" placement="bottom-end">
+        <div className="cc-menu2">
+          <button className="cc-menu2__item" onClick={() => { setOpen(false); setName(sheet.name); setRenaming(true); }}>
+            Rename sheet
+          </button>
+          {/* `viewQuery` is the grid's own serialiser, reused rather than rebuilt — the export and
+              the grid have to name the same rows, and two builders of the same query string is
+              exactly how they stop doing that. It starts with "&", so it is spliced after "?". */}
+          {narrowed && (
+            <a
+              className="cc-menu2__item"
+              href={`/api/sheets/${sheet.id}/export.csv?${viewQuery(view).slice(1)}`}
+              download
+              onClick={() => setOpen(false)}
+            >
+              Export {visibleRows.toLocaleString()} filtered {visibleRows === 1 ? "row" : "rows"} as CSV
+            </a>
+          )}
+          <a className="cc-menu2__item" href={`/api/sheets/${sheet.id}/export.csv`} download onClick={() => setOpen(false)}>
+            {narrowed ? "Export the whole table as CSV" : "Export as CSV"}
+          </a>
+          {onDedupe && (
+            <button className="cc-menu2__item" onClick={() => { setOpen(false); onDedupe(); }}>
+              Deduplication…
+            </button>
+          )}
+          {/* The limit is in the label, not hidden behind the dialog. A cap you cannot see without
+              opening a form is a cap you forget you set — and then spend an afternoon wondering why
+              runs keep pausing. */}
+          <button
+            className="cc-menu2__item"
+            onClick={() => { setOpen(false); setBudget(sheet.budgetUsd == null ? "" : String(sheet.budgetUsd)); setBudgeting(true); }}
+          >
+            Spending limit{sheet.budgetUsd != null ? ` · ${sheet.budgetUsd}` : ""}
+          </button>
+          {onLimits && (
+            <button className="cc-menu2__item" onClick={() => { setOpen(false); onLimits(); }}>
+              Speed limits…
+            </button>
+          )}
+          {onSchedules && (
+            <button className="cc-menu2__item" onClick={() => { setOpen(false); onSchedules(); }}>
+              Scheduled runs…
+            </button>
+          )}
+          {onRestorePoints && (
+            <button className="cc-menu2__item" onClick={() => { setOpen(false); onRestorePoints(); }}>
+              Restore points…
+            </button>
+          )}
+          {onUsage && (
+            <button className="cc-menu2__item" onClick={() => { setOpen(false); onUsage(); }}>
+              Usage and cost…
+            </button>
+          )}
+          <div className="cc-menu2__sep" />
+          <button className="cc-menu2__item cc-menu2__item--danger" onClick={() => { setOpen(false); setConfirmTrash(true); }}>
+            Move to trash
+          </button>
+        </div>
+      </Popover>
+
+      <Modal
+        open={renaming}
+        onClose={() => setRenaming(false)}
+        title="Rename sheet"
+        footNote={error ?? ""}
+        footer={
+          <>
+            <button className="cc-btn" onClick={() => setRenaming(false)}>Cancel</button>
+            <button className="cc-btn cc-btn--primary" onClick={() => void rename()} disabled={busy || !name.trim()}>Rename</button>
+          </>
+        }
+      >
+        <input
+          className="cc-input"
+          value={name}
+          autoFocus
+          aria-label="Sheet name"
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void rename(); } }}
+        />
+      </Modal>
+
+      <Modal
+        open={confirmTrash}
+        onClose={() => setConfirmTrash(false)}
+        title="Move this sheet to the trash?"
+        footNote={error ?? "Recoverable — nothing is deleted."}
+        footer={
+          <>
+            <button className="cc-btn" onClick={() => setConfirmTrash(false)}>Cancel</button>
+            <button className="cc-btn cc-btn--danger" onClick={() => void trash()} disabled={busy}>Move to trash</button>
+          </>
+        }
+      >
+        <p className="cc-modal__summary">
+          <strong>{sheet.name}</strong> and its {sheet.rowCount.toLocaleString()} rows will be hidden
+          from the sheet list. The data stays on disk.
+        </p>
+      </Modal>
+
+      <Modal
+        open={budgeting}
+        onClose={() => setBudgeting(false)}
+        title="Spending limit for this sheet"
+        footNote={error ?? "Counts every run ever made against this sheet."}
+        footer={
+          <>
+            <button className="cc-btn" onClick={() => setBudgeting(false)}>Cancel</button>
+            {/* Clearing is its own button rather than "save an empty box", because emptying a field
+                and pressing Save reads as cancelling, not as removing the limit. */}
+            <button className="cc-btn" onClick={() => void saveBudget(null)} disabled={busy || sheet.budgetUsd == null}>
+              Remove limit
+            </button>
+            <button className="cc-btn cc-btn--primary" onClick={() => void saveBudget(Number(budget))} disabled={busy || !budget.trim()}>
+              Save limit
+            </button>
+          </>
+        }
+      >
+        <label className="cc-field">
+          <span className="cc-field__label">
+            Stop running after
+            <span className="cc-field__sub">US dollars, estimated</span>
+          </span>
+          <input
+            className="cc-input cc-input--num"
+            type="number"
+            min={0}
+            step="0.5"
+            size={8}
+            value={budget}
+            autoFocus
+            placeholder="no limit"
+            onChange={(e) => setBudget(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter" && budget.trim()) void saveBudget(Number(budget)); }}
+          />
+          <span className="cc-field__hint">
+            A run that reaches this <strong>pauses</strong> rather than failing — the rows already
+            done keep their values, and you can raise the limit and carry on. Script columns cost
+            nothing and are never counted.
+          </span>
+        </label>
+      </Modal>
+    </>
+  );
+}

@@ -1,0 +1,196 @@
+.cc-sd { display: flex; flex-direction: column; gap: var(--s-3); }
+
+/* Name field takes the slack, button hugs its label — no dead gap between them. */
+.cc-sd__newrow { display: flex; align-items: center; gap: var(--s-2); }
+.cc-sd__newrow .cc-input { flex: 1 1 auto; min-width: 0; }
+.cc-sd__newrow .cc-btn { flex: 0 0 auto; }
+
+/* ── method ─────────────────────────────────────────────────── */
+
+.cc-sd__method {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.cc-sd__radio {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-2);
+  font-size: 12px;
+  color: var(--ink);
+  cursor: pointer;
+}
+.cc-sd__radio input { margin-top: 3px; flex: 0 0 auto; }
+.cc-sd__radio input:disabled + span { color: var(--ink-mute); cursor: not-allowed; }
+.cc-sd__radiohint { display: block; font-size: 11px; color: var(--ink-mute); line-height: 1.45; }
+.cc-sd__listpick { display: flex; flex-direction: column; gap: var(--s-1); padding-left: 22px; }
+.cc-sd__listref { width: 100%; font-family: var(--font-mono); font-size: 12px; }
+
+/* ── what gets sent ─────────────────────────────────────────── */
+
+.cc-sd__cols {
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  background: var(--canvas-soft);
+}
+.cc-sd__colshead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  height: var(--control-h);
+  padding: 0 var(--s-3);
+  border-bottom: 1px solid var(--hairline);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.cc-sd__all { display: flex; align-items: center; gap: var(--s-2); cursor: pointer; }
+/* Reserved, so "3 of 18" -> "12 of 18" cannot shift the heading beside it. */
+.cc-sd__count {
+  flex: 0 0 auto;
+  min-width: 72px;
+  text-align: right;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--ink-mute);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Bounded and scrollable: an eighteen-column table would otherwise push the buttons off the
+   dialog, and a fixed maximum keeps the dialog the same height whatever the table holds. */
+.cc-sd__ticks {
+  display: flex;
+  flex-direction: column;
+  max-height: 208px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--s-1) 0;
+}
+.cc-sd__tick {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  height: 26px;
+  padding: 0 var(--s-3);
+  font-size: 12px;
+  color: var(--ink);
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease);
+}
+.cc-sd__tick:hover { background: var(--control-hover); }
+.cc-sd__tick input { flex: 0 0 auto; }
+.cc-sd__tickname { flex: 1 1 auto; min-width: 0; }
+.cc-sd__tickhint {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 45%;
+  font-size: 10.5px;
+  color: var(--ink-faint);
+  font-family: var(--font-mono);
+}
+
+/* ── where it lands ─────────────────────────────────────────── */
+
+.cc-sd__land { display: flex; flex-direction: column; gap: var(--s-2); }
+.cc-sd__landhead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-3);
+  font-size: 12px;
+  color: var(--ink-secondary);
+}
+.cc-sd__map {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 148px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+/* Source left, destination right, arrow between — the row spans its width rather than leaving a
+   void beside a short name. */
+.cc-sd__maprow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 16px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--s-2);
+  height: 24px;
+  font-size: 11.5px;
+}
+.cc-sd__from { color: var(--ink-secondary); font-family: var(--font-mono); }
+.cc-sd__arrow { color: var(--ink-faint); text-align: center; }
+.cc-sd__to { color: var(--ink); }
+.cc-sd__empty { margin: 0; font-size: 11.5px; color: var(--ink-mute); }
+
+/* ── advanced ───────────────────────────────────────────────── */
+
+.cc-sd__check {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-2);
+  font-size: 12px;
+  color: var(--ink);
+  cursor: pointer;
+}
+.cc-sd__check + .cc-sd__check { margin-top: var(--s-2); }
+.cc-sd__check input { margin-top: 3px; flex: 0 0 auto; }
+.cc-sd__checkhint { display: block; font-size: 11px; color: var(--ink-mute); line-height: 1.45; }
+
+/* ── the plan ───────────────────────────────────────────────── */
+
+.cc-sd__plan,
+.cc-sd__done {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding-top: var(--s-2);
+  border-top: 1px solid var(--hairline);
+}
+
+/* The preview is the widest thing in this dialog; it scrolls in its own box rather than making the
+   page scroll sideways. */
+.cc-sd__previewwrap { overflow-x: auto; margin-top: var(--s-2); }
+.cc-sd__preview {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 11px;
+}
+.cc-sd__preview th,
+.cc-sd__preview td {
+  text-align: left;
+  padding: 3px var(--s-2);
+  border-bottom: 1px solid var(--hairline);
+  max-width: 0;               /* with table-layout:fixed this is what makes truncate work */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Sentence case, never ALL-CAPS, per the column-header rule. */
+.cc-sd__preview th { font-weight: 500; color: var(--ink-mute); font-size: 10.5px; }
+.cc-sd__preview td { color: var(--ink-secondary); font-family: var(--font-mono); }
+.cc-sd__preview .cc-sd__action { color: var(--ink-mute); font-family: inherit; width: 56px; }
+
+@media (max-width: 560px) {
+  .cc-sd__maprow { grid-template-columns: minmax(0, 1fr) 14px minmax(0, 1fr); }
+  .cc-sd__tickhint { display: none; }
+}
+
+/* Meta left, action right — the strip spans its width rather than packing at one end. */
+.cc-sd__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding-top: var(--s-2);
+  border-top: 1px solid var(--hairline);
+}
+.cc-sd__meta { min-width: 0; font-size: 11px; color: var(--ink-mute); }

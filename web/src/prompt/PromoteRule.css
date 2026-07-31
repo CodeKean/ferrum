@@ -1,0 +1,168 @@
+/* "Could this run for nothing?" — the evidence, then the offer. */
+
+.cc-promote {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s-2);
+  margin-top: var(--s-4);
+  padding-top: var(--s-4);
+  border-top: 1px solid var(--hairline);
+}
+
+.cc-promote__title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.cc-promote__intro {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-mute);
+}
+
+.cc-promote__error {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin: 0;
+  font-size: 12px;
+  color: var(--danger);
+}
+
+.cc-promote__result {
+  /* Full width here is earned: it holds a table of differences, which is the widest thing in the
+     drawer and the thing most worth reading. */
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s-2);
+  padding: var(--s-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  background: var(--canvas);
+}
+
+/* The verdict is carried by the WORDS, not by a colour — a green box saying "97%" invites agreeing
+   without reading, which is the one thing this panel exists to prevent. The tint is a whisper. */
+.cc-promote__result--promote { background: color-mix(in srgb, var(--ok, var(--accent)) 4%, var(--canvas)); }
+.cc-promote__result--close { background: color-mix(in srgb, var(--warn, var(--accent)) 4%, var(--canvas)); }
+
+.cc-promote__verdict {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+.cc-promote__stats {
+  margin: 0;
+  font-size: 11px;
+  color: var(--ink-mute);
+  font-variant-numeric: tabular-nums;
+}
+
+.cc-promote__diffs,
+.cc-promote__code {
+  width: 100%;
+  font-size: 12px;
+}
+
+.cc-promote__diffs > summary,
+.cc-promote__code > summary {
+  cursor: pointer;
+  color: var(--ink);
+  padding: var(--s-1) 0;
+}
+
+.cc-promote__table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: var(--s-2);
+  font-size: 11px;
+  /* Wide content scrolls inside its own box rather than pushing the drawer sideways. */
+  display: block;
+  overflow-x: auto;
+}
+
+.cc-promote__table th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--ink-mute);
+  padding: var(--s-1) var(--s-2) var(--s-1) 0;
+  border-bottom: 1px solid var(--hairline);
+  white-space: nowrap;
+}
+
+.cc-promote__table td {
+  padding: var(--s-1) var(--s-2) var(--s-1) 0;
+  border-bottom: 1px solid var(--hairline);
+  color: var(--ink);
+  vertical-align: top;
+  /* Values are read, not skimmed — they wrap rather than truncating, because a truncated
+     disagreement is not a disagreement anyone can judge. */
+  word-break: break-word;
+  max-width: 220px;
+}
+
+.cc-promote__inputs {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.cc-promote__in em {
+  font-style: normal;
+  color: var(--ink-mute);
+  margin-right: var(--s-1);
+}
+
+.cc-promote__code pre {
+  margin: var(--s-2) 0 0;
+  padding: var(--s-2);
+  background: var(--surface-2);
+  border-radius: var(--r-sm);
+  font-size: 11px;
+  line-height: 1.45;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.cc-promote__hint {
+  margin: var(--s-2) 0 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--ink-mute);
+}
+
+/* The message carried onto the Rule screen after a rule is saved from a promotion. */
+.cc-promote__carried {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  margin: 0 0 var(--s-3);
+  padding: var(--s-2) var(--s-3);
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ink);
+  background: var(--surface-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+}
+
+.cc-linkish {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  font-size: 11px;
+  color: var(--ink-mute);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.cc-linkish:hover { color: var(--ink); }

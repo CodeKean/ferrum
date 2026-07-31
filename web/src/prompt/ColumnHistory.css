@@ -1,0 +1,76 @@
+/* The History tab.
+   Rows are label-left / value-right and span their width, so nothing floats at an edge with a void
+   beside it. Numerics are tabular and width-reserved, so a count going 999 -> 1,000 cannot reflow
+   the list under the pointer. */
+
+.cc-hist { display: flex; flex-direction: column; gap: var(--s-4); }
+
+/* Matches the height of a populated panel closely enough that the content landing does not shift
+   the drawer. */
+.cc-hist__loading { min-height: 180px; }
+
+.cc-hist__sec { display: flex; flex-direction: column; gap: var(--s-2); }
+.cc-hist__title { margin: 0; font-size: 11px; font-weight: 600; color: var(--ink-mute); }
+.cc-hist__none { margin: 0; font-size: 11.5px; color: var(--ink-mute); }
+
+.cc-hist__fails,
+.cc-hist__runs,
+.cc-hist__scripts { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; }
+
+/* ── failures ── */
+.cc-hist__fail {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  padding: var(--s-1) var(--s-2);
+  border-radius: var(--r-xs);
+  background: var(--band-error);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+/* Reserved so a 5-digit count does not shunt the message sideways relative to the row above. */
+.cc-hist__failn { flex: 0 0 auto; min-width: 46px; text-align: right; color: var(--status-error-solid); font-weight: 600; }
+.cc-hist__failmsg { flex: 1 1 auto; min-width: 0; color: var(--ink); }
+
+/* ── runs ── */
+.cc-hist__run {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  min-height: 24px;
+  padding: var(--s-1) var(--s-2);
+  border-radius: var(--r-xs);
+  font-size: 11.5px;
+  flex-wrap: wrap;
+}
+.cc-hist__run:nth-child(odd) { background: var(--canvas-soft); }
+.cc-hist__when { flex: 0 0 auto; min-width: 132px; color: var(--ink-mute); }
+.cc-hist__outcome { flex: 0 0 auto; min-width: 62px; color: var(--ink); font-weight: 600; }
+/* The only flexible segment, so the timing and cost sit at the right edge without a gap opening. */
+.cc-hist__counts { flex: 1 1 auto; min-width: 0; color: var(--ink-mute-2); }
+.cc-hist__took { flex: 0 0 auto; min-width: 48px; text-align: right; color: var(--ink-mute); }
+.cc-hist__cost { flex: 0 0 auto; min-width: 40px; text-align: right; color: var(--ink-mute); }
+/* Wraps to its own line rather than squeezing the row: a pause reason is a sentence. */
+.cc-hist__reason { flex: 1 0 100%; color: var(--ink-mute-2); }
+
+/* ── rule versions ── */
+.cc-hist__script {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  min-height: 22px;
+  padding: var(--s-1) var(--s-2);
+  font-size: 11.5px;
+  flex-wrap: wrap;
+}
+.cc-hist__ver { flex: 0 0 auto; min-width: 26px; color: var(--ink); font-weight: 600; }
+.cc-hist__hash { flex: 0 0 auto; color: var(--ink-faint); }
+.cc-hist__hook { flex: 1 1 auto; min-width: 0; color: var(--ink-mute); }
+.cc-hist__ok { flex: 0 0 auto; color: var(--status-done-solid); }
+.cc-hist__warn { flex: 0 0 auto; color: var(--status-error-solid); font-weight: 600; }
+
+/* At 375px the metadata stacks under the outcome instead of forcing a sideways scroll. */
+@media (max-width: 480px) {
+  .cc-hist__when { min-width: 0; flex: 1 0 100%; }
+  .cc-hist__counts { flex: 1 0 100%; }
+}

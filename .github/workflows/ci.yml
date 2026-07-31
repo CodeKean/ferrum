@@ -1,0 +1,37 @@
+name: CI
+
+# The tests, the typecheck and the web build, on every push and every pull request. If this
+# workflow is red, the branch does not merge.
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      # Node 24, not the LTS default. The engine stores everything through node:sqlite
+      # (src/db.ts), which does not exist before 22.5 and is still experimental on 22 — an
+      # experimental module is exactly the wrong thing to pin CI to when it is the storage layer.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      # BOTH projects. The root tsconfig has `"exclude": [..., "web"]`, so a bare `tsc --noEmit`
+      # typechecks the server and silently says nothing about the browser. The web project was
+      # carrying 28 errors while the root check reported clean — an entire half of the app drifting
+      # behind a green tick. `npm run typecheck` runs both; do not replace it with the bare command.
+      - run: npm run typecheck
+
+      # scripts/test.mjs, not a bare `node --test`: every test file needs its own database. Run
+      # against one, the files contend on a single SQLite handle and fail intermittently with
+      # "database is locked" (errcode 517), which busy_timeout does not retry.
+      - run: node scripts/test.mjs
+
+      - run: npm run web:build

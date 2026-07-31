@@ -1,0 +1,79 @@
+/* The JSON tree. Indentation carries the hierarchy, so it is the one thing that must never wobble. */
+
+.cc-jt { display: flex; flex-direction: column; }
+
+.cc-jt__node { display: flex; flex-direction: column; }
+
+/* caret · glyph · label · value · action.
+   The VALUE takes the slack, so a short label does not leave a void before a far-right action. */
+.cc-jt__row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-height: 26px;
+  padding: 2px var(--s-2) 2px calc(var(--s-2) + var(--jt-depth, 0) * 14px);
+  border-radius: var(--r-xs);
+  font-size: 12px;
+  transition: background-color var(--dur-fast) var(--ease);
+}
+.cc-jt__row:hover { background: var(--control-hover); }
+
+.cc-jt__caret {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink-mute);
+  cursor: pointer;
+  border-radius: 2px;
+}
+.cc-jt__caret:hover { color: var(--ink); background: var(--control-hover); }
+.cc-jt__caret:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--focus-ring); }
+/* Reserved, not removed: a leaf with no caret must still line up with its siblings that have one. */
+.cc-jt__caret--none { cursor: default; pointer-events: none; }
+
+/* The type, in one character. Fixed width so the labels form a column whatever the types are. */
+.cc-jt__glyph {
+  flex: 0 0 auto;
+  width: 14px;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-faint);
+}
+.cc-jt__glyph--array,
+.cc-jt__glyph--object { color: var(--primary); }
+.cc-jt__glyph--number { color: var(--ink-mute); }
+
+.cc-jt__label { flex: 0 0 auto; max-width: 42%; font-weight: 500; color: var(--ink); }
+
+.cc-jt__count { flex: 0 0 auto; font-size: 11px; color: var(--ink-mute); }
+
+/* Clamped rather than truncated to one line: a reasoning field is three sentences and the first
+   forty characters of it say nothing. Three lines, then it stops — the full text is one click away. */
+.cc-jt__value {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--ink-mute);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+}
+.cc-jt__row--url .cc-jt__value { color: var(--primary); }
+
+/* Present at rest so the row never changes height, revealed on hover so twenty of them are not
+   twenty buttons shouting at once. */
+.cc-jt__act { flex: 0 0 auto; min-width: 24px; display: flex; justify-content: flex-end; opacity: 0; transition: opacity var(--dur-fast) var(--ease); }
+.cc-jt__row:hover .cc-jt__act,
+.cc-jt__act:focus-within { opacity: 1; }
+
+@media (prefers-reduced-motion: reduce) {
+  .cc-jt__row, .cc-jt__act { transition: none; }
+}

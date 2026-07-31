@@ -1,0 +1,139 @@
+.cc-src { display: flex; flex-direction: column; gap: var(--s-3); }
+
+/* Source tabs. Shrink to their labels rather than stretching across a row with a void at the end. */
+.cc-src__list { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-1); }
+
+.cc-src__tab {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  max-width: 220px;
+  height: var(--control-h-sm);
+  padding: 0 var(--s-2);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--r-sm);
+  background: var(--canvas);
+  font-size: 12px;
+  color: var(--ink);
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+}
+.cc-src__tab:hover { background: var(--control-hover); }
+.cc-src__tab--on { border-color: var(--primary); background: var(--control-hover); font-weight: 500; }
+.cc-src__tab:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--focus-ring); }
+
+/* Solid, not a tinted wash: this dot is the difference between "taking data" and "not". */
+.cc-src__dot { flex: 0 0 auto; width: 6px; height: 6px; border-radius: 50%; background: var(--ink-faint); }
+.cc-src__dot--on { background: var(--status-done-solid); }
+
+.cc-src__empty { display: flex; flex-direction: column; gap: var(--s-3); align-items: flex-start; padding: var(--s-4) 0; max-width: 460px; }
+.cc-src__empty p { margin: 0; font-size: 12.5px; line-height: 1.6; color: var(--ink-mute); }
+
+.cc-src__detail { display: flex; flex-direction: column; gap: var(--s-3); }
+
+.cc-src__hint { margin: 0; font-size: 11.5px; line-height: 1.5; color: var(--ink-mute); }
+
+/* Address takes the slack, button hugs its label. */
+.cc-src__url {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  background: var(--canvas-sunk);
+}
+.cc-src__url code { flex: 1 1 auto; min-width: 0; font-size: 11.5px; }
+.cc-src__url .cc-btn { flex: 0 0 auto; min-width: 62px; justify-content: center; }
+
+.cc-src__check { display: flex; align-items: flex-start; gap: var(--s-2); font-size: 12px; cursor: pointer; }
+.cc-src__check input { margin-top: 3px; flex: 0 0 auto; }
+.cc-src__checkhint { display: block; font-size: 11px; color: var(--ink-mute); line-height: 1.45; margin-top: 2px; }
+
+/* Column name a third, path the rest — no gap between them at any width. */
+.cc-src__maprow { display: flex; align-items: center; gap: var(--s-2); }
+.cc-src__col { flex: 0 1 34%; min-width: 0; font-size: 12px; color: var(--ink); }
+.cc-input.cc-src__path { flex: 1 1 auto; min-width: 0; height: 26px; font-size: 11.5px; }
+
+.cc-src__del { border-top: 1px solid var(--hairline); }
+.cc-src__del > summary {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-2) 0;
+  cursor: pointer;
+  list-style: none;
+  font-size: 11.5px;
+}
+.cc-src__del > summary::-webkit-details-marker { display: none; }
+.cc-src__del > summary:hover { background: var(--control-hover); }
+/* Note takes the slack so the timestamp sits hard right rather than trailing the note. */
+.cc-src__delnote { flex: 1 1 auto; min-width: 0; color: var(--ink-mute); }
+.cc-src__delat { flex: 0 0 auto; font-size: 10.5px; color: var(--ink-faint); }
+
+.cc-src__body {
+  margin: 0 0 var(--s-2);
+  padding: var(--s-2);
+  max-height: 200px;
+  overflow: auto;
+  font-size: 10.5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: var(--canvas-sunk);
+  border-radius: var(--r-xs);
+}
+
+.cc-src__danger { display: flex; gap: var(--s-2); padding-top: var(--s-2); border-top: 1px solid var(--hairline); }
+
+/* The one thing someone will otherwise discover after twenty minutes of a timing-out Zapier step. */
+.cc-src__note {
+  display: block;
+  font-size: 11px;
+  line-height: 1.55;
+  margin-top: var(--s-1);
+  padding: var(--s-2);
+  border-radius: var(--r-xs);
+  background: var(--band-queued);
+  color: var(--ink);
+}
+.cc-src__note code {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  padding: 1px 4px;
+  border-radius: 2px;
+  background: var(--canvas);
+}
+
+/* The two kinds of source. Shrinks to its labels — a two-item switcher stretched across the dialog
+   is the dead space this codebase keeps deleting. */
+.cc-src__kinds { align-self: flex-start; }
+
+/* ── the test fire ─────────────────────────────────────────────
+   Two states, one box of the same size in both: waiting, and arrived. Reserved height and a fixed
+   dot slot, so the moment a delivery lands nothing below it moves. */
+.cc-src__test {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-2);
+  min-height: 56px;
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  background: var(--canvas-soft);
+}
+.cc-src__test--got { border-color: var(--status-done-solid, var(--primary)); background: var(--band-done, var(--canvas-soft)); }
+
+/* Not a pulsing "live" light — a solid state dot, amber while nothing has arrived, green once it has. */
+.cc-src__testdot {
+  flex: 0 0 8px;
+  width: 8px;
+  height: 8px;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: var(--status-queued-solid, var(--ink-faint));
+}
+.cc-src__test--got .cc-src__testdot { background: var(--status-done-solid, var(--primary)); }
+
+.cc-src__testbody { flex: 1 1 auto; min-width: 0; font-size: 12px; line-height: 1.5; color: var(--ink-mute); }
+.cc-src__testbody strong { color: var(--ink); font-weight: 600; }

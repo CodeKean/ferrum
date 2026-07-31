@@ -1,0 +1,203 @@
+/* Duplicate · save as template · use template · import.
+
+   Four dialogs, one stylesheet, because they are the same dialog with different questions: a field
+   or two, an explanation of what will not come across, and a list. Nothing here stretches to fill
+   the modal — a lone short field pinned across 560px is the dead space the density rule forbids, so
+   the field is full width because a NAME genuinely uses it, and the counts sit right against their
+   labels rather than floating at the far edge. */
+
+.cc-cpy__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  margin-bottom: var(--s-3);
+}
+.cc-cpy__label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-secondary);
+}
+
+.cc-cpy__check {
+  display: flex;
+  gap: var(--s-2);
+  align-items: flex-start;
+  padding: var(--s-2) 0;
+  cursor: pointer;
+  font-size: 13px;
+}
+.cc-cpy__check input { margin-top: 2px; flex: 0 0 auto; }
+.cc-cpy__check > span { display: block; min-width: 0; }
+
+/* Reserved height, so the hint switching between "counting", "off" and "on" — three sentences of
+   different length — cannot resize the dialog under the pointer. */
+.cc-cpy__hint {
+  display: block;
+  min-height: 32px;
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ink-mute);
+}
+
+.cc-cpy__note {
+  display: flex;
+  gap: var(--s-2);
+  align-items: flex-start;
+  margin: var(--s-2) 0 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-mute);
+}
+.cc-cpy__note svg { flex: 0 0 auto; margin-top: 2px; color: var(--status-done-solid); }
+
+.cc-cpy__error {
+  margin: var(--s-2) 0 0;
+  padding: var(--s-2);
+  border-radius: var(--r-xs);
+  background: var(--band-error);
+  font-size: 12.5px;
+  color: var(--ink);
+}
+
+/* ── the receipt ──────────────────────────────────────────────────────────────────────────────── */
+
+.cc-cpy__notes {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+.cc-cpy__notes li {
+  display: flex;
+  gap: var(--s-2);
+  align-items: flex-start;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.cc-cpy__notes svg { flex: 0 0 auto; margin-top: 2px; color: var(--status-queued-solid); }
+
+/* ── the file picker ──────────────────────────────────────────────────────────────────────────── */
+
+.cc-cpy__drop {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-4);
+  border: 1px dashed var(--hairline-strong);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+}
+.cc-cpy__drop:hover { background: var(--control-hover); border-color: var(--primary); }
+.cc-cpy__drop:focus-within { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
+.cc-cpy__drop input {
+  /* Off screen rather than display:none — a hidden input is not focusable, and the label is the
+     only way in for anyone using the keyboard. */
+  position: absolute;
+  width: 1px; height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+.cc-cpy__dropicon { flex: 0 0 auto; color: var(--ink-mute); display: flex; }
+.cc-cpy__droptext { font-size: 13px; min-width: 0; }
+
+/* ── what is in the file ──────────────────────────────────────────────────────────────────────── */
+
+.cc-cpy__tables {
+  margin: var(--s-3) 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 1px;
+  background: var(--hairline);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-xs);
+  overflow: hidden;
+}
+.cc-cpy__tables li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding: 0 var(--s-2);
+  height: var(--row-h-compact);
+  background: var(--canvas);
+  font-size: 12.5px;
+}
+.cc-cpy__num { flex: 0 0 auto; color: var(--ink-mute); font-variant-numeric: tabular-nums; }
+
+.cc-cpy__scripts { margin-top: var(--s-3); }
+
+.cc-cpy__warn {
+  display: flex;
+  gap: var(--s-2);
+  align-items: flex-start;
+  margin: 0 0 var(--s-2);
+  padding: var(--s-2);
+  border-radius: var(--r-xs);
+  background: var(--band-error);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.cc-cpy__warn svg { flex: 0 0 auto; margin-top: 2px; color: var(--status-error-solid); }
+
+.cc-cpy__script + .cc-cpy__script { margin-top: var(--s-1); }
+
+.cc-cpy__scriptbtn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+  width: 100%;
+  height: var(--control-h-sm);
+  padding: 0 var(--s-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-xs);
+  background: var(--canvas);
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--ink);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease);
+}
+.cc-cpy__scriptbtn:hover { background: var(--control-hover); }
+.cc-cpy__scriptbtn:active { background: var(--control-active); }
+.cc-cpy__scriptbtn:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
+
+/* Solid, not a tint: it names which hook this is, and a washed-out chip reads as unfinished. */
+.cc-cpy__hook {
+  flex: 0 0 auto;
+  padding: 1px 6px;
+  border-radius: var(--r-xs);
+  background: var(--status-idle-solid);
+  color: #fff;
+  font-size: 10.5px;
+  letter-spacing: 0.02em;
+}
+
+.cc-cpy__intent {
+  margin: var(--s-1) 0 0;
+  font-size: 12px;
+  color: var(--ink-mute);
+}
+
+.cc-cpy__code {
+  margin: var(--s-1) 0 0;
+  padding: var(--s-2);
+  max-height: 220px;
+  overflow: auto;
+  border-radius: var(--r-xs);
+  background: var(--canvas-sunk);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11.5px;
+  line-height: 1.5;
+  white-space: pre;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cc-cpy__drop,
+  .cc-cpy__scriptbtn { transition: none; }
+}

@@ -1,0 +1,223 @@
+/* The file browser, as a page.
+
+   It fills the window and its regions are fixed: header, bar, list, footer. Only the LIST scrolls.
+   The previous version sized a dialog to its contents, so every navigation and every keystroke in
+   the search box resized the window under the pointer — the thing a browser must never do. */
+.cc-fx {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--canvas);
+}
+
+/* The header row that repeated the app bar's path is gone — see Home.tsx. Its crumb styles
+   went with it; the app bar owns the path now. */
+
+.cc-fx__bar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  height: 44px;
+  padding: 0 var(--s-3);
+  border-bottom: 1px solid var(--hairline);
+}
+.cc-search.cc-fx__search { flex: 1 1 auto; min-width: 0; max-width: 420px; }
+
+/* Sets the leaving action apart from the creating ones beside it. */
+.cc-fx__divider {
+  flex: 0 0 auto;
+  width: 1px;
+  height: 18px;
+  background: var(--hairline);
+  margin: 0 var(--s-1);
+}
+
+.cc-fx__error {
+  flex: 0 0 auto;
+  margin: var(--s-2) var(--s-3) 0;
+  padding: var(--s-2);
+  border-radius: var(--r-xs);
+  background: var(--band-error);
+  font-size: 12.5px;
+}
+
+/* The only scrolling region. */
+.cc-fx__listwrap { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+
+.cc-fx__table { width: 100%; border-collapse: collapse; font-size: 13px; }
+
+/* Sentence case, no uppercase transform: these are column headers. Fixed widths on the small
+   columns so a date changing length cannot reflow the name column beside it. */
+.cc-fx__table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  text-align: left;
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--ink-secondary);
+  padding: var(--s-2) var(--s-3);
+  background: var(--canvas-soft);
+  border-bottom: 1px solid var(--hairline);
+  white-space: nowrap;
+}
+/* The padding moved onto the button below, so the whole header cell is the click target rather
+   than just the words inside it. Same total height, so nothing shifts. */
+.cc-fx__table th { padding: 0; }
+.cc-fx__table th:nth-child(2) { width: 128px; }
+.cc-fx__table th:nth-child(3),
+.cc-fx__table th:nth-child(4) { width: 128px; }
+.cc-fx__table th:last-child { width: 44px; }
+
+/* Every header is the sort control, not a label with a control beside it — the whole cell is the
+   target. Same gesture as the sheet grid's headers, so the two surfaces behave alike. */
+.cc-fx__sort {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+  width: 100%;
+  min-width: 0;
+  height: 32px;
+  padding: 0 var(--s-3);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease);
+}
+.cc-fx__sort:hover { background: var(--control-hover); }
+.cc-fx__sort:active { background: var(--control-active, var(--control-hover)); }
+.cc-fx__sort:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--focus-ring); }
+.cc-fx__sort--on { color: var(--ink); }
+
+/* Reserved whether or not this column is the sorted one, so turning a sort on cannot resize the
+   header and shuffle the columns beside it. */
+.cc-fx__caret {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  color: var(--ink-mute);
+}
+
+/* The count column reads right-aligned, so its header does too — label first would leave the
+   number sitting under empty space. */
+.cc-fx__num .cc-fx__sort { justify-content: flex-end; }
+/* The star column's header is the glyph itself; centred, because there is no word to align. */
+.cc-fx__starhead .cc-fx__sort { justify-content: center; gap: 1px; padding: 0; color: var(--ink-faint); }
+
+@media (prefers-reduced-motion: reduce) {
+  .cc-fx__sort { transition: none; }
+}
+
+/* Fixed row height, so a loading row and a real row occupy the same space. */
+.cc-fx__row { border-bottom: 1px solid var(--grid-line, var(--hairline)); }
+.cc-fx__row:hover { background: var(--row-hover); }
+.cc-fx__row td { padding: 0 var(--s-3); height: 40px; vertical-align: middle; }
+.cc-fx__row--empty td { height: 120px; }
+
+/* Dragging one thing into another. The row being carried dims in place, the row it would land in
+   is outlined — an inset ring rather than a border, so nothing changes size and the list cannot
+   shift under the pointer mid-drag. */
+.cc-fx__row--dragging td { opacity: 0.45; }
+.cc-fx__row--drop td {
+  background: var(--row-selected);
+  box-shadow: inset 0 1px 0 var(--primary), inset 0 -1px 0 var(--primary);
+}
+.cc-fx__row--drop td:first-child { box-shadow: inset 0 1px 0 var(--primary), inset 0 -1px 0 var(--primary), inset 1px 0 0 var(--primary); }
+.cc-fx__row--drop td:last-child { box-shadow: inset 0 1px 0 var(--primary), inset 0 -1px 0 var(--primary), inset -1px 0 0 var(--primary); }
+
+.cc-fx__name {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  width: 100%;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+.cc-fx__name:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--focus-ring); border-radius: var(--r-xs); }
+
+.cc-fx__glyph { flex: 0 0 auto; display: inline-flex; color: var(--ink-faint); }
+/* The brand hue marks a container, never a status. */
+.cc-fx__glyph--folder { color: var(--primary); }
+.cc-fx__glyph--workbook { color: var(--ink-secondary); }
+
+/* Only shown while searching, where results come from everywhere and need to say what they are. */
+.cc-fx__kind {
+  flex: 0 0 auto;
+  padding: 1px 6px;
+  border-radius: var(--r-xs);
+  background: var(--canvas-sunk);
+  color: var(--ink-faint);
+  font-size: 10.5px;
+  font-weight: 400;
+}
+
+.cc-fx__num {
+  text-align: right;
+  color: var(--ink-mute);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.cc-fx__when { color: var(--ink-faint); font-size: 12px; white-space: nowrap; }
+
+.cc-fx__star { opacity: 0; color: var(--ink-faint); }
+.cc-fx__row:hover .cc-fx__star, .cc-fx__star:focus-visible { opacity: 1; }
+/* A starred row keeps its star visible — that is the whole point of having starred it. */
+.cc-fx__star--on { opacity: 1; color: var(--status-queued-solid, var(--primary)); }
+
+.cc-fx__empty { display: flex; align-items: center; color: var(--ink-faint); font-size: 13px; }
+
+.cc-fx__rename {
+  width: 100%;
+  max-width: 380px;
+  height: 28px;
+  padding: 0 var(--s-2);
+  border: 1px solid var(--primary);
+  border-radius: var(--r-xs);
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+}
+.cc-fx__rename:focus { outline: none; box-shadow: 0 0 0 3px var(--focus-ring); }
+
+.cc-fx__foot {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  height: 30px;
+  padding: 0 var(--s-3);
+  border-top: 1px solid var(--hairline);
+}
+.cc-fx__count { font-size: 11.5px; color: var(--ink-faint); }
+
+.cc-fx__movelist { display: flex; flex-direction: column; gap: 1px; max-height: 50vh; overflow-y: auto; }
+.cc-fx__moveitem {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-height: 32px;
+  padding: 0 var(--s-2);
+  border-radius: var(--r-xs);
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.cc-fx__moveitem:hover { background: var(--control-hover); }
+
+@media (max-width: 720px) {
+  /* The two date columns are the first thing to go: on a narrow screen the name and the count are
+     what identify a row. */
+  .cc-fx__table th:nth-child(3), .cc-fx__table td:nth-child(3) { display: none; }
+}

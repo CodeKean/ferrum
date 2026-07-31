@@ -1,0 +1,73 @@
+/* "Start from a destination" — collapsed to a button until it is wanted. */
+
+/* Shrink to its own content. A full-width button above the request form would be a stretched bar
+   over a two-word label, which is the dead space this codebase keeps deleting. */
+.cc-dest__open { width: max-content; }
+
+.cc-dest {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding: var(--s-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  background: var(--canvas-soft);
+}
+
+.cc-dest__head { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); }
+.cc-dest__title { font-size: 12.5px; font-weight: 600; }
+.cc-dest__note { margin: 0; font-size: 11.5px; line-height: 1.55; color: var(--ink-mute); }
+
+.cc-dest__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: var(--s-2);
+}
+
+/* Flat, hairline-bordered, no drop shadow — cards at rest do not float. */
+.cc-dest__card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--r-sm);
+  background: var(--canvas);
+  text-align: left;
+  cursor: pointer;
+  /* Reserved, so a two-line description and a one-line one are the same height and the grid does
+     not go ragged. */
+  min-height: 74px;
+  transition: background-color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+}
+.cc-dest__card:hover { background: var(--control-hover); border-color: var(--ink-faint); }
+.cc-dest__card:active { background: var(--canvas-sunk); }
+.cc-dest__card:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--focus-ring); }
+.cc-dest__card--on { border-color: var(--primary); background: var(--primary-tint); }
+@media (prefers-reduced-motion: reduce) { .cc-dest__card { transition: none; } }
+
+.cc-dest__name { font-size: 12.5px; font-weight: 600; color: var(--ink); max-width: 100%; }
+.cc-dest__group { font-size: 10px; font-weight: 600; color: var(--ink-mute-2); }
+.cc-dest__what { font-size: 11px; line-height: 1.45; color: var(--ink-mute); }
+
+.cc-dest__confirm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-3);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--r-sm);
+  background: var(--canvas);
+}
+.cc-dest__cwhat { margin: 0; font-size: 12.5px; }
+
+.cc-dest__todo { font-size: 11.5px; color: var(--ink); }
+.cc-dest__todolabel { font-weight: 600; }
+.cc-dest__todo ul { margin: var(--s-1) 0 0; padding-left: var(--s-4); line-height: 1.6; color: var(--ink-mute); }
+
+.cc-dest__key { margin: 0; font-size: 11.5px; line-height: 1.55; color: var(--ink-mute); }
+.cc-dest__key code { font-size: 11px; }
+
+.cc-dest__actions { display: flex; align-items: center; gap: var(--s-3); flex-wrap: wrap; }
+.cc-dest__checked { margin-left: auto; font-size: 10.5px; color: var(--ink-mute-2); white-space: nowrap; }

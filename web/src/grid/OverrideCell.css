@@ -1,0 +1,47 @@
+/* The override confirm.
+ *
+ * Read top to bottom: what normally fills this cell, what you are putting there instead, and what it
+ * costs you. The consequence sits AFTER the field on purpose — it is the last thing read before the
+ * button, which is where a warning has to be to still be in mind when the click happens.
+ */
+
+.cc-ov__what {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  background: var(--canvas-soft);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-secondary);
+}
+.cc-ov__what .cc-kindicon { margin-top: 2px; cursor: default; }
+
+.cc-ov__field { display: flex; flex-direction: column; gap: var(--s-1); }
+.cc-ov__label { font-size: 11.5px; font-weight: 600; color: var(--ink); }
+
+.cc-ov__input {
+  width: 100%;
+  resize: vertical;
+  min-height: 62px;
+  font-family: inherit;
+  line-height: 1.5;
+}
+
+.cc-ov__warn {
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--warn-line, var(--hairline));
+  border-radius: var(--r-sm);
+  background: var(--warn-soft, var(--canvas-soft));
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--ink);
+  /* Two lines at this width. Reserved so swapping between a short warning and a long one — which
+     happens the moment this dialog is opened on a different kind of column — cannot resize the
+     dialog under the pointer that is about to click Override. */
+  min-height: 52px;
+}
+
+.cc-ov__clear { align-self: flex-start; }

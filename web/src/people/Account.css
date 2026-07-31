@@ -1,0 +1,176 @@
+/* Your own account. Same density as the rest of settings: flat blocks with a hairline, tight
+   padding, and every short field shrunk to its content rather than stretched across the page. */
+
+.cc-acct {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  max-width: 620px;
+}
+
+.cc-acct__h2 {
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.cc-acct__h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.cc-acct__blurb,
+.cc-acct__hint {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--text-muted);
+}
+
+/* Both held open so a message appearing cannot push the button someone is aiming at. */
+.cc-acct__error,
+.cc-acct__note {
+  margin: 0;
+  min-height: 16px;
+  font-size: 12.5px;
+}
+
+.cc-acct__error { color: var(--danger, #dc2626); }
+.cc-acct__note  { color: var(--ok, #16a34a); }
+
+.cc-acct__block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding: var(--s-4);
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: var(--canvas);
+}
+
+.cc-acct__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-4);
+}
+
+.cc-acct__label {
+  flex: none;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+/* Capped rather than full-width: a password is short, and a 600px box for it is dead space. */
+.cc-acct__input {
+  flex: 0 1 280px;
+  min-width: 0;
+  padding: 6px 10px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.cc-acct__input:hover:not(:disabled) { border-color: var(--hairline-strong, var(--hairline)); }
+
+.cc-acct__input:focus-visible {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 18%, transparent);
+}
+
+.cc-acct__act {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+}
+
+/* Reserved so the counter counting down cannot shift the button beside it. */
+.cc-acct__len {
+  min-width: 150px;
+  font-size: 12px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.cc-acct__devices {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--hairline);
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.cc-acct__device {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: 6px 10px;
+  background: var(--surface);
+  font-size: 13px;
+}
+
+.cc-acct__device--none { color: var(--text-muted); }
+
+.cc-acct__dname { flex: 1 1 auto; min-width: 0; color: var(--text); }
+
+/* Both reserved, so "active now" becoming "3 days ago" cannot reflow the row. */
+.cc-acct__dwhen {
+  flex: none;
+  min-width: 104px;
+  text-align: right;
+  font-size: 12px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.cc-acct__dtag {
+  flex: none;
+  min-width: 88px;
+  text-align: right;
+  font-size: 11.5px;
+  color: var(--primary);
+}
+
+.cc-acct__skel {
+  display: block;
+  height: 17px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+  animation: cc-acct-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes cc-acct-pulse {
+  0%, 100% { opacity: 0.5; }
+  50%      { opacity: 0.9; }
+}
+
+.cc-acct__modalfoot {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--s-2);
+  margin-top: var(--s-4);
+}
+
+@media (max-width: 620px) {
+  .cc-acct__row { flex-direction: column; align-items: stretch; gap: 5px; }
+  .cc-acct__input { flex: 1 1 auto; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cc-acct__input { transition: none; }
+  .cc-acct__skel { animation: none; }
+}

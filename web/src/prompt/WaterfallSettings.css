@@ -1,0 +1,230 @@
+/* The waterfall editor. Dense rows, every one auditable without opening anything. */
+
+.cc-wf {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+.cc-wf__intro,
+.cc-wf__empty {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-mute);
+}
+
+.cc-wf__empty {
+  /* Reserved, so the list appearing does not snap the panel's height. */
+  min-height: 40px;
+}
+
+.cc-wf__warn {
+  margin: 0;
+  padding: var(--s-2) var(--s-3);
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--danger);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+}
+
+.cc-wf__list {
+  container: cc-wf / inline-size;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--hairline);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+}
+
+.cc-wf__row {
+  display: flex;
+  align-items: center;
+  /* Wraps on the CONTAINER: this panel is narrow and the window is not, so a viewport media query
+     would never fire and the name would be squeezed to a single letter instead. */
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  background: var(--canvas);
+  min-height: 52px;
+}
+
+/* Kept in the list, plainly not running. Opacity alone would read as "loading", so the row also
+   loses its emphasis on the name. */
+.cc-wf__row--off { opacity: 0.55; }
+.cc-wf__row--off .cc-wf__name { font-weight: 400; }
+
+.cc-wf__num {
+  flex: 0 0 auto;
+  width: 18px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-mute);
+  text-align: right;
+}
+
+.cc-wf__main {
+  /* A floor rather than auto — the one part that must stay readable is the part flexbox shrinks. */
+  flex: 1 1 180px;
+  min-width: 150px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.cc-wf__name {
+  /* Borderless and transparent: a step's name is its headline, and a boxed input beside five other
+     controls turns the row into a form. Same treatment as an in-place title. */
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  width: 100%;
+  min-width: 0;
+}
+.cc-wf__name:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+.cc-wf__sub {
+  font-size: 11px;
+  color: var(--ink-mute);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  /* Reserved: this line always exists, so toggling a step cannot change the row height and shift
+     the rows under a pointer that is already moving. */
+  min-height: 1.35em;
+}
+
+/* Said out loud rather than shown as $0.00 — a zero is a thing people believe. */
+.cc-wf__unpriced {
+  color: var(--warn, var(--ink-mute));
+  font-style: normal;
+}
+
+.cc-wf__price {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+}
+
+.cc-wf__acts {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.cc-wf__on {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 var(--s-1);
+  cursor: pointer;
+}
+
+.cc-wf__foot {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s-2) var(--s-3);
+}
+
+.cc-wf__cost {
+  /* Not flex:1 — it sits beside the Add button rather than being pushed to the far edge with a void
+     between them. */
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--ink-mute);
+  font-variant-numeric: tabular-nums;
+}
+.cc-wf__cost strong { color: var(--ink); }
+
+.cc-wf__add {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-3);
+  background: var(--canvas);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+}
+
+.cc-wf__presets,
+.cc-wf__kinds {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  /* Bounded: the provider list will grow, and an add-panel that pushes the Cancel button off the
+     bottom of the drawer is a trap. */
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.cc-wf__kinds {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  max-height: none;
+  overflow: visible;
+}
+
+.cc-wf__preset {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  width: 100%;
+  padding: var(--s-2) var(--s-3);
+  background: transparent;
+  border: 0;
+  border-radius: var(--r-sm);
+  text-align: left;
+  cursor: pointer;
+  color: var(--ink);
+}
+.cc-wf__preset:hover { background: var(--surface-2); }
+.cc-wf__preset:active { transform: translateY(1px); }
+
+.cc-wf__preset-name { font-size: 13px; font-weight: 600; }
+.cc-wf__preset-sub { font-size: 11px; color: var(--ink-mute); }
+
+.cc-wf__or {
+  margin: 0;
+  font-size: 11px;
+  color: var(--ink-mute);
+}
+
+.cc-wf__kind {
+  /* Shrink-to-content: a lane button holding two words has no business spanning the panel. */
+  width: max-content;
+  padding: var(--s-1) var(--s-3);
+  font-size: 12px;
+  color: var(--ink);
+  background: transparent;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.cc-wf__kind:hover { background: var(--surface-2); }
+.cc-wf__kind:active { transform: translateY(1px); }
+
+@media (prefers-reduced-motion: reduce) {
+  .cc-wf__preset:active,
+  .cc-wf__kind:active { transform: none; }
+}

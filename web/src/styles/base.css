@@ -1,0 +1,126 @@
+/* Reset + global guarantees. */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body, #root { height: 100%; }
+
+body {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--ink);
+  background: var(--canvas);
+  -webkit-font-smoothing: antialiased;
+
+  /* Fixed-width digits everywhere. Without this, a count going 9 -> 10 or a cost going 0.09 -> 0.11
+     changes the element's width and shifts everything beside it — the single most common source of
+     "why does the UI jump?" in a dashboard full of live numbers. */
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+h1, h2, h3, h4, p, figure { margin: 0; }
+button, input, select, textarea { font: inherit; color: inherit; }
+
+button {
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  color: inherit;
+}
+
+/* Focus is shown for keyboard users only, but it is never removed outright. */
+:focus { outline: none; }
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+  border-radius: var(--r-xs);
+}
+
+::selection { background: var(--primary-tint); color: var(--ink); }
+
+/* Scrollbars sized so a virtualized grid doesn't get a chunky OS bar over its last column. */
+* { scrollbar-width: thin; scrollbar-color: var(--hairline-strong) transparent; }
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-thumb {
+  background: var(--hairline-strong);
+  border-radius: var(--r-pill);
+  border: 2px solid var(--canvas);
+}
+*::-webkit-scrollbar-track { background: transparent; }
+
+/* ── shared interaction utilities ───────────────────────────────
+   Every interactive control uses these rather than hand-rolled mouseenter handlers, so hover and
+   press feedback is consistent and a control can never ship feeling dead. */
+
+.hk-hover { transition: background-color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease); }
+.hk-hover:hover { background: var(--control-hover); }
+.hk-press { transition: transform 90ms var(--ease); }
+.hk-press:active { transform: scale(0.97); }
+
+.hk-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-h-sm);
+  height: var(--control-h-sm);
+  border-radius: var(--r-sm);
+  color: var(--ink-mute);
+  transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.hk-icon-btn:hover { background: var(--control-hover); color: var(--ink); }
+.hk-icon-btn:active { transform: scale(0.94); }
+
+/* A 44x44 hit area on controls that must stay small for the mouse.
+
+   The box is transparent, centred on the control and absolutely positioned, so it costs zero
+   layout: the grid's density is unchanged and nothing moves. Only on a coarse pointer — on a mouse
+   a 44px catchment around a 20px button would swallow clicks meant for its neighbour. Anything
+   inside an `overflow: hidden` ancestor is clipped to that ancestor, which is why the header and
+   status strips grow their own height under the same media query. */
+@media (pointer: coarse) {
+  .hk-icon-btn, .hk-tap { position: relative; }
+  .hk-icon-btn::before, .hk-tap::before {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 44px;
+    height: 44px;
+    transform: translate(-50%, -50%);
+  }
+}
+
+/* Truncation is the default for any variable-length value: growing height is what breaks a fixed
+   row height and the virtualizer along with it. */
+.truncate {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mono { font-family: var(--font-mono); }
+
+.sr-only {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Motion is a progressive enhancement, never a requirement. Anything that moves must still be
+   fully usable when this kicks in. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

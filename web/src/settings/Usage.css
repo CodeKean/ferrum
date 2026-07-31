@@ -1,0 +1,257 @@
+/* Usage and cost.
+   Flat cards on a hairline, tabular figures everywhere, and reserved heights — a number that
+   changes must not move the thing beside it. */
+
+.cc-usage {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+.cc-usage__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--s-3);
+}
+.cc-usage__refresh { margin-left: auto; }
+
+/* ── the four headline numbers ───────────────────────────────────────────────────────────────── */
+
+.cc-usage__stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1px;
+  background: var(--hairline);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+}
+
+.cc-usage__stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--s-3);
+  background: var(--canvas);
+  /* Reserved, so a stat whose sub-line appears later does not grow the whole row. */
+  min-height: 76px;
+}
+.cc-usage__stat--skel {
+  animation: cc-usage-pulse 1.2s ease-in-out infinite;
+}
+@keyframes cc-usage-pulse { 0%, 100% { opacity: 1 } 50% { opacity: 0.55 } }
+@media (prefers-reduced-motion: reduce) {
+  .cc-usage__stat--skel { animation: none; }
+}
+
+.cc-usage__stat__k {
+  font-size: 11px;
+  color: var(--ink-mute);
+  white-space: nowrap;
+}
+.cc-usage__stat__v {
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.15;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cc-usage__stat--warn .cc-usage__stat__v { color: var(--status-error-solid); }
+.cc-usage__stat__sub {
+  font-size: 11px;
+  color: var(--ink-mute);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  /* Always occupies its line, even when empty — see the component comment. */
+  min-height: 1.35em;
+}
+
+/* ── third-party currencies ──────────────────────────────────────────────────────────────────── */
+
+.cc-usage__units {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+.cc-usage__unit {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  background: var(--canvas);
+  white-space: nowrap;
+}
+.cc-usage__unit__v { font-size: 13px; font-weight: 600; color: var(--ink); }
+.cc-usage__unit__k { font-size: 11px; color: var(--ink-mute); }
+
+/* ── per day ─────────────────────────────────────────────────────────────────────────────────── */
+
+.cc-usage__h3 {
+  margin: 0 0 var(--s-2);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.cc-usage__h3__note { font-weight: 400; color: var(--ink-mute); }
+
+.cc-usage__days {
+  padding: var(--s-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  background: var(--canvas);
+}
+.cc-usage__bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 88px;
+}
+.cc-usage__bar {
+  flex: 1 1 0;
+  min-width: 3px;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+}
+.cc-usage__bar__fill {
+  width: 100%;
+  min-height: 0;
+  background: var(--primary);
+  border-radius: 2px 2px 0 0;
+  transition: height 160ms ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  .cc-usage__bar__fill { transition: none; }
+}
+.cc-usage__bars__ends {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--ink-mute);
+}
+
+/* ── the breakdowns ──────────────────────────────────────────────────────────────────────────── */
+
+.cc-usage__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: var(--s-4);
+}
+
+/* An odd number of breakdowns leaves the last one alone on its row with a hole beside it, so it
+   spans the row instead. Its table then shrinks to its own content rather than stretching: a
+   stretched one would pin "9" and "$0.444" against the far edge with 500px of nothing between them
+   and the name beside it, which is the same dead space moved inside the card. */
+.cc-usage__tbl:last-child:nth-child(odd) { grid-column: 1 / -1; }
+.cc-usage__tbl:last-child:nth-child(odd) .cc-usage__table {
+  width: max-content;
+  max-width: 100%;
+  min-width: 260px;
+}
+.cc-usage__tbl:last-child:nth-child(odd) .cc-usage__name { max-width: 340px; }
+
+.cc-usage__tbl {
+  padding: var(--s-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  background: var(--canvas);
+  min-width: 0;
+}
+
+.cc-usage__table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 12px;
+}
+.cc-usage__table th,
+.cc-usage__table td {
+  padding: 5px 6px;
+  text-align: left;
+  font-weight: 400;
+  border-bottom: 1px solid var(--hairline);
+}
+.cc-usage__table tbody tr:last-child th,
+.cc-usage__table tbody tr:last-child td { border-bottom: 0; }
+
+/* Sentence case, no wide tracking — the standing column-header rule. */
+.cc-usage__table thead th {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-mute);
+}
+
+/* Fixed widths on the two short columns; the name column takes the rest and truncates. */
+.cc-usage__table th:nth-child(2),
+.cc-usage__table td:nth-child(2) { width: 68px; }
+.cc-usage__table th:nth-child(3),
+.cc-usage__table td:nth-child(3) { width: 96px; }
+
+.cc-usage__name {
+  color: var(--ink);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cc-usage__sub {
+  display: block;
+  font-size: 11px;
+  color: var(--ink-mute);
+  white-space: nowrap;
+}
+
+.cc-usage__num {
+  text-align: right !important;
+  white-space: nowrap;
+  position: relative;
+}
+
+/* The share of the scope total, drawn under the figure rather than in a column of its own — a
+   fifth column of bars would push the names into ellipses to say what a tint already says. */
+.cc-usage__share {
+  position: absolute;
+  left: 0;
+  right: auto;
+  bottom: 0;
+  height: 2px;
+  background: var(--primary);
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+/* ── empty ───────────────────────────────────────────────────────────────────────────────────── */
+
+.cc-usage__empty {
+  min-height: 120px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  padding: var(--s-4);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  background: var(--canvas);
+}
+.cc-usage__empty__h { margin: 0; font-size: 13px; font-weight: 600; color: var(--ink); }
+.cc-usage__empty__p { margin: 0; font-size: 12px; color: var(--ink-mute); }
+
+.cc-usage__foot {
+  margin: 0;
+  font-size: 11px;
+  color: var(--ink-mute);
+}
+
+@media (max-width: 560px) {
+  .cc-usage__refresh { margin-left: 0; }
+  .cc-usage__stat__v { font-size: 19px; }
+}

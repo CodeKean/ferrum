@@ -1,0 +1,87 @@
+/* Speed limit and wait duration. Both are one short number with a unit beside it, so the row is
+   label-left / field-right and the field shrinks to its content rather than stretching across the
+   drawer with a void in the middle. */
+
+.cc-pace {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-4);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  background: var(--canvas);
+}
+
+.cc-pace__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  cursor: pointer;
+}
+
+.cc-pace__label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.cc-pace__field {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+/* Fixed, small, and right-aligned: the value is at most five digits, and a full-width box for five
+   digits is exactly the stretched-container dead space this codebase keeps deleting. */
+.cc-pace__input {
+  width: 84px;
+  text-align: right;
+  padding: 5px 8px;
+  font: inherit;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.cc-pace__input:hover:not(:disabled) { border-color: var(--hairline-strong, var(--hairline)); }
+
+.cc-pace__input:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.cc-pace__input:disabled { opacity: 0.55; cursor: not-allowed; }
+
+.cc-pace__unit {
+  font-size: 12px;
+  color: var(--text-muted);
+  /* Reserved so "seconds" and "rows a minute" cannot shift the field as the mode changes. */
+  min-width: 84px;
+}
+
+.cc-pace__say {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  /* One line's worth held open, so a wait of 0 and a wait of an hour give the block the same height. */
+  min-height: 16px;
+}
+
+.cc-pace__hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cc-pace__input { transition: none; }
+}

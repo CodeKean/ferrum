@@ -1,0 +1,19 @@
+/* Sits beside the sheet switcher, shrink-to-content — two icon buttons, no stretched container. */
+.cc-undo {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+}
+
+/* Why the last undo did not happen. Present only when there is a reason, capped so a raw engine
+   message cannot push the rest of the toolbar off the row — the whole sentence is on hover. */
+.cc-undo__error {
+  max-width: 260px;
+  margin-left: var(--s-1);
+  padding: 2px var(--s-2);
+  border-radius: var(--r-xs);
+  background: var(--band-error);
+  color: var(--ink);
+  font-size: 11.5px;
+}

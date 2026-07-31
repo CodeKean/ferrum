@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Iron's periodic-table tile. Same shape as web/src/ui/Mark.tsx — change both together.
+       Colours are literal here: a favicon has no stylesheet to inherit from. -->
+  <rect width="32" height="32" rx="5" fill="#127c71"/>
+  <text x="5.5" y="10.5" fill="#ffffff" fill-opacity="0.72" font-size="8" font-weight="500"
+        font-family="ui-monospace, SFMono-Regular, Menlo, monospace">26</text>
+  <text x="16" y="26" text-anchor="middle" fill="#ffffff" font-size="17" font-weight="600"
+        letter-spacing="-0.5" font-family="system-ui, -apple-system, Segoe UI, sans-serif">Fe</text>
+</svg>

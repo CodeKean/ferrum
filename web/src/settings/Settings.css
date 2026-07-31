@@ -1,0 +1,252 @@
+/* Settings. Two sections that read as equals, because the free one is a real answer and not a
+   consolation — burying it under the paid one is how a free lane goes unused. */
+
+.cc-set { display: flex; flex-direction: column; gap: var(--s-5); }
+
+.cc-set__sec {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-4);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  /* Flat. A resting panel does not float — elevation is for things that actually overlay. */
+  background: var(--canvas-soft);
+}
+
+.cc-set__head { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); }
+.cc-set__title { margin: 0; font-size: 13px; font-weight: 600; color: var(--ink); }
+
+/* Solid, never a semi-transparent wash. Min-width so "Connected" and "Not set up" cannot resize the
+   header between states. */
+.cc-set__pill {
+  min-width: 92px;
+  padding: 2px var(--s-2);
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 500;
+  text-align: center;
+  background: var(--status-idle-solid, var(--control));
+  color: var(--ink-mute);
+  white-space: nowrap;
+}
+.cc-set__pill--on { background: var(--status-done-solid); color: #fff; }
+
+.cc-set__lede { margin: 0; font-size: 11.5px; line-height: 1.5; color: var(--ink-mute-2); }
+.cc-set__hint { margin: 0; font-size: 11px; line-height: 1.5; color: var(--ink-mute-2); }
+
+.cc-set__list { list-style: none; margin: var(--s-1) 0 0; padding: 0; display: flex; flex-direction: column; gap: 1px; }
+.cc-set__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+  /* Full width, so the "free" tag genuinely pins right instead of butting against the name. */
+  width: 100%;
+  min-height: 26px;
+  padding: 0 var(--s-2);
+  border-radius: var(--r-sm);
+  font-size: 11.5px;
+}
+.cc-set__item:hover { background: var(--control-hover); }
+.cc-set__item-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
+.cc-set__free {
+  flex: 0 0 auto;
+  padding: 1px 6px;
+  border-radius: var(--r-sm);
+  background: var(--status-done-solid);
+  color: #fff;
+  font-size: 10px;
+}
+
+/* Label left, value right — and WIDTH 100%, because space-between on a shrink-wrapped row has no
+   space to distribute and the two run together. */
+.cc-set__facts { margin: var(--s-1) 0 0; display: flex; flex-direction: column; gap: 2px; }
+.cc-set__fact { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s-3); width: 100%; min-height: 20px; }
+.cc-set__fact dt { font-size: 11.5px; color: var(--ink-mute); margin: 0; }
+.cc-set__fact dd { margin: 0; font-size: 11.5px; color: var(--ink); text-align: right; }
+.cc-set__mono { font-family: var(--mono); font-size: 11px; }
+
+.cc-set__field { display: flex; flex-direction: column; gap: var(--s-1); }
+.cc-set__label { font-size: 11.5px; color: var(--ink-mute); }
+
+.cc-set__row { display: flex; gap: var(--s-2); margin-top: var(--s-2); }
+
+.cc-set__warn {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-2);
+  margin: var(--s-2) 0 0;
+  padding: var(--s-2);
+  border-radius: var(--r-sm);
+  background: var(--band-queued, var(--control));
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--ink);
+}
+.cc-set__warn svg { flex: 0 0 auto; margin-top: 2px; color: var(--status-queued-solid); }
+
+/* Reserved height. A message appearing must not push the buttons above it out from under a pointer
+   that is already moving toward them. */
+.cc-set__msg { min-height: 18px; margin-top: var(--s-2); font-size: 11px; line-height: 1.4; }
+.cc-set__err { display: inline-flex; align-items: center; gap: 6px; color: var(--status-error-ink, var(--status-error-solid)); }
+.cc-set__ok { display: inline-flex; align-items: center; gap: 6px; color: var(--status-done-solid); }
+
+.cc-set__link { white-space: nowrap; display: inline-flex; align-items: center; gap: 3px; color: var(--primary); text-decoration: none; }
+.cc-set__link:hover { text-decoration: underline; }
+
+.cc-set__foot { margin: 0; font-size: 11px; line-height: 1.5; color: var(--ink-mute-2); }
+
+@media (max-width: 768px) {
+  .cc-set__sec { padding: var(--s-3); }
+  .cc-set__row { flex-wrap: wrap; }
+  .cc-set__fact { flex-wrap: wrap; gap: var(--s-1); }
+}
+
+/* A checkbox whose label is a paragraph, not a word: the box stays top-aligned against the first
+   line instead of centring against a three-line block. */
+.cc-set__check {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-2);
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--ink-mute-2);
+  cursor: pointer;
+}
+.cc-set__check input { flex: 0 0 auto; margin-top: 2px; accent-color: var(--primary); cursor: pointer; }
+.cc-set__check strong { color: var(--ink); }
+
+/* ── the page shell ────────────────────────────────────────────────────────────────────────────
+   Was a 560px modal. A page instead, because this is where the whole workspace's cost is decided —
+   not a question to answer and dismiss. */
+.cc-setpage {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--canvas);
+}
+
+.cc-setpage__top {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  border-bottom: 1px solid var(--hairline);
+}
+.cc-setpage__h1 { margin: 0; font-size: 15px; font-weight: 600; color: var(--ink); }
+.cc-setpage__back { flex: 0 0 auto; }
+
+.cc-setpage__body {
+  display: grid;
+  /* The rail shrinks to its content; the panel takes what is left. A stretched rail would be the
+     dead-space tell — a wide box holding three short labels. */
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--s-5);
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--s-4);
+}
+
+.cc-setnav { display: flex; flex-direction: column; gap: 2px; width: 220px; }
+
+.cc-setnav__item {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: var(--s-2) var(--s-3);
+  background: none;
+  border: 0;
+  border-radius: var(--r-sm);
+  text-align: left;
+  cursor: pointer;
+  color: var(--ink);
+}
+.cc-setnav__item:hover { background: var(--control-hover); }
+.cc-setnav__item:active { background: var(--control-active); }
+.cc-setnav__item--on { background: var(--control-active); }
+.cc-setnav__label { font-size: 13px; font-weight: 600; }
+.cc-setnav__blurb { font-size: 11.5px; color: var(--ink-mute); }
+
+/* Bounded so a line of prose does not run the width of a wide monitor — long measures are harder to
+   read, and this screen is mostly explanation. */
+.cc-setmain { max-width: 680px; min-width: 0; }
+
+/* ── local runtimes ──────────────────────────────────────────────────────────────────────────── */
+.cc-set__rt {
+  padding: var(--s-3);
+  margin-top: var(--s-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+}
+.cc-set__rtname { margin: 0; font-size: 13px; font-weight: 600; color: var(--ink); }
+.cc-set__addr { margin-top: var(--s-2); }
+
+@media (max-width: 720px) {
+  .cc-setpage__body { grid-template-columns: minmax(0, 1fr); }
+  /* Horizontal on a narrow screen: a vertical rail above the content would push the settings
+     themselves off the first screenful. */
+  .cc-setnav { flex-direction: row; width: auto; overflow-x: auto; }
+  .cc-setnav__blurb { display: none; }
+}
+
+/* ── other places a model can run ──────────────────────────────────────────────
+ *
+ * Eight runtimes, of which usually zero or one is running. Stacking eight open address forms would
+ * bury the one that answered under seven that did not, so the rest collapse to a line each.
+ */
+.cc-set__more {
+  margin-top: var(--s-4);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  background: var(--canvas);
+}
+.cc-set__moresum {
+  padding: var(--s-3);
+  cursor: pointer;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-secondary);
+  list-style: none;
+  border-radius: var(--r-md);
+}
+.cc-set__moresum::-webkit-details-marker { display: none; }
+.cc-set__moresum::before {
+  content: "›";
+  display: inline-block;
+  width: 12px;
+  color: var(--ink-mute);
+}
+.cc-set__more[open] .cc-set__moresum::before { transform: rotate(90deg); }
+@media (prefers-reduced-motion: no-preference) {
+  .cc-set__moresum::before { transition: transform 140ms ease; }
+}
+.cc-set__moresum:hover { background: var(--canvas-soft); }
+.cc-set__moresum:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+
+.cc-set__quiet {
+  margin: 0;
+  padding: 0 var(--s-3) var(--s-3);
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+.cc-set__quietrow {
+  padding-top: var(--s-3);
+  border-top: 1px solid var(--hairline);
+}
+.cc-set__quietmain { min-width: 0; }
+.cc-set__quietname {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--ink);
+}
+.cc-set__quietnote {
+  margin: 2px 0 var(--s-2);
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ink-mute-2);
+}

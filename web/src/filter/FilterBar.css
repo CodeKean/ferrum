@@ -1,0 +1,75 @@
+/* Just the trigger. The conditions are portalled, so this element must stay exactly one control
+   tall — as a column stack it grew the toolbar row to 111px the moment a filter existed. */
+.cc-fb { display: flex; align-items: center; flex: 0 0 auto; }
+
+/* An active filter is marked with the brand hue, never a status colour — a filter is a selection,
+   not a state. */
+.cc-fb__toggle--on { color: var(--primary); font-weight: 500; }
+
+/* Inside the popover, which already draws the surface — so no second border or background here.
+   Scrolls at eight-ish conditions rather than growing past the bottom of the screen. */
+.cc-fb__rows {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s-1);
+  padding: var(--s-2);
+  max-height: min(60vh, 420px);
+  overflow-y: auto;
+}
+
+/* Fixed leading track, so "Where" / "and" / "or" line up and the pickers below them do not shuffle
+   sideways as conditions are added. */
+.cc-fb__row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  flex-wrap: nowrap;
+}
+.cc-fb__lead {
+  flex: 0 0 auto;
+  width: 58px;
+  font-size: 11.5px;
+  color: var(--ink-secondary);
+}
+.cc-fb__lead--muted { color: var(--ink-mute); }
+
+/* Shrink-to-content: a value box stretched across the bar is the dead space the density rule bans.
+   Three classes to outrank `.cc-input { width: 100% }`. */
+.cc-input.cc-fb__val {
+  height: 26px;
+  width: 150px;
+  min-width: 0;
+  padding: 0 var(--s-2);
+  font-size: 12px;
+}
+.cc-fb__pair { display: flex; gap: var(--s-1); flex: 0 0 auto; }
+.cc-fb__pair .cc-input.cc-fb__val { width: 82px; }
+
+/* Reserved to the width of a value input, so switching to "is empty" does not resize the row. */
+.cc-fb__novalue { flex: 0 0 auto; width: 150px; }
+
+/* Immediately after the value, NOT pinned right. Pinned, it left a 122px void in the middle of
+   every condition — the dead space the density rule exists to stop. */
+.cc-fb__x { flex: 0 0 auto; }
+
+
+@media (max-width: 720px) {
+  /* Wrapping rather than a horizontal scroll: a filter row is edited, not read across. */
+  .cc-fb__row { flex-wrap: wrap; }
+  .cc-fb__lead { width: auto; }
+  .cc-input.cc-fb__val, .cc-fb__novalue { width: 100%; }
+  .cc-fb__x { margin-left: 0; }
+}
+
+/* The action row sits under the conditions, separated rather than floating: "Add condition" is a
+   sibling of the rows above it, "Remove all" is the destructive end of the same strip. */
+.cc-fb__actions {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin-top: var(--s-2);
+  padding-top: var(--s-2);
+  border-top: 1px solid var(--hairline);
+}

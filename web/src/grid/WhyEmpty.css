@@ -1,0 +1,125 @@
+/* Why is this column empty.
+
+   A list of counted reasons. The count is pinned left and the label runs beside it — no stretched
+   row with a lone number floating at the far edge, and no fixed-width box wider than its content. */
+
+.cc-why { padding: var(--s-2); font-size: 12.5px; }
+
+/* Reserved height, so the answer landing does not resize the popover under the pointer. */
+.cc-why__skel {
+  min-height: 96px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-mute);
+}
+
+.cc-why__error,
+.cc-why__all {
+  display: flex;
+  gap: var(--s-2);
+  align-items: flex-start;
+  margin: 0;
+  padding: var(--s-1) 0;
+  line-height: 1.5;
+}
+.cc-why__all svg { flex: 0 0 auto; margin-top: 2px; color: var(--status-done-solid); }
+.cc-why__error { color: var(--status-error-solid); }
+
+.cc-why__lede {
+  margin: 0 0 var(--s-2);
+  padding-bottom: var(--s-2);
+  border-bottom: 1px solid var(--hairline);
+  color: var(--ink-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.cc-why__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  max-height: 380px;
+  overflow-y: auto;
+}
+
+.cc-why__head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  min-width: 0;
+}
+
+/* Tabular and right-aligned in a reserved width: the counts line up down the list, and a group
+   going from 9 to 1,204 during a run cannot shift the label beside it. */
+.cc-why__count {
+  flex: 0 0 auto;
+  min-width: 42px;
+  text-align: right;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.cc-why__title { min-width: 0; font-weight: 600; }
+
+/* Solid, not a tint — it is the panel's most load-bearing statement. */
+.cc-why__norerun {
+  flex: 0 0 auto;
+  padding: 1px 6px;
+  border-radius: var(--r-xs);
+  background: var(--status-queued-solid);
+  color: #fff;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+/* The failure class, beside the title. Quieter than the "re-running won't help" chip on purpose —
+   that one is a verdict to act on, this one is a label that explains why two "Failed" rows carry
+   different advice. */
+.cc-why__class {
+  flex: 0 0 auto;
+  padding: 1px 5px;
+  border-radius: var(--r-xs);
+  border: 1px solid var(--hairline);
+  color: var(--ink-mute-2);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.cc-why__msg,
+.cc-why__advice {
+  margin: 2px 0 0 50px;   /* clears the count column, so the text forms one left edge */
+  line-height: 1.5;
+}
+.cc-why__msg { color: var(--ink); }
+.cc-why__advice { color: var(--ink-mute); font-size: 12px; }
+
+.cc-why__show {
+  margin: var(--s-1) 0 0 50px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 12px;
+  color: var(--primary);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.cc-why__show:hover { color: var(--primary-deep); }
+.cc-why__show:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; border-radius: 2px; }
+
+.cc-why__more {
+  display: flex;
+  gap: var(--s-2);
+  align-items: flex-start;
+  margin: var(--s-3) 0 0;
+  padding-top: var(--s-2);
+  border-top: 1px solid var(--hairline);
+  color: var(--ink-mute);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.cc-why__more svg { flex: 0 0 auto; margin-top: 2px; color: var(--status-queued-solid); }

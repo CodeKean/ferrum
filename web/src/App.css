@@ -1,0 +1,582 @@
+.cc-app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--canvas);
+
+  /* The right-docked panels are `position: fixed`, so without this they float OVER the shell. The
+     visible damage was at the bottom: the grid's horizontal scrollbar runs the full width, so a
+     panel covered its right 420px — the rounded end of the thumb sliced by the panel edge, and that
+     covered half could not be dragged. Reserving the width instead means the sheet, the scrollbar
+     and the table-tab strip all END at the panel's edge, and the panel is a full-height column
+     beside them rather than a sheet of paper laid on top. --dock-w is set in App.tsx; 0 when
+     nothing is docked, so the default is byte-for-byte the old full-width layout. */
+  padding-right: var(--dock-w, 0px);
+  transition: padding-right var(--dur) var(--ease);
+}
+
+/* Too narrow to give 420px away — below this the app would be squeezed to a sliver, so the panel
+   goes back to overlaying, which is the right behaviour on a small screen anyway. */
+@media (max-width: 860px) {
+  .cc-app { padding-right: 0; }
+}
+
+/* ── app bar ────────────────────────────────────────────────── */
+
+.cc-appbar {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  height: 38px;
+  padding: 0 var(--s-3);
+  border-bottom: 1px solid var(--hairline);
+  background: var(--canvas);
+  flex: 0 0 auto;
+}
+
+.cc-appbar__spacer { flex: 1 1 auto; }
+
+.cc-appbar__brand { display: flex; align-items: center; gap: var(--s-2); }
+
+/* The mark draws its own tile, so this is only its box — a fixed one, so the brand corner cannot
+   change width and shove the path beside it. */
+.cc-appbar__brand > svg { display: block; flex: 0 0 auto; }
+
+.cc-wordmark {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.006em;
+}
+
+/* ── connection banner ──────────────────────────────────────── */
+
+.cc-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  height: 32px;
+  padding: 0 var(--s-3);
+  background: var(--band-queued);
+  border-bottom: 1px solid var(--hairline);
+  font-size: 12px;
+  color: var(--ink-secondary);
+  flex: 0 0 auto;
+}
+.cc-banner > span { flex: 1 1 auto; }
+
+/* ── toolbar ─────────────────────────────────────────────────── */
+
+.cc-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: 0 var(--s-3);
+  border-bottom: 1px solid var(--hairline);
+  flex: 0 0 auto;
+  background: var(--canvas);
+}
+
+/* There is one row. `.cc-toolbar--2` went with the second one — its only remaining user was the
+   loading skeleton, which drew a row the real surface does not have and made the grid jump 36px on
+   hydrate. */
+.cc-toolbar--1 { height: var(--toolbar-h-1); }
+
+/* Nothing in the left group shrinks. Giving the row one control size made it a little wider, and
+   with the group allowed to shrink the shortfall landed on the LAST control in it — "Filter" was
+   clipped mid-word by the search field. A button that is half a word is worse than a row that is
+   one control tighter. */
+.cc-toolbar__left { display: flex; align-items: center; gap: var(--s-2); flex: 0 0 auto; }
+.cc-toolbar__left > * { flex: 0 0 auto; }
+/* The spacer lives on the LEFT group so the right group hugs the edge rather than a lone control
+   floating with a void beside it. */
+.cc-toolbar__right { display: flex; align-items: center; gap: var(--s-2); margin-left: auto; min-width: 0; }
+.cc-toolbar__right > *:not(.cc-search) { flex: 0 0 auto; }
+
+/* The search box is the one control on this row with no fixed size worth defending: it is a field,
+   it stays usable narrower, and it is the only thing here that can absorb a tight window without
+   something else losing a letter. So it takes the whole shortfall. */
+.cc-toolbar .cc-search { flex: 1 1 200px; min-width: 108px; }
+
+/* ── one row, one control size ───────────────────────────────────────────────────────────────────
+   This row had grown four heights (26 / 28 / 30), three font sizes (12 / 12.5 / 13) and two
+   horizontal paddings (8 / 12), because each control arrived wearing whatever size its own
+   component defaults to: a small Select, an xs ghost button, a view-bar trigger with its own
+   height, a search field, ordinary buttons. Individually each was reasonable; together they read as
+   a row nobody laid out.
+
+   Normalised HERE rather than by editing each component, because the size a Select should be in a
+   dense drawer is not the size it should be on this row — the row is what has an opinion, so the row
+   states it once and everything on it inherits. */
+.cc-toolbar :is(
+  .cc-btn,
+  .cc-select,
+  .cc-vb__trigger,
+  .cc-search,
+  .hk-icon-btn
+) {
+  height: var(--control-h);
+  min-height: var(--control-h);
+  font-size: 12.5px;
+  border-radius: var(--r-sm);
+}
+
+/* Text controls share one horizontal padding; icon-only ones stay square so their glyph sits in the
+   middle rather than off to one side. */
+.cc-toolbar :is(.cc-btn, .cc-select, .cc-vb__trigger, .cc-search) {
+  padding-inline: var(--s-3);
+}
+.cc-toolbar .hk-icon-btn {
+  width: var(--control-h);
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* The two halves of a split button meet in the middle, so only their outer corners round — and the
+   caret half is square, sized off the row's own height rather than carrying text padding. */
+.cc-toolbar .cc-split__main { border-radius: var(--r-sm) 0 0 var(--r-sm); }
+.cc-toolbar .cc-split__more {
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+  width: var(--control-h);
+  padding-inline: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* The search field's inner input must not carry a second height of its own, or the box and the text
+   inside it disagree about where the middle is. */
+.cc-toolbar .cc-search input {
+  height: 100%;
+  font-size: 12.5px;
+  padding: 0;
+}
+
+.cc-count {
+  font-size: 11.5px;
+  color: var(--ink-mute);
+  white-space: nowrap;
+  /* Reserved so 999,999 -> 1,000,000 cannot resize the toolbar. */
+  min-width: 88px;
+  text-align: right;
+}
+
+/* ── controls ───────────────────────────────────────────────── */
+
+.cc-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  height: var(--control-h);
+  padding: 0 var(--s-3);
+  border-radius: var(--r-sm);
+  border: 1px solid var(--hairline-strong);
+  background: var(--canvas);
+  color: var(--ink);
+  font-size: 12.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  text-decoration: none;
+  transition: background-color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease), transform 90ms var(--ease);
+}
+.cc-btn:hover { background: var(--control-hover); border-color: var(--ink-faint); }
+.cc-btn:active { transform: scale(0.97); }
+
+.cc-btn--primary {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--on-primary);
+}
+.cc-btn--primary:hover { background: var(--primary-deep); border-color: var(--primary-deep); }
+
+.cc-btn--ghost { border-color: transparent; background: transparent; }
+.cc-btn--ghost:hover { background: var(--control-hover); border-color: var(--hairline); }
+
+/* Solid, not a tinted wash — a destructive confirm is exactly where the affordance must be
+   unambiguous. Reserved for the action that loses something. */
+.cc-btn--danger {
+  background: var(--status-error-solid);
+  border-color: var(--status-error-solid);
+  color: var(--on-status);
+}
+.cc-btn--danger:hover { background: var(--status-error-deep); border-color: var(--status-error-deep); }
+
+.cc-btn:disabled { opacity: 0.5; pointer-events: none; }
+
+/* Compact variant for a secondary in-toolbar action like "Clear filters". */
+.cc-btn--xs { height: var(--control-h-sm); padding: 0 var(--s-2); font-size: 12px; }
+
+/* Shared text input — the rename dialog and anywhere else a single-line value is edited. */
+.cc-input {
+  width: 100%;
+  height: var(--control-h);
+  padding: 0 var(--s-3);
+  border-radius: var(--r-sm);
+  border: 1px solid var(--hairline-strong);
+  background: var(--canvas);
+  color: var(--ink);
+  font-size: 13px;
+  transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
+}
+.cc-input:hover { border-color: var(--ink-faint); }
+.cc-input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--focus-ring); }
+
+/* On-design select trigger — never a bare native <select>.
+ *
+ * Two things here were wrong and both showed up as "the dropdowns look off":
+ *
+ * `align-items: baseline` aligned the caret SVG to the text baseline, which for an icon with no
+ * baseline of its own puts it a couple of pixels low and slightly rotated-looking. Icons align to
+ * the centre; only text aligns to a baseline.
+ *
+ * And with no `justify-content`, the label and caret packed together at the left. That is invisible
+ * while the control shrinks to its content, and obvious the moment a parent stretches it to full
+ * width — the caret ends up mid-box with a void beside it. Label left, caret right, so the trigger
+ * fills whatever width it is given instead of leaving dead space. */
+.cc-select {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+  height: var(--control-h);
+  padding: 0 var(--s-3);
+  border-radius: var(--r-sm);
+  border: 1px solid var(--hairline-strong);
+  background: var(--canvas);
+  font-size: 12.5px;
+  max-width: 320px;
+  transition: background-color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease), transform 90ms var(--ease);
+}
+.cc-select:hover { background: var(--control-hover); }
+.cc-select:active { transform: scale(0.98); }
+.cc-select:focus-visible { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--focus-ring); }
+.cc-select--sm { height: var(--control-h-sm); font-size: 12px; }
+
+/* Takes the slack, so the caret is pushed to the right edge rather than trailing the text. */
+.cc-select__value {
+  flex: 1 1 auto;
+  font-weight: 500;
+  min-width: 0;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cc-select__sub { flex: 0 0 auto; font-size: 11px; color: var(--ink-mute); white-space: nowrap; }
+
+/* Never shrinks, never wraps, and centred on the control rather than on the text baseline. */
+.cc-select__caret {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  color: var(--ink-mute);
+}
+
+.cc-search {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  height: var(--control-h);
+  width: 240px;
+  padding: 0 var(--s-3);
+  border-radius: var(--r-sm);
+  border: 1px solid var(--hairline-strong);
+  background: var(--canvas);
+  transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease), width var(--dur) var(--ease);
+}
+.cc-search:hover { border-color: var(--ink-faint); }
+.cc-search:focus-within {
+  width: 320px;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+.cc-search__icon { color: var(--ink-mute); display: inline-flex; flex: 0 0 auto; }
+.cc-search input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  background: none;
+  font-size: 12.5px;
+}
+.cc-search input::placeholder { color: var(--ink-faint); }
+.cc-search input:focus { outline: none; }
+
+/* ── skeleton page ──────────────────────────────────────────── */
+
+.cc-skelpage { display: flex; flex-direction: column; height: 100%; }
+.cc-skelpage__grid { flex: 1 1 auto; padding-top: var(--header-h); }
+.cc-skelpage__row {
+  display: flex;
+  align-items: center;
+  height: var(--row-h);
+  padding: 0 var(--s-4);
+  border-bottom: 1px solid var(--grid-line);
+}
+
+/* ── empty state ────────────────────────────────────────────── */
+
+.cc-empty {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  padding: var(--s-9);
+  /* min-height so an empty -> populated transition cannot snap the page */
+  min-height: 320px;
+}
+
+.cc-empty__body { max-width: 460px; }
+
+.cc-empty__title {
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: -0.012em;
+  margin-bottom: var(--s-2);
+}
+
+.cc-empty__copy {
+  color: var(--ink-mute);
+  margin-bottom: var(--s-5);
+  font-size: 13px;
+}
+
+.cc-empty__actions { display: flex; gap: var(--s-2); }
+
+/* ── mobile ─────────────────────────────────────────────────────
+   A 30-column grid at 375px is a lie. The toolbar collapses here; record mode (a row list plus a
+   full-screen record detail) is the honest mobile surface and lands with the drawer work. */
+
+@media (max-width: 768px) {
+  .cc-toolbar { padding: 0 var(--s-2); }
+
+  /* The toolbar scrolls ITSELF rather than pushing the document wide.
+
+     Measured at 371px: documentElement.scrollWidth 443 against clientWidth 371 — 72px of controls
+     off the right edge, reachable only by swiping the entire page sideways. Nothing in this row
+     shrinks (two Selects, the views trigger, the filter bar and a split button all size to their
+     content), so the overflow has to go somewhere; the honest place is inside the strip. The
+     scrollbar itself is hidden the same way the breadcrumb hides its own. */
+  .cc-toolbar--1 {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+  .cc-toolbar--1::-webkit-scrollbar { display: none; }
+
+  /* Neither group may be squeezed to nothing by the other, and the right group must sit INSIDE the
+     scrollable content rather than being pushed past its end. */
+  .cc-toolbar__left,
+  .cc-toolbar__right { flex: 0 0 auto; }
+  .cc-toolbar__right { margin-left: var(--s-3); }
+
+  /* A fixed compact box rather than `flex: 1`. Taking the leftover space is meaningless once the row
+     scrolls — there is no leftover — and it left the search collapsed to its own minimum. */
+  .cc-search { width: 150px; flex: 0 0 auto; min-width: 0; }
+  .cc-search:focus-within { width: 190px; }
+
+  /* Icon-only buttons. This rule existed already and had never matched anything: the labels were
+     bare text nodes, so there was no <span> to hide, and the toolbar kept its full width at every
+     size. They are wrapped now — and because hiding the span removes the button's accessible name
+     with it, every button on this row carries its own `aria-label` in App.tsx. */
+  .cc-btn span { display: none; }
+  .cc-btn { padding: 0 var(--s-2); }
+}
+
+/* Shared multi-line input. The column editor styles its own; this is the base. */
+.cc-textarea {
+  width: 100%;
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-sm);
+  border: 1px solid var(--hairline-strong);
+  background: var(--canvas);
+  color: var(--ink);
+  font-size: 12.5px;
+  font-family: inherit;
+  transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
+}
+.cc-textarea:hover { border-color: var(--ink-faint); }
+.cc-textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--focus-ring); }
+
+/* The table's name in the header. A label, not a picker — switching tables is the tab bar's job
+   now. Shrinks to its content so there is no dead strip beside it. */
+.cc-sheetname {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  max-width: 320px;
+  height: var(--control-h);
+  padding: 0 var(--s-2);
+  border-radius: var(--r-sm);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: default;
+}
+.cc-sheetname:hover { background: var(--control-hover); }
+.cc-sheetname__rows { font-size: 11px; font-weight: 400; color: var(--ink-faint); font-variant-numeric: tabular-nums; }
+
+/* Same box as the label, so renaming cannot resize the toolbar. */
+.cc-sheetname__input {
+  width: 240px;
+  height: var(--control-h);
+  padding: 0 var(--s-2);
+  border: 1px solid var(--primary);
+  border-radius: var(--r-sm);
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+}
+.cc-sheetname__input:focus { outline: none; box-shadow: 0 0 0 3px var(--focus-ring); }
+
+/* ── the path in the app bar ──────────────────────────────────
+   Folder / Workbook / Table, every level clickable. This is the only navigation that is always on
+   screen, so it replaces both the old sheet dropdown and the separate "All files" button. */
+.cc-path {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.cc-path::-webkit-scrollbar { display: none; }
+.cc-path__wrap { display: inline-flex; align-items: center; gap: 2px; }
+.cc-path__sep { color: var(--ink-faint); font-size: 12px; }
+
+.cc-path__crumb {
+  max-width: 220px;
+  padding: 3px var(--s-2);
+  border-radius: var(--r-xs);
+  color: var(--ink-mute);
+  font-size: 12.5px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.cc-path__crumb:hover { background: var(--control-hover); color: var(--ink); }
+/* Every other interactive class here answers a press; these two were the only ones with a :hover and
+   no :active, which makes them feel dead under the finger compared with the controls beside them. */
+.cc-path__crumb:active { background: var(--control-active); }
+.cc-path__crumb:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--focus-ring); }
+/* Where you are. Still hoverable, because double-clicking it renames. */
+.cc-path__crumb--here { color: var(--ink); font-weight: 600; cursor: default; }
+
+/* Said once, here, beside the table it belongs to, rather than repeated on the toolbar. */
+.cc-path__rows {
+  flex: 0 0 auto;
+  margin-left: var(--s-2);
+  font-size: 11px;
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Same box as the crumb, so renaming cannot resize the bar. */
+.cc-path__input {
+  width: 200px;
+  height: 24px;
+  margin-left: 2px;
+  padding: 0 var(--s-2);
+  border: 1px solid var(--primary);
+  border-radius: var(--r-xs);
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.cc-path__input:focus { outline: none; box-shadow: 0 0 0 3px var(--focus-ring); }
+
+@media (prefers-reduced-motion: reduce) {
+  .cc-path__crumb { transition: none; }
+  /* The press feedback on every button in this file is a transform, so neutralising motion means
+     neutralising that too — not just the colour transitions. */
+  .cc-btn,
+  .cc-select { transition: background-color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease); }
+  .cc-btn:active,
+  .cc-select:active { transform: none; }
+}
+
+/* ── split button ─────────────────────────────────────────────
+   The main half does the common thing; the caret opens the rest. Joined into one control so it
+   reads as one button with a choice, not two buttons that happen to touch. */
+.cc-split { display: inline-flex; align-items: stretch; }
+.cc-split__main { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.cc-split__more {
+  width: 24px;
+  padding: 0;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  /* One hairline between the halves rather than two adjacent borders. */
+  margin-left: -1px;
+}
+
+/* ── who you are ──────────────────────────────────────────────────────────────────────────────────
+   Only rendered on a shared instance. Shrunk to its content with a capped name, so a long address
+   cannot push the settings and theme buttons off the end of the bar. */
+
+.cc-whoami {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 220px;
+  padding: 3px 9px 3px 3px;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--text);
+  background: none;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.cc-whoami:hover { background: color-mix(in srgb, var(--text) 6%, transparent); }
+.cc-whoami:active { transform: translateY(1px); }
+
+.cc-whoami:focus-visible {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 18%, transparent);
+}
+
+.cc-whoami__dot {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 21px;
+  height: 21px;
+  border-radius: 50%;
+  /* Solid, like every other status affordance here. */
+  background: var(--primary);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.cc-whoami__name { min-width: 0; }
+
+/* Solid too, and the one thing a read-only person needs to see without hunting for it. */
+.cc-whoami__ro {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--text-muted);
+  color: #fff;
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+
+@media (max-width: 720px) {
+  /* The initial alone. The name is the first thing worth losing when the bar runs out of room. */
+  .cc-whoami__name,
+  .cc-whoami__ro { display: none; }
+  .cc-whoami { padding: 3px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cc-whoami { transition: none; }
+  .cc-whoami:active { transform: none; }
+}

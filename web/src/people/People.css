@@ -1,0 +1,268 @@
+/* The members list.
+   Dense like the rest of the app: lean row padding, sentence-case headers, explicit widths on the
+   short columns so a longer name cannot reflow the table. */
+
+.cc-people {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+.cc-people__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s-4);
+}
+
+.cc-people__h2 {
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.cc-people__blurb,
+.cc-people__note {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--text-muted);
+  max-width: 62ch;
+}
+
+/* Held open so "1 active" becoming "12 active" cannot shift the header. */
+.cc-people__count {
+  flex: none;
+  min-width: 68px;
+  text-align: right;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+.cc-people__error {
+  margin: 0;
+  min-height: 16px;
+  font-size: 12.5px;
+  color: var(--danger, #dc2626);
+}
+
+/* ── invite row ──────────────────────────────────────────────────────────────────────────────── */
+
+.cc-people__invite {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  flex-wrap: wrap;
+}
+
+.cc-people__input {
+  flex: 1 1 220px;
+  min-width: 0;
+  padding: 6px 10px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--canvas);
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.cc-people__input:hover:not(:disabled) { border-color: var(--hairline-strong, var(--hairline)); }
+
+.cc-people__input:focus-visible {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 18%, transparent);
+}
+
+/* ── pending invitations ─────────────────────────────────────────────────────────────────────── */
+
+.cc-people__pending {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--hairline);
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.cc-people__pendrow {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: 6px 10px;
+  background: var(--canvas);
+}
+
+.cc-people__pendmail { flex: 1 1 auto; min-width: 0; font-size: 13px; color: var(--text); }
+.cc-people__pendrole { flex: none; font-size: 12px; color: var(--text-muted); }
+
+/* ── the table ───────────────────────────────────────────────────────────────────────────────── */
+
+/* Its own scrollport. The page body never scrolls horizontally; this does, when it must. */
+.cc-people__scroll {
+  overflow-x: auto;
+  /* Bottom padding so a scrollbar sits under the last row rather than over it. */
+  padding-bottom: 2px;
+}
+
+.cc-people__table {
+  width: 100%;
+  min-width: 460px;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.cc-people__table th {
+  /* Sentence case, no uppercase, no wide tracking — the house rule for column headers. */
+  padding: 6px 8px;
+  text-align: left;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--hairline);
+  white-space: nowrap;
+}
+
+.cc-people__table td {
+  padding: 7px 8px;
+  border-bottom: 1px solid var(--hairline);
+  vertical-align: middle;
+}
+
+/* Explicit widths on the short columns; the person column stays flexible. */
+.cc-people__c-role { width: 132px; }
+.cc-people__c-seen { width: 116px; color: var(--text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cc-people__c-act  { width: 168px; text-align: right; white-space: nowrap; }
+
+.cc-people__row { transition: background 120ms ease; }
+.cc-people__row:hover { background: color-mix(in srgb, var(--text) 4%, transparent); }
+.cc-people__row--off { opacity: 0.62; }
+
+/* One line, and the name is the part that truncates — a pill must never be pushed to a new row. */
+.cc-people__line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.cc-people__name { min-width: 0; color: var(--text); }
+.cc-people__mail { display: block; font-size: 12px; color: var(--text-muted); }
+
+/* Solid, not a transparent wash — the house rule for status affordances. */
+.cc-people__you,
+.cc-people__off,
+.cc-people__owner {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #fff;
+}
+
+.cc-people__you   { background: var(--text-muted); flex: none; }
+.cc-people__off   { background: var(--danger, #dc2626); flex: none; }
+.cc-people__owner { background: var(--primary); }
+
+.cc-people__rolefixed { color: var(--text-muted); }
+
+.cc-people__link {
+  padding: 3px 6px;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.cc-people__link:hover:not(:disabled) { background: color-mix(in srgb, var(--text) 8%, transparent); color: var(--text); }
+.cc-people__link:active:not(:disabled) { transform: translateY(1px); }
+.cc-people__link:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.cc-people__icon {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  margin-left: 2px;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.cc-people__icon:hover:not(:disabled) { background: color-mix(in srgb, var(--danger, #dc2626) 12%, transparent); color: var(--danger, #dc2626); }
+.cc-people__icon:active:not(:disabled) { transform: translateY(1px); }
+.cc-people__icon:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Matches a real row's height, so the table does not resize when the list arrives. */
+.cc-people__skel {
+  display: block;
+  height: 17px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+  animation: cc-people-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes cc-people-pulse {
+  0%, 100% { opacity: 0.5; }
+  50%      { opacity: 0.9; }
+}
+
+/* ── the one-time link ───────────────────────────────────────────────────────────────────────── */
+
+.cc-people__modaltext {
+  margin: 0 0 var(--s-4);
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-muted);
+  max-width: 56ch;
+}
+
+.cc-people__linkrow {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.cc-people__linkinput {
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 12px;
+}
+
+.cc-people__modalfoot {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--s-2);
+  margin-top: var(--s-4);
+}
+
+@media (max-width: 620px) {
+  /* The two narrow columns go; the name and the controls are what matter on a phone. */
+  .cc-people__c-seen { display: none; }
+  .cc-people__c-act  { width: auto; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cc-people__row,
+  .cc-people__link,
+  .cc-people__icon,
+  .cc-people__input { transition: none; }
+  .cc-people__skel { animation: none; }
+  .cc-people__link:active:not(:disabled),
+  .cc-people__icon:active:not(:disabled) { transform: none; }
+}

@@ -1,0 +1,82 @@
+.cc-ss { display: flex; flex-direction: column; gap: var(--s-4); }
+
+.cc-ss__intro {
+  font-size: 12px;
+  color: var(--ink-mute);
+  line-height: 1.55;
+}
+.cc-ss__intro code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 1px 4px;
+  border-radius: var(--r-xs);
+  background: var(--canvas-sunk);
+}
+
+/* Shrink-to-content, not a full-width box for a two-digit number.
+   Two classes deliberately: the base .cc-input sets width:100%, and matching its specificity would
+   leave the winner decided by stylesheet import order — which is not something a component should
+   depend on. */
+.cc-input.cc-input--num {
+  width: max-content;
+  min-width: 72px;
+  font-family: var(--font-mono);
+}
+
+.cc-textarea--sm {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.6;
+  resize: vertical;
+}
+
+/* An amber band rather than a red error: nothing is wrong yet, but the setting above may not do
+   what it says under the engine that is selected. */
+.cc-ss__warn {
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-sm);
+  background: var(--band-queued);
+  border: 1px solid var(--hairline);
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--ink-secondary);
+}
+
+.cc-ss__adv > summary {
+  font-size: 12px;
+  color: var(--ink-mute);
+  cursor: pointer;
+  padding: var(--s-1) 0;
+  list-style: none;
+  user-select: none;
+}
+.cc-ss__adv > summary::-webkit-details-marker { display: none; }
+.cc-ss__adv > summary::before {
+  content: "▸";
+  display: inline-block;
+  width: 14px;
+  transition: transform var(--dur-fast) var(--ease);
+}
+.cc-ss__adv[open] > summary::before { transform: rotate(90deg); }
+.cc-ss__adv > summary:hover { color: var(--ink); }
+.cc-ss__adv > .cc-field { margin-top: var(--s-2); }
+
+@media (prefers-reduced-motion: reduce) {
+  .cc-ss__adv > summary::before { transition: none; }
+}
+
+/* ── which engine actually runs ───────────────────────────────
+ *
+ * The first thing on the tab, because it is the fact the rest of the tab depends on and the one that
+ * was missing. A quiet band rather than a warning: it is orientation, not a problem.
+ */
+.cc-ss__who {
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  background: var(--canvas-soft);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink);
+}
+.cc-ss__whohint { color: var(--ink-mute); }

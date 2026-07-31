@@ -1,0 +1,71 @@
+/* The diagnose → apply → try-one-row block inside the cell panel. */
+
+.cc-fix {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  align-items: flex-start;
+  padding: var(--s-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  background: var(--canvas-soft);
+}
+
+/* Reserved height while the answer is fetched, so the panel does not jump under the pointer. */
+.cc-fix__skel { align-self: stretch; height: 13px; }
+
+.cc-fix__cause,
+.cc-fix__why,
+.cc-fix__note,
+.cc-fix__err {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.cc-fix__cause { color: var(--ink); }
+.cc-fix__why { color: var(--ink-mute); }
+.cc-fix__note { font-size: 11px; color: var(--ink-mute-2); }
+.cc-fix__err { color: var(--status-error-solid); }
+
+/* One change per row: what it is, what it was, what it becomes. Stacked rather than side by side —
+   a prompt is a paragraph, and three columns of paragraph in a 420px panel is unreadable. */
+.cc-fix__changes {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cc-fix__changes li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.cc-fix__field { font-weight: 600; color: var(--ink); }
+
+.cc-fix__before,
+.cc-fix__after {
+  padding: var(--s-1) var(--s-2);
+  border-radius: var(--r-xs);
+  background: var(--canvas-sunk);
+  overflow-wrap: anywhere;
+  /* Bounded: one proposal rewriting a long prompt must not push the buttons below it off the panel. */
+  max-height: 10em;
+  overflow-y: auto;
+}
+.cc-fix__before { color: var(--ink-mute-2); text-decoration: line-through; text-decoration-color: var(--ink-faint); }
+.cc-fix__after { color: var(--ink); }
+
+.cc-fix__row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  flex-wrap: wrap;
+}

@@ -1,0 +1,252 @@
+/* Scheduled runs. Dense rows, reserved heights, and a switch that reads as a switch. */
+
+.cc-sched__list {
+  /* Named so the rows inside can respond to how wide THIS is rather than how wide the window is. */
+  container: cc-sched / inline-size;
+  list-style: none;
+  margin: 0 0 var(--s-3);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--hairline);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+}
+
+.cc-sched__row {
+  display: flex;
+  align-items: center;
+  /* Wraps at every width, not only below a viewport breakpoint.
+     A viewport media query cannot see a narrow CONTAINER — with a wide window and a squeezed list,
+     the buttons kept their size, the flexible text column absorbed the whole shortfall, and the
+     schedule's name rendered as a single letter. The row has to give way by wrapping instead. */
+  flex-wrap: wrap;
+  gap: var(--s-2) var(--s-3);
+  padding: var(--s-2) var(--s-3);
+  background: var(--canvas);
+  /* Reserved: the "what happened last time" line is always present, so switching a schedule on or
+     off cannot change a row's height and shift the rows under a pointer about to click. */
+  min-height: 62px;
+}
+
+.cc-sched__main {
+  /* A floor, not `auto`. `min-width: 0` alone lets flexbox shrink this to nothing, which is exactly
+     what it did — the one part of the row that must stay readable was the only part that gave. */
+  flex: 1 1 200px;
+  min-width: 180px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.cc-sched__name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cc-sched__meta,
+.cc-sched__last {
+  font-size: 11px;
+  color: var(--ink-mute);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-height: 1.35em;
+}
+
+/* Fixed width so "in 4 hr" and "off" cannot move the buttons beside them. */
+.cc-sched__next {
+  flex: 0 0 auto;
+  width: 76px;
+  text-align: right;
+  font-size: 12px;
+  color: var(--ink-mute);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.cc-sched__row--on .cc-sched__next { color: var(--ink); }
+
+.cc-sched__acts {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  flex-wrap: nowrap;
+}
+
+/* ── the switch ──────────────────────────────────────────────────────────────────────────────── */
+
+.cc-sched__switch {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 20px;
+  padding: 2px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--r-pill);
+  background: var(--canvas-sunk);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+}
+.cc-sched__switch:hover { border-color: var(--ink-mute); }
+.cc-sched__switch:active { transform: translateY(0.5px); }
+.cc-sched__switch:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.cc-sched__switch--on { background: var(--primary); border-color: var(--primary); }
+
+.cc-sched__knob {
+  display: block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--canvas);
+  box-shadow: var(--elev-1);
+  transition: transform var(--dur-fast) var(--ease);
+}
+.cc-sched__switch--on .cc-sched__knob { transform: translateX(14px); }
+
+@media (prefers-reduced-motion: reduce) {
+  .cc-sched__switch,
+  .cc-sched__knob { transition: none; }
+}
+
+/* ── empty, skeleton, messages ───────────────────────────────────────────────────────────────── */
+
+.cc-sched__empty {
+  min-height: 120px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  padding: var(--s-4);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  background: var(--canvas);
+  margin-bottom: var(--s-3);
+}
+.cc-sched__empty__h { margin: 0; font-size: 13px; font-weight: 600; color: var(--ink); }
+.cc-sched__empty__p { margin: 0; font-size: 12px; line-height: 1.5; color: var(--ink-mute); }
+
+.cc-sched__skel {
+  height: 124px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  background: var(--canvas-soft);
+  margin-bottom: var(--s-3);
+  animation: cc-sched-pulse 1.2s ease-in-out infinite;
+}
+@keyframes cc-sched-pulse { 0%, 100% { opacity: 1 } 50% { opacity: 0.55 } }
+@media (prefers-reduced-motion: reduce) { .cc-sched__skel { animation: none; } }
+
+/* One reserved strip for both, so a message appearing cannot move the buttons above it. */
+.cc-sched__msg {
+  min-height: 20px;
+  margin-top: var(--s-2);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.cc-sched__err { display: inline-flex; align-items: center; gap: 6px; color: var(--status-error-solid); }
+.cc-sched__ok { color: var(--ink-mute); }
+
+/* ── the editor ──────────────────────────────────────────────────────────────────────────────── */
+
+.cc-sched__form { display: flex; flex-direction: column; gap: var(--s-4); }
+
+.cc-sched__fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-3) var(--s-5);
+  align-items: flex-start;
+}
+/* Shrink to content: a field holding a dropdown and a dollar amount stretched to 1fr is the
+   dead-space tell. */
+.cc-sched__fields .cc-field { width: max-content; max-width: 100%; }
+.cc-sched__fields .cc-field:first-child { flex: 1 1 220px; width: auto; }
+
+.cc-sched__inline { display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap; }
+.cc-sched__unit { font-size: 12px; color: var(--ink-mute); }
+
+.cc-sched__sec { display: flex; flex-direction: column; gap: var(--s-2); }
+
+.cc-sched__cols {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 2px var(--s-3);
+  max-height: 180px;
+  overflow-y: auto;
+  padding: var(--s-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  background: var(--canvas);
+}
+.cc-sched__col {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: 3px 4px;
+  border-radius: var(--r-xs);
+  font-size: 12px;
+  color: var(--ink);
+  cursor: pointer;
+  min-width: 0;
+}
+.cc-sched__col:hover { background: var(--control-hover); }
+.cc-sched__col span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.cc-sched__hint {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--ink-mute);
+}
+
+.cc-sched__check {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-2);
+  font-size: 12px;
+  color: var(--ink);
+  cursor: pointer;
+}
+.cc-sched__check .cc-sched__hint { display: block; margin-top: 2px; }
+
+.cc-sched__formacts { display: flex; gap: var(--s-2); }
+
+.cc-sched__add { align-self: flex-start; }
+
+/* Once the row has wrapped, the controls take the second line to themselves and sit to the right,
+   under the text they belong to. Driven by the CONTAINER, so it holds however the dialog is sized. */
+@container cc-sched (max-width: 520px) {
+  .cc-sched__next { width: auto; order: 1; }
+  .cc-sched__acts { width: 100%; justify-content: flex-end; order: 2; }
+}
+
+/* Same treatment for a genuinely narrow window, for any browser without container queries. */
+@media (max-width: 560px) {
+  .cc-sched__next { width: auto; }
+  .cc-sched__acts { width: 100%; justify-content: flex-end; }
+}
+
+/* What one firing costs. The only number on the form, so it gets its own line. */
+.cc-sched__pass {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  background: var(--canvas);
+  min-height: 34px;
+}
+.cc-sched__pass__k { font-size: 12px; color: var(--ink-mute); }
+.cc-sched__pass__v {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
