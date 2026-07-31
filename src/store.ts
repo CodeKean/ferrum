@@ -214,9 +214,39 @@ export function renameSheet(id: string, name: string): void {
   db.prepare("UPDATE sheets SET name = ?, updated_at = datetime('now') WHERE id = ?").run(name, id);
 }
 
+/**
+ * Remove a table for good.
+ *
+ * Its rows, cells, columns and views go with it through ON DELETE CASCADE. Its materialized view
+ * indexes and its data-version stamp do NOT: `view_index`, `view_index_meta` and the `dv:` key in
+ * `kv` carry no foreign key onto `sheets`, so nothing cascaded and every index a deleted table had
+ * ever built stayed on disk permanently. Measured on the real database — 30 orphaned `view_index`
+ * rows and 91 of 98 `dv:` keys belonging to tables that no longer exist. Small today and unbounded
+ * by design: the live `view_index` is 318 MB, so one deleted million-row table strands hundreds of
+ * megabytes nothing can ever reach again.
+ *
+ * `usage_daily` is deliberately left alone. It is the record of what was SPENT, and deleting a
+ * table must not quietly rewrite what the workspace cost; it is bounded by day x column anyway,
+ * not by row count.
+ */
 export function deleteSheet(id: string): void {
-  db.prepare("DELETE FROM sheets WHERE id = ?").run(id);
+  tx(() => {
+    // The index rows go before their meta rows: the meta is what names them, so removing it first
+    // would leave them both unreachable and undeletable.
+    db.prepare(
+      "DELETE FROM view_index WHERE view_key IN (SELECT view_key FROM view_index_meta WHERE sheet_id = ?)",
+    ).run(id);
+    // And again by key prefix, which is the only handle on rows whose meta row is already gone —
+    // every view key is the sheet id, a pipe, then the hash. See viewKey.
+    db.prepare("DELETE FROM view_index WHERE view_key LIKE ? ESCAPE '\\'").run(`${escapeLike(id)}|%`);
+    db.prepare("DELETE FROM view_index_meta WHERE sheet_id = ?").run(id);
+    db.prepare("DELETE FROM kv WHERE k = ?").run(dvKey(id));
+    db.prepare("DELETE FROM sheets WHERE id = ?").run(id);
+  });
   invalidateRowCount(id);
+  // The in-memory read cache of the version that was just deleted from disk. Left behind, a table
+  // created later could be handed a version number that outlived its own table.
+  dataVersion.delete(id);
 }
 
 // ─────────────────────────────────────────────────────────────── columns
@@ -870,8 +900,11 @@ export function deleteRow(rowId: number | string): string | null {
   if (!row?.sheet_id) return null;
 
   const sheetId = String(row.sheet_id);
-  // Cells and attempts carry ON DELETE CASCADE, but foreign keys are only enforced when the pragma
-  // is on, so the child rows are removed explicitly rather than trusted to disappear.
+  // Cells carry ON DELETE CASCADE, but foreign keys are only enforced when the pragma is on, so
+  // they are removed explicitly rather than trusted to disappear. ATTEMPTS DO NOT: `cell_attempts`
+  // has no foreign key at all (see the note above its schema), so they outlive the row on purpose
+  // and are bounded by the retention sweep instead — this line does not touch them, and the comment
+  // that said it did was wrong.
   db.prepare("DELETE FROM cells WHERE row_id = ?").run(Number(rowId));
   db.prepare("DELETE FROM rows WHERE id = ?").run(Number(rowId));
 

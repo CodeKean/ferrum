@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  addColumn, createSheet, deleteColumn, deleteRow, getCell, getColumn, getSheet, insertRows,
+  addColumn, createSheet, deleteColumn, deleteRow, deleteSheet, getCell, getColumn, getSheet, insertRows,
   listColumns, listSheets, readWindow, renameColumn, setCellValue, setColumnValueType,
 } from "./store.ts";
 import { db } from "./db.ts";
@@ -118,6 +118,34 @@ test("the materialized view indexes are bounded, and the one in use survives the
   // The meta row and its index rows are removed together. Index rows outliving their meta would be
   // dead weight; meta outliving its rows would pass the freshness check and render an empty sheet.
   assert.equal(orphans(), 0, "no index rows are left behind without their meta row");
+});
+
+test("deleting a table takes its view indexes and its version stamp with it", () => {
+  // None of those three tables has a foreign key onto `sheets`, so nothing cascaded: on the real
+  // database 91 of 98 `dv:` keys and 30 `view_index` rows belonged to tables that no longer existed.
+  // Trivial at that size and unbounded by design — `view_index` is 318 MB, so one deleted
+  // million-row table would strand hundreds of megabytes nothing can ever reach again.
+  const sheet = createSheet("delete-cleanup");
+  const col = addColumn(sheet.id, { name: "Value" });
+  const colId = Number(col.id);
+  insertRows(sheet.id, [{ values: { [String(colId)]: "needle" } }], 0, [colId]);
+  readWindow(sheet.id, 0, 10, { search: "needle" });
+
+  const metas = () =>
+    Number((db.prepare("SELECT COUNT(*) AS c FROM view_index_meta WHERE sheet_id = ?").get(sheet.id) as any).c);
+  const indexRows = () =>
+    Number((db.prepare("SELECT COUNT(*) AS c FROM view_index WHERE view_key LIKE ?").get(`${sheet.id}|%`) as any).c);
+  const stamp = () => db.prepare("SELECT v FROM kv WHERE k = ?").get(`dv:${sheet.id}`);
+
+  assert.ok(metas() > 0, "the fixture must actually build an index");
+  assert.ok(indexRows() > 0);
+  assert.ok(stamp(), "and stamp a data version");
+
+  deleteSheet(sheet.id);
+
+  assert.equal(metas(), 0, "the meta row goes with the table");
+  assert.equal(indexRows(), 0, "so do its index rows");
+  assert.equal(stamp(), undefined, "and its data-version key");
 });
 
 // ─────────────────────────────────────────────────────── undo / redo

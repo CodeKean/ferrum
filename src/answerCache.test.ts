@@ -174,6 +174,28 @@ test("pruning removes the expired and keeps the rest", () => {
   assert.ok(getAnswer(good));
 });
 
+test("an expired entry is eventually removed, not just skipped forever", async () => {
+  // `pruneCache` had no caller anywhere in the engine, so an entry past its expiry could never be
+  // served again and was never deleted either — dead rows, counted as stale and carried for the life
+  // of the file. Storing an answer is what grows the table, so it is what sweeps it.
+  fresh();
+  const old = answerKey({ ...base, task: "swept" });
+  db.prepare(
+    "INSERT INTO answer_cache (key, status, value_text, created_at) VALUES (?, 'done', 'ancient', datetime('now','-400 days'))",
+  ).run(old);
+  // The sweep runs at most once a day; clearing the stamp is what makes this write the due one.
+  db.prepare("DELETE FROM kv WHERE k = 'cache.answers.pruned_at'").run();
+
+  const live = answerKey({ ...base, task: "sweep-trigger" });
+  putAnswer(live, { status: "done", valueText: "kept" });
+  // Deferred to a later tick on purpose, so the delete never sits in front of a waiting run.
+  await new Promise((r) => setTimeout(r, 20));
+
+  const left = Number((db.prepare("SELECT COUNT(*) AS c FROM answer_cache WHERE key = ?").get(old) as any).c);
+  assert.equal(left, 0, "the expired entry is off disk, not merely unreadable");
+  assert.equal(getAnswer(live)?.valueText, "kept", "and a live answer is untouched by the sweep");
+});
+
 // ── the switch ──────────────────────────────────────────────────────────────
 
 test("switched off, nothing is read and nothing is written", () => {

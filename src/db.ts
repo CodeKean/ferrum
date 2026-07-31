@@ -409,7 +409,10 @@ db.exec(`
   -- row it describes is useful — but it has two consequences a reader must know:
   --   1. anything aggregating cell_attempts (a cost report, a storage figure) has to filter to rows
   --      that still exist, or it will count deleted work;
-  --   2. nothing prunes this table, so it grows without bound. A retention sweep is still owed.
+  --   2. an attempt is kept for ATTEMPT_RETENTION_DAYS and then swept — see pruneCellAttempts,
+  --      which runs once per boot from recoverAfterRestart. Without that this table only ever grew:
+  --      one row per paid call, each carrying the whole rendered prompt, and 93.5% of the rows in
+  --      the real database described cells that had already been deleted.
   -- SQLite cannot add a foreign key by ALTER, so changing this means rebuilding the table.
 
   CREATE TABLE IF NOT EXISTS cell_attempts (
@@ -442,6 +445,9 @@ db.exec(`
     error_type      TEXT, error_msg TEXT
   );
   CREATE INDEX IF NOT EXISTS ix_attempts_cell ON cell_attempts(row_id, column_id, attempt DESC);
+  -- The retention sweep asks "what is older than N days" and must not answer it by reading the
+  -- largest history table in the file. A million-row AI column is a million rows here.
+  CREATE INDEX IF NOT EXISTS ix_attempts_age ON cell_attempts(started_at);
 
   -- What has been spent, rolled up per day.
   --
@@ -1259,13 +1265,57 @@ export function tx<T>(fn: () => T): T {
 }
 
 /**
+ * How long an attempt's provenance is kept.
+ *
+ * Long enough to answer the questions attempts exist to answer — what did this cell cost, what did
+ * the model actually see, why did it fail — and short enough that the record of a million-row run
+ * does not sit in the file for the life of the workspace. `cells` still carries the LAST outcome of
+ * every cell forever, so a swept attempt loses the history of a value, never the value.
+ */
+export const ATTEMPT_RETENTION_DAYS = 90;
+
+/**
+ * Rows one sweep may remove.
+ *
+ * A first sweep against a database that has never had one could otherwise be a single DELETE of
+ * millions of rows holding boot open and rewriting the WAL. Bounded, it takes as many boots as it
+ * needs to catch up, which nobody is waiting on.
+ */
+const ATTEMPT_SWEEP_LIMIT = 50_000;
+
+/**
+ * Drop attempts past the retention window. Returns how many went.
+ *
+ * `cell_tool_calls` hangs off this table with ON DELETE CASCADE and the pragma is on, so the tool
+ * calls of a swept attempt go with it.
+ */
+export function pruneCellAttempts(
+  days: number = ATTEMPT_RETENTION_DAYS,
+  limit: number = ATTEMPT_SWEEP_LIMIT,
+): number {
+  const info = db
+    .prepare(
+      // Bounded through a subquery on the age index rather than a bare DELETE ... LIMIT, which
+      // SQLite only accepts when it was compiled with an option we cannot rely on being set.
+      `DELETE FROM cell_attempts WHERE id IN
+         (SELECT id FROM cell_attempts WHERE started_at < datetime('now', ?) ORDER BY id LIMIT ?)`,
+    )
+    .run(`-${days} days`, limit);
+  return Number(info.changes ?? 0);
+}
+
+/**
  * Boot-time recovery. A crash or Ctrl-C leaves leased jobs and half-written attempts behind.
  *
  * Interrupted runs are set to PAUSED rather than resumed: silently continuing a large spend because
  * the machine rebooted is exactly the behaviour that loses a user's trust, and their quota.
+ *
+ * The retention sweep rides along here rather than getting a caller of its own: this already runs
+ * exactly once per process, before the server is listening, which is the one moment nobody is
+ * waiting on a delete.
  */
 export function recoverAfterRestart(bootId: string): { reclaimedJobs: number; pausedRuns: number } {
-  return tx(() => {
+  const out = tx(() => {
     const reclaimed = db
       .prepare(
         `UPDATE jobs SET status = 'ready', leased_at = NULL, lease_expires_at = NULL,
@@ -1300,4 +1350,17 @@ export function recoverAfterRestart(bootId: string): { reclaimedJobs: number; pa
       pausedRuns: Number(paused.changes ?? 0),
     };
   });
+
+  // Outside the transaction above: a sweep that fails must not take the recovery down with it, and
+  // the recovery is the part a run depends on.
+  try {
+    const swept = pruneCellAttempts();
+    if (swept > 0) {
+      console.log(`[db] removed ${swept} attempt record(s) older than ${ATTEMPT_RETENTION_DAYS} days.`);
+    }
+  } catch (e) {
+    console.warn("[db] could not sweep old attempts:", e instanceof Error ? e.message : e);
+  }
+
+  return out;
 }
