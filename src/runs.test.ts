@@ -18,8 +18,11 @@ import { saveScript, approveScript } from "./scripts.ts";
 import { resolveScope } from "./scope.ts";
 import { DEFAULT_SEND, type SendConfig } from "./writeTarget.ts";
 import {
-  cancelRun, createRun, executeRun, getRun, registerCellExecutor, type CellOutcome,
+  cancelRun, createRun, executeRun, getRun, registerCellExecutor, resumeRun, type CellOutcome,
 } from "./runs.ts";
+
+/** Let the event loop turn, without a clock: enough for one round of in-flight cells to land. */
+const turn = () => new Promise<void>((resolve) => setImmediate(resolve));
 
 /**
  * Satisfy the credential gates without weakening them.
@@ -265,6 +268,34 @@ test("an unsure cheap answer costs both calls, and the cell says why", async () 
     .prepare("SELECT COUNT(*) n FROM savings WHERE column_id = ? AND reason = 'first_model'")
     .get(col) as { n: number };
   assert.equal(saved.n, 0);
+});
+
+test("an unsure cheap answer is not banked as an expensive call avoided", async () => {
+  // The ledger keyed off `answeredBy: "first"` alone, and the executor stamps that on the not
+  // good-enough path too — the row whose own note asks the user to go and spend on the strong model.
+  // So every unsure row was counted as money saved while the screen beside it asked for that money.
+  const f = fixture("escalate-unsure", [{ Company: "Acme", Country: "US", Website: "" }]);
+  const paid = addColumn(f.sheet.id, { name: "Industry", kind: "ai" });
+  const col = Number(paid.id);
+
+  registerCellExecutor(async () => ({
+    status: "done",
+    valueText: "possibly Biotech",
+    confidence: "low",
+    answeredBy: "first",
+    note: 'The first model was low. Nothing was spent. Run "openrouter/big" on this row to check it.',
+  }));
+
+  const { run, resolved } = createRun({ sheetId: f.sheet.id, scope: { columnIds: [col] } });
+  await executeRun(run.id, resolved);
+
+  // The cheap answer is KEPT — that part is right and is what the note is for.
+  const cell = db.prepare("SELECT status, note FROM cells WHERE column_id = ?").get(col) as any;
+  assert.equal(cell.status, "done");
+  const saved = db
+    .prepare("SELECT COUNT(*) n FROM savings WHERE column_id = ? AND reason = 'first_model'")
+    .get(col) as { n: number };
+  assert.equal(saved.n, 0, "an answer nobody was sure of did not avoid the expensive call");
 });
 
 // ─────────────────────────────────────────────────────────────── retry policy
@@ -548,6 +579,103 @@ test("a sheet budget counts every run against it, not just the current one", asy
   );
   assert.ok(spent < 0.6, `the sheet cap did not hold across runs: spent $${spent.toFixed(2)}`);
   assert.match(getRun(b.run.id)!.status, /paused/);
+});
+
+test("the budget counts the cells already in the air, not only the ones that landed", async () => {
+  // `runs.cost_usd` is written when a cell LANDS, so checking it before dispatching is check-then-act:
+  // with six workers the cap was crossed by six cells that had already been bought, every time.
+  const f = fixture("budget-inflight", Array.from({ length: 30 }, (_, i) => ({ Company: `c${i}` })));
+  const paid = addColumn(f.sheet.id, { name: "Enrich", kind: "ai" });
+
+  let calls = 0;
+  registerCellExecutor(async () => {
+    calls++;
+    // Over a macrotask, so all six workers are genuinely in flight at once — the situation the gate
+    // was blind to. A cell that resolves synchronously makes the lane behave serially and hides it.
+    await turn();
+    return { status: "done", valueText: "x", costUsd: 0.1 } as CellOutcome;
+  });
+
+  const { run, resolved } = createRun({ sheetId: f.sheet.id, scope: { columnIds: [Number(paid.id)] } });
+  db.prepare("UPDATE runs SET budget_usd = 1 WHERE id = ?").run(run.id);
+
+  await executeRun(run.id, resolved, { concurrency: 6 });
+
+  // What this pins is the property the reservation actually delivers, and no more than that.
+  //
+  // The opening wave overshoots whatever happens: no cell has landed yet, so there is no observed
+  // price to reserve against. After it, the gate counts what is in flight. The exact landing count
+  // is timing-dependent — measured at 11 here — because a worker can clear the gate in the moment
+  // between a sibling reserving and that reservation being visible. Twelve is the number that says
+  // the reservation did nothing at all: two full waves of six bought against a cap of ten cells.
+  //
+  // So this asserts "fewer than two full waves", not a round number. An earlier version of this test
+  // asserted <= 10 on the arithmetic 6 + 4, which the fix does not guarantee and never did.
+  // THIS IS NOT A HARD CAP and the code says so too — an exact one needs the price before the call,
+  // which only the executor knows.
+  assert.ok(calls < 12, `bought ${calls} cells at $0.10 against a $1.00 cap — the reservation is not holding`);
+  assert.match(getRun(run.id)!.status, /paused/);
+});
+
+test("a cell that throws does not abandon the workers running beside it", async () => {
+  // `Promise.all` rejects on the first worker to fail, and the run is then terminalised and its
+  // in-flight cells stamped cancelled while five workers are still dispatching paid cells against a
+  // run nothing owns any more.
+  const f = fixture("worker-throw", Array.from({ length: 6 }, (_, i) => ({ Company: `c${i}` })));
+  const paid = addColumn(f.sheet.id, { name: "Enrich", kind: "ai" });
+
+  let n = 0;
+  registerCellExecutor(async () => {
+    // The first cell poisons the WRITE rather than the call: a BigInt cannot be serialised, so the
+    // throw happens inside the engine instead of being caught and recorded as a cell error.
+    if (++n === 1) return { status: "done", value: 1n } as CellOutcome;
+    // Slower than the failure, so "did the siblings finish" is a real question rather than luck.
+    for (let i = 0; i < 200; i++) await Promise.resolve();
+    return { status: "done", valueText: "ok" };
+  });
+
+  const { run, resolved } = createRun({ sheetId: f.sheet.id, scope: { columnIds: [Number(paid.id)] } });
+  await assert.rejects(executeRun(run.id, resolved, { concurrency: 6 }));
+
+  assert.equal(getRun(run.id)!.done, 5, "every worker was waited for before the pass gave up");
+});
+
+test("a Resume pressed while a cell is still in flight is not dropped", async () => {
+  // Resume refuses to enter a live run, which is right — two executors on one run is two writers and
+  // twice the spend. Treating that refusal as "nothing to do" was not: the workers had already left
+  // the column on the pause flag, so the click did nothing and the run finished over the rows it
+  // still owed.
+  const f = fixture("resume-live", Array.from({ length: 4 }, (_, i) => ({ Company: `c${i}` })));
+  // Seeded so the price list is answered from cache: the resumed pass is entered on its own and this
+  // test waits for it by turning the event loop, not by waiting on a network call.
+  seedCatalog(parseCatalog({ data: [{ id: "openai/gpt-oss-20b", name: "R", pricing: { prompt: "0", completion: "0" } }] }));
+  const paid = addColumn(f.sheet.id, { name: "Enrich", kind: "ai" });
+  const col = Number(paid.id);
+
+  let n = 0;
+  registerCellExecutor(async (job) => {
+    const call = ++n;
+    // A dead credential pauses the whole run and hands this cell back as queued.
+    if (call === 1) return { status: "error", errorType: "auth", errorMsg: "token expired" };
+    if (call === 2) {
+      // The user fixes the key and presses Resume while THIS cell is still running.
+      await turn();
+      resumeRun(job.runId);
+      await turn();
+    }
+    return { status: "done", valueText: "ok" };
+  });
+
+  const { run, resolved } = createRun({ sheetId: f.sheet.id, scope: { columnIds: [col] } });
+  await executeRun(run.id, resolved, { concurrency: 2 });
+  // The resume re-enters once the pass lets go, so the work it asked for happens on its own.
+  for (let i = 0; i < 100 && getRun(run.id)!.status !== "done"; i++) await turn();
+
+  const done = Number(
+    (db.prepare("SELECT COUNT(*) c FROM cells WHERE column_id = ? AND status = 'done'").get(col) as any).c,
+  );
+  assert.equal(done, 4, "the cell the pause handed back was left queued in a run that called itself finished");
+  assert.equal(getRun(run.id)!.status, "done");
 });
 
 test("no budget set means no cap, not a zero-dollar one", async () => {

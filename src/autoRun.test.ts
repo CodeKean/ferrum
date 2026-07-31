@@ -12,7 +12,9 @@ import assert from "node:assert/strict";
 import { db } from "./db.ts";
 import { addColumn, createSheet, insertRows, setColumnAutoRun, setColumnModel, setColumnPrompt } from "./store.ts";
 import { rebuildDeps } from "./refs.ts";
-import { flush, isFreeToRun, noteUpstreamChange, pendingCount, registerAutoRunStarter } from "./autoRun.ts";
+import {
+  autoRunRefusal, flush, isFreeToRun, noteUpstreamChange, pendingCount, registerAutoRunStarter,
+} from "./autoRun.ts";
 
 type Started = { sheetId: string; columnId: number; rowIds: number[] | null; budgetUsd: number | null };
 
@@ -143,6 +145,27 @@ test("a starter that throws does not take down the write that triggered it", () 
   noteUpstreamChange(f.sheet.id, Number(f.source.id), f.rowIds);
   assert.doesNotThrow(() => flush());
   assert.equal(pendingCount(), 0, "the queue is still drained, so it cannot wedge");
+});
+
+test("a refusal is kept, so a column that never ran can say why", () => {
+  // It used to be swallowed entirely, on the grounds that the next change would queue it again. That
+  // is true of a change to an upstream cell and false of an import: refuse that firing and nothing
+  // re-queues those rows, so they stay blank with the reason recorded nowhere at all — and the
+  // refusals are things like a retired model and a missing provider key, which no amount of waiting
+  // fixes.
+  registerAutoRunStarter(() => { throw new Error('"Industry" is set to a model the provider no longer offers.'); });
+  const f = pair("auto-refusal", true);
+  const col = Number(f.derived.id);
+
+  noteUpstreamChange(f.sheet.id, Number(f.source.id), f.rowIds);
+  flush();
+  assert.match(String(autoRunRefusal(col)), /no longer offers/);
+
+  // And cleared by a firing that worked, so an old reason cannot outlive the thing it explained.
+  registerAutoRunStarter(() => { /* started */ });
+  noteUpstreamChange(f.sheet.id, Number(f.source.id), f.rowIds);
+  flush();
+  assert.equal(autoRunRefusal(col), null);
 });
 
 // ── a paid column starts itself, inside a ceiling ───────────────────────────

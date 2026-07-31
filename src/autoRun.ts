@@ -114,6 +114,25 @@ export function registerAutoRunStarter(fn: RunStarter): void { starter = fn; }
 const pending = new Map<string, Map<number, Set<number> | null>>();
 let timer: NodeJS.Timeout | null = null;
 
+/**
+ * Why the last firing of a column produced no run, by column id.
+ *
+ * A refusal used to be swallowed here with a comment saying the next change would queue it again.
+ * That holds for a change to an upstream cell and does NOT hold for `noteRowsArrived`, whose trigger
+ * is an import: refuse that flush and nothing re-queues those rows, so they stay blank with the
+ * reason recorded nowhere at all. `schedules.ts` writes its refusals onto the schedule for the same
+ * reason — a run that quietly does nothing is indistinguishable from a broken one.
+ *
+ * In memory rather than on the column, because the columns table has nowhere to put it; the console
+ * line beside it is what survives a restart.
+ */
+const refusals = new Map<number, string>();
+
+/** Why nothing ran for this column last time it was queued, or null if the last firing was fine. */
+export function autoRunRefusal(columnId: number): string | null {
+  return refusals.get(Number(columnId)) ?? null;
+}
+
 /** Exposed so a test can drive the queue without waiting on a timer. */
 export function pendingCount(): number {
   let n = 0;
@@ -237,11 +256,19 @@ export function flush(): number {
   for (const w of work) {
     try {
       starter(w.sheetId, w.columnId, w.rowIds, w.budgetUsd);
-    } catch {
-      // A refusal is expected and is not an error to shout about: the usual one is that a run is
-      // already working this column, in which case that run is about to produce the values anyway.
-      // Auto-run is best-effort by design — the cells stay marked out of date either way, so nothing
-      // is lost and the next change queues it again.
+      refusals.delete(w.columnId);
+    } catch (e) {
+      // Recorded, never thrown: one column's refusal must not take down the write that triggered it,
+      // and the usual refusal — a run is already working this column — is not a failure, because that
+      // run is about to produce the values anyway.
+      //
+      // But it is not nothing either, and swallowing it in silence was the actual bug. A retired
+      // model, a missing provider key and an unset connected app all land here too, and after an
+      // import there is no second change coming to queue the work again: the rows simply stay blank,
+      // with the reason nowhere on screen, in the log, or in the database.
+      const msg = e instanceof Error ? e.message : String(e);
+      refusals.set(w.columnId, msg);
+      console.error("[auto-run] column", w.columnId, "did not start:", msg);
     }
   }
   return work.length;

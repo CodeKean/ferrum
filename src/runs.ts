@@ -72,6 +72,17 @@ const ID_CHUNK = 2000;
 const TERMINAL_STATUSES = new Set<RunStatus>(["done", "failed", "cancelled"]);
 
 /**
+ * A run in one of these is STOPPED WITH WORK LEFT — not finished, and Resume is what it is waiting for.
+ *
+ * One exported set rather than a list written out wherever the question is asked, because the list
+ * grew and the copies did not: `paused_budget` was added for the spending cap and the schedule
+ * ticker's "is my last run still going" check never learned about it. A schedule whose run stopped at
+ * its ceiling therefore looked idle, so the next window started a fresh run and spent the whole
+ * ceiling again — every window, indefinitely, while the paused runs piled up.
+ */
+export const PAUSED_STATUSES = new Set<RunStatus>(["paused", "paused_quota", "paused_auth", "paused_budget"]);
+
+/**
  * Cell states that mean "this pass has not produced an answer yet".
  *
  * Used by resume: a cell already stamped with this run's id and holding a value, an error or a skip
@@ -171,6 +182,14 @@ const paused = new Set<string>();
  * so entering twice is refused rather than merely discouraged.
  */
 const live = new Set<string>();
+
+/**
+ * Runs whose Resume arrived while they were still `live`, and so could not be acted on yet.
+ *
+ * Refusing to enter twice is right; treating that refusal as "nothing to do" was not. See
+ * `resumeRun` for what the no-op cost, and the tail of `executeRun` for where it is made good.
+ */
+const resumeWhileLive = new Set<string>();
 
 /**
  * One abort signal per live run — the thing that makes Stop mean STOP.
@@ -603,8 +622,17 @@ export function resumeRun(id: string): void {
   db.prepare("UPDATE runs SET cancel_requested = 0, pause_reason = NULL WHERE id = ?").run(id);
   setRunStatus(id, "running");
 
-  // Already executing here — the flags above were the only thing it was waiting on.
-  if (live.has(id)) return;
+  /**
+   * Already executing here — but that is not the same as "the flags above were all it was waiting
+   * on", which is what this used to assume.
+   *
+   * A worker inside a cell can take minutes on the agent lane, and its siblings have already left
+   * the column on the pause flag. Returning here left that Resume as a no-op: the column's
+   * undispatched rows stayed undispatched, and the run went on to stamp itself finished over them.
+   * So it is remembered instead, and acted on when the pass that could not be joined lets go.
+   */
+  if (live.has(id)) { resumeWhileLive.add(id); return; }
+  resumeWhileLive.delete(id);
 
   const scope = scopeOf(id);
   const resolved = resolveScope(run.sheetId, {
@@ -766,6 +794,22 @@ export interface CellOutcome {
 
 export type CellExecutor = (job: CellJob) => Promise<CellOutcome>;
 
+/**
+ * Did the cheap model actually settle this row, so the expensive call was genuinely never needed?
+ *
+ * `answeredBy: "first"` on its own does NOT say that, and reading it as if it did is what put
+ * failures in the savings ledger. The executor stamps the same flag on the not-good-enough path —
+ * the row where the cheap model was unsure, and where the cell's own note tells the user to re-run it
+ * on the strong model. Every one of those was banked as a call avoided while the screen beside it
+ * asked for that money to be spent after all.
+ *
+ * The bar is the executor's `goodEnough`, restated rather than imported on purpose: the executor is
+ * REGISTERED with this module rather than imported by it, which is what keeps the queue, the budget
+ * gate and the retries testable with no provider access at all.
+ */
+const answeredCheaply = (o: CellOutcome): boolean =>
+  o.answeredBy === "first" && o.status === "done" && o.confidence === "high";
+
 let executor: CellExecutor | null = null;
 export function registerCellExecutor(fn: CellExecutor): void { executor = fn; }
 
@@ -779,10 +823,18 @@ export function registerCellExecutor(fn: CellExecutor): void { executor = fn; }
  * The SHEET budget counts every run ever made against it, not just this one. A cap that reset per
  * run would be trivially defeated by starting a second run, which is exactly what someone does after
  * the first one stops.
+ *
+ * `pendingUsd` is what this run has DISPATCHED and not yet been billed for. Every figure below comes
+ * from `runs.cost_usd`, which is written when a cell lands — so on its own this is check-then-act,
+ * and with six workers the cap was always crossed by up to six cells that had already been bought.
+ * Counting the money in the air against all three caps is what makes the check mean something; it
+ * is not a reservation the caller can rely on being exact, so see `runPerCell` for what overshoot
+ * is left.
  */
-function budgetExceeded(runId: string, sheetId: string): string | null {
+function budgetExceeded(runId: string, sheetId: string, pendingUsd = 0): string | null {
+  const pending = Number.isFinite(pendingUsd) ? Math.max(0, pendingUsd) : 0;
   const run = db.prepare("SELECT cost_usd, budget_usd FROM runs WHERE id = ?").get(runId) as any;
-  const runSpent = Number(run?.cost_usd ?? 0);
+  const runSpent = Number(run?.cost_usd ?? 0) + pending;
   const runCap = run?.budget_usd == null ? null : Number(run.budget_usd);
   if (runCap != null && runCap > 0 && runSpent >= runCap) {
     return `this run reached its $${runCap.toFixed(2)} limit`;
@@ -791,7 +843,7 @@ function budgetExceeded(runId: string, sheetId: string): string | null {
   const sheet = db.prepare("SELECT budget_usd FROM sheets WHERE id = ?").get(sheetId) as any;
   const sheetCap = sheet?.budget_usd == null ? null : Number(sheet.budget_usd);
   if (sheetCap != null && sheetCap > 0) {
-    const spent = Number(
+    const spent = pending + Number(
       (db.prepare("SELECT COALESCE(SUM(cost_usd), 0) AS c FROM runs WHERE sheet_id = ?").get(sheetId) as any).c,
     );
     if (spent >= sheetCap) return `this sheet reached its $${sheetCap.toFixed(2)} limit`;
@@ -818,7 +870,7 @@ function budgetExceeded(runId: string, sheetId: string): string | null {
   ).get(sheetId) as any;
   const wbCap = wb?.budget_usd == null ? null : Number(wb.budget_usd);
   if (wbCap != null && wbCap > 0) {
-    const spent = Number(
+    const spent = pending + Number(
       (db.prepare(
         `SELECT COALESCE(SUM(r.cost_usd), 0) AS c FROM runs r
            JOIN sheets s ON s.id = r.sheet_id
@@ -1028,8 +1080,13 @@ export async function executeRun(
       if (targetRows.length === 0) continue;
 
       if (PER_CELL_KINDS.has(col.kind)) {
-        const n = await runPerCell(runId, sheetId, columnId, col.kind, targetRows, opts, force, useStrongModel);
-        doneTotal += n;
+        const pass = await runPerCell(runId, sheetId, columnId, col.kind, targetRows, opts, force, useStrongModel);
+        doneTotal += pass.processed;
+        // The workers walked away from this column with rows still undispatched. Read from the pass
+        // rather than from the pause flag, which a Resume arriving mid-pass has already cleared —
+        // and a run that walked ON to the next column here would leave those rows unrun and then
+        // stamp itself done.
+        if (pass.pausedMidPass) interrupted = true;
       } else {
         const n = await runBatch(runId, sheetId, columnId, targetRows, force);
         doneTotal += n;
@@ -1038,6 +1095,8 @@ export async function executeRun(
 
       // Anything projecting out of this column is now stale — refresh it, since it is free.
       if (derivedChildren(sheetId, columnId).length > 0) refreshChildren(sheetId, columnId);
+
+      if (interrupted) break;
     }
     // A stop that arrives during the last column has no next iteration to catch it.
     if (stopRequested(runId)) interrupted = true;
@@ -1056,12 +1115,12 @@ export async function executeRun(
     const final = getRun(runId)!;
     if (isCancelled(runId)) {
       setRunStatus(runId, "cancelled");
-    } else if (paused.has(runId) || final.status === "paused" || final.status === "paused_quota" || final.status === "paused_auth") {
+    } else if (paused.has(runId) || PAUSED_STATUSES.has(final.status)) {
       // Paused with work left stays paused — that is the state Resume exists for. Paused with
       // NOTHING left is finished, and saying so is the difference between a run that can be closed
       // and one that sits at 100% with no finish time and nothing able to clear it.
       if (!interrupted) setRunStatus(runId, "done");
-    } else if (final.status === "running") {
+    } else if (final.status === "running" && !interrupted) {
       setRunStatus(runId, "done");
     }
 
@@ -1069,10 +1128,18 @@ export async function executeRun(
     paused.delete(runId);
     releaseRun(runId);
     live.delete(runId);
+
     // Every MCP connection this run opened, including the spawned processes. Awaiting it would make
     // a slow-closing server hold up the run's own completion, and the run is already over by here —
     // so it is fired and any failure swallowed, exactly like the other cleanup on this path.
     void closeRunPool(runId).catch(() => { /* a process that is already gone is the goal */ });
+
+    // A Resume pressed while this pass was still running could not join it — see `resumeRun`. It is
+    // honoured here, once `live` is let go and the pool is closed, so the work the pass walked away
+    // from is actually done rather than sitting queued in a run that has called itself finished.
+    if (resumeWhileLive.delete(runId) && !TERMINAL_STATUSES.has(getRun(runId)?.status ?? "failed")) {
+      try { resumeRun(runId); } catch { /* whatever refused it has already said so on the run */ }
+    }
   }
   return getRun(runId)!;
 }
@@ -1493,12 +1560,18 @@ function unchangedRows(columnId: number, rowIds: number[], hashes: Map<number, s
   return out;
 }
 
-/** The per-cell lane — one durable job per row, bounded concurrency, retries, cancellation. */
+/**
+ * The per-cell lane — one durable job per row, bounded concurrency, retries, cancellation.
+ *
+ * Reports whether the pass ended because the run was PAUSED as well as how many rows it got through:
+ * the caller has to know it left rows behind, and the pause flag it would otherwise read can have
+ * been cleared by a Resume in the meantime.
+ */
 async function runPerCell(
   runId: string, sheetId: string, columnId: number, kind: string, rowIds: number[], opts: ExecuteOptions,
   force: boolean,
   useStrongModel: boolean,
-): Promise<number> {
+): Promise<{ processed: number; pausedMidPass: boolean }> {
   if (!executor) {
     throw new Error(
       `This column runs on the "${kind}" lane, which needs a model provider. Configure one in Settings, ` +
@@ -1530,7 +1603,7 @@ async function runPerCell(
       recordSaving({ runId, sheetId, columnId, reason: "unchanged", cells: fresh.size });
     }
   }
-  if (targetRows.length === 0) return 0;
+  if (targetRows.length === 0) return { processed: 0, pausedMidPass: false };
 
   // Read once, outside the workers. Reading it per attempt would let a mid-run config edit change
   // the retry budget of rows already in flight, so two rows of the same run would be treated
@@ -1579,9 +1652,35 @@ async function runPerCell(
   let cursor = 0;
   let processed = 0;
 
+  /**
+   * What this pass has dispatched and not yet been billed for, in dollars, and the dearest cell it
+   * has seen so far.
+   *
+   * The budget gate reads `runs.cost_usd`, which is written when a cell LANDS — so on its own the
+   * check is check-then-act and every cap was crossed by up to one cell per worker, already bought.
+   * Each dispatch now puts the dearest price this pass has actually seen into `reservedUsd`, in the
+   * same synchronous step as the check, and the gate counts that as spent.
+   *
+   * It is NOT a hard cap and is not claimed as one. The first cells of a pass have no observed price
+   * to reserve against, so a column still overshoots by up to its concurrency on its FIRST wave;
+   * after that the overshoot is bounded by how much dearer a cell can be than the dearest one so
+   * far. Making it exact needs a price known before the call, which only the executor has.
+   */
+  let reservedUsd = 0;
+  let dearestCellUsd = 0;
+  /**
+   * Whether a worker walked away because the run was paused.
+   *
+   * Reported by the workers rather than re-read from the flag, because the flag can be cleared by a
+   * Resume between a worker exiting and this pass closing itself out — and `finishColumnPass` would
+   * then mark rows that were never dispatched as done.
+   */
+  let pausedMidPass = false;
+
   const worker = async (): Promise<void> => {
     for (;;) {
-      if (isCancelled(runId) || paused.has(runId)) return;
+      if (isCancelled(runId)) return;
+      if (paused.has(runId)) { pausedMidPass = true; return; }
 
       // The budget gate, checked BEFORE dispatching another cell rather than after the money is
       // gone. Every other cost control in this app is advisory — it shows a number and lets you
@@ -1590,37 +1689,21 @@ async function runPerCell(
       // Paused, not cancelled: the rows already done keep their values, and raising the cap and
       // resuming is a decision the user can make. Cancelling would make hitting a budget
       // indistinguishable from abandoning the work.
-      const over = budgetExceeded(runId, sheetId);
+      const over = budgetExceeded(runId, sheetId, reservedUsd);
       if (over) {
         pauseRun(runId, over, "budget");
+        pausedMidPass = true;
         return;
       }
 
-      /**
-       * Wait for permission to dispatch.
-       *
-       * BEFORE the cursor is taken, deliberately. Taking a row and then waiting would hold that row
-       * hostage to this worker for the length of the wait, so a rate-limited column would have its
-       * rows dealt out to workers that are all asleep while the queue looks busy.
-       *
-       * A false return means the run was stopped while waiting, and the correct response is to walk
-       * away without dispatching — a pacer that let one more call through per worker on cancel would
-       * undo the whole point of the abort plumbing.
-       */
-      if (!(await pacer.take(signal))) return;
-      if (isCancelled(runId) || paused.has(runId)) { pacer.done(null); return; }
+      // Reserved HERE, before the first `await` of the round. Reserving after the wait below would
+      // let every worker clear the gate before any of them had claimed anything, which is the
+      // check-then-act this exists to close.
+      const reservation = dearestCellUsd;
+      reservedUsd += reservation;
+      let unreserved = false;
+      const unreserve = () => { if (unreserved) return; unreserved = true; reservedUsd -= reservation; };
 
-      const i = cursor++;
-      if (i >= targetRows.length) { pacer.done(null); return; }
-      const rowId = targetRows[i]!;
-
-      db.prepare(
-        `UPDATE cells SET status = 'running', rev = rev + 1 WHERE row_id = ? AND column_id = ?${pinGuard(runId)}`,
-      ).run(rowId, columnId);
-      markCellsDirty([cellId(rowId, columnId)]);
-
-      let attempt = 0;
-      let freeRetries = 0;
       /**
        * Whether this row was ever told to slow down, even if a retry then succeeded.
        *
@@ -1630,82 +1713,127 @@ async function runPerCell(
        * released.
        */
       let sawRateLimit = false;
-      /** Release the pacer slot exactly once, whichever way this row leaves the loop. */
+      /** The pacer slot and the reservation go back exactly once, whichever way this row leaves. */
+      let tookSlot = false;
       let released = false;
       const release = (errorType: string | null | undefined) => {
-        if (released) return;
+        unreserve();
+        if (!tookSlot || released) return;
         released = true;
         pacer.done(sawRateLimit ? "rate_limit" : errorType ?? null);
       };
 
-      for (;;) {
-        attempt++;
-        // Claim the job before spending anything on it. A cell that dies with the process is then
-        // recoverable: the next boot reclaims the lease, puts the cell back to queued, and resume
-        // picks it up — instead of a `running` cell nothing will ever come back to.
-        lease.run(attempt, bootId, runId, rowId, columnId);
-        let outcome: CellOutcome;
-        try {
-          outcome = await executor!({ runId, sheetId, rowId, columnId, kind, attempt, signal, useStrongModel });
-        } catch (e) {
-          outcome = { status: "error", errorType: "unknown", errorMsg: e instanceof Error ? e.message : String(e) };
-        }
+      try {
+        /**
+         * Wait for permission to dispatch.
+         *
+         * BEFORE the cursor is taken, deliberately. Taking a row and then waiting would hold that row
+         * hostage to this worker for the length of the wait, so a rate-limited column would have its
+         * rows dealt out to workers that are all asleep while the queue looks busy.
+         *
+         * A false return means the run was stopped while waiting, and the correct response is to walk
+         * away without dispatching — a pacer that let one more call through per worker on cancel would
+         * undo the whole point of the abort plumbing.
+         */
+        if (!(await pacer.take(signal))) return;
+        tookSlot = true;
+        if (isCancelled(runId)) return;
+        if (paused.has(runId)) { pausedMidPass = true; return; }
 
-        // Checked HERE, not only at the top of the loop.
-        //
-        // The top-of-loop check governs whether to start another ROW; this one governs what happens
-        // to the row already in hand. Without it a cancelled call's failure was fed to the retry
-        // policy, which cheerfully retried it — so pressing Stop could be followed by several more
-        // calls per worker. `cancelRun` has already written the terminal state and the reason, so
-        // there is nothing to write here; walking away is the correct move.
-        if (isCancelled(runId)) { release(null); return; }
+        const i = cursor++;
+        if (i >= targetRows.length) return;
+        const rowId = targetRows[i]!;
 
-        if (outcome.status !== "error") {
-          // An answer that was reused rather than bought. Recorded one cell at a time because that
-          // is how they arrive — unlike the other two reasons, which are decided for a whole batch
-          // before it runs.
-          if (outcome.fromCache) {
-            recordSaving({ runId, sheetId, columnId, reason: "cache", cells: 1 });
+        db.prepare(
+          `UPDATE cells SET status = 'running', rev = rev + 1 WHERE row_id = ? AND column_id = ?${pinGuard(runId)}`,
+        ).run(rowId, columnId);
+        markCellsDirty([cellId(rowId, columnId)]);
+
+        let attempt = 0;
+        let freeRetries = 0;
+
+        for (;;) {
+          attempt++;
+          // Claim the job before spending anything on it. A cell that dies with the process is then
+          // recoverable: the next boot reclaims the lease, puts the cell back to queued, and resume
+          // picks it up — instead of a `running` cell nothing will ever come back to.
+          lease.run(attempt, bootId, runId, rowId, columnId);
+          let outcome: CellOutcome;
+          try {
+            outcome = await executor!({ runId, sheetId, rowId, columnId, kind, attempt, signal, useStrongModel });
+          } catch (e) {
+            outcome = { status: "error", errorType: "unknown", errorMsg: e instanceof Error ? e.message : String(e) };
           }
-          // The cheap model answered and was sure, so the expensive one was never asked. Counted at
-          // the expensive rate, because that is the call that did not happen — see SavingReason.
-          if (outcome.answeredBy === "first") {
-            recordSaving({ runId, sheetId, columnId, reason: "first_model", cells: 1 });
+          // What the next dispatch reserves against. Read from every outcome, including a failed one:
+          // a call that errored after the tokens were spent still cost what it cost.
+          if (Number.isFinite(Number(outcome.costUsd))) {
+            dearestCellUsd = Math.max(dearestCellUsd, Number(outcome.costUsd));
           }
+
+          // Checked HERE, not only at the top of the loop.
+          //
+          // The top-of-loop check governs whether to start another ROW; this one governs what happens
+          // to the row already in hand. Without it a cancelled call's failure was fed to the retry
+          // policy, which cheerfully retried it — so pressing Stop could be followed by several more
+          // calls per worker. `cancelRun` has already written the terminal state and the reason, so
+          // there is nothing to write here; walking away is the correct move.
+          if (isCancelled(runId)) { release(null); return; }
+
+          if (outcome.status !== "error") {
+            // An answer that was reused rather than bought. Recorded one cell at a time because that
+            // is how they arrive — unlike the other two reasons, which are decided for a whole batch
+            // before it runs.
+            if (outcome.fromCache) {
+              recordSaving({ runId, sheetId, columnId, reason: "cache", cells: 1 });
+            }
+            // The cheap model answered AND was sure, so the expensive one was never asked. Counted at
+            // the expensive rate, because that is the call that did not happen — see SavingReason.
+            if (answeredCheaply(outcome)) {
+              recordSaving({ runId, sheetId, columnId, reason: "first_model", cells: 1 });
+            }
+            writeCellOutcome(runId, rowId, columnId, attempt, outcome, hashes?.get(rowId), sheetId);
+            release(null);
+            break;
+          }
+
+          // Remembered whether or not a retry rescues the row — see `sawRateLimit`.
+          if (outcome.errorType === "rate_limit") sawRateLimit = true;
+
+          const action = retryPolicy(outcome.errorType ?? "unknown", attempt, maxAttempts, freeRetries);
+          if (action === "pause_run") {
+            pauseRun(runId, "authentication stopped working mid-run", "auth");
+            pausedMidPass = true;
+            // Back to queued, not error: the cell was never actually attempted against a live
+            // credential, and marking it failed would misreport the run. Its job goes back with it,
+            // because a lease left hanging is work nothing will ever pick up again.
+            tx(() => {
+              db.prepare("UPDATE cells SET status = 'queued', rev = rev + 1 WHERE row_id = ? AND column_id = ?")
+                .run(rowId, columnId);
+              db.prepare(
+                `UPDATE jobs SET status = 'ready', leased_at = NULL, lease_expires_at = NULL
+                  WHERE run_id = ? AND row_id = ? AND column_id = ? AND status = 'leased'`,
+              ).run(runId, rowId, columnId);
+            });
+            markCellsDirty([cellId(rowId, columnId)]);
+            release(outcome.errorType);
+            return;
+          }
+          // Backoffs wake on abort. Otherwise a cancelled run sits out its full delay, up to eight
+          // seconds, and then calls the provider again on the far side of it.
+          if (action === "retry_free") { attempt--; freeRetries++; await interruptibleSleep(1000 * Math.min(8, freeRetries), signal); if (isCancelled(runId)) { release(outcome.errorType); return; } continue; }
+          if (action === "retry") { await interruptibleSleep(300 * attempt, signal); if (isCancelled(runId)) { release(outcome.errorType); return; } continue; }
+
           writeCellOutcome(runId, rowId, columnId, attempt, outcome, hashes?.get(rowId), sheetId);
-          release(null);
+          release(outcome.errorType);
           break;
         }
-
-        // Remembered whether or not a retry rescues the row — see `sawRateLimit`.
-        if (outcome.errorType === "rate_limit") sawRateLimit = true;
-
-        const action = retryPolicy(outcome.errorType ?? "unknown", attempt, maxAttempts, freeRetries);
-        if (action === "pause_run") {
-          pauseRun(runId, "authentication stopped working mid-run", "auth");
-          // Back to queued, not error: the cell was never actually attempted against a live
-          // credential, and marking it failed would misreport the run. Its job goes back with it,
-          // because a lease left hanging is work nothing will ever pick up again.
-          tx(() => {
-            db.prepare("UPDATE cells SET status = 'queued', rev = rev + 1 WHERE row_id = ? AND column_id = ?")
-              .run(rowId, columnId);
-            db.prepare(
-              `UPDATE jobs SET status = 'ready', leased_at = NULL, lease_expires_at = NULL
-                WHERE run_id = ? AND row_id = ? AND column_id = ? AND status = 'leased'`,
-            ).run(runId, rowId, columnId);
-          });
-          markCellsDirty([cellId(rowId, columnId)]);
-          release(outcome.errorType);
-          return;
-        }
-        // Backoffs wake on abort. Otherwise a cancelled run sits out its full delay, up to eight
-        // seconds, and then calls the provider again on the far side of it.
-        if (action === "retry_free") { attempt--; freeRetries++; await interruptibleSleep(1000 * Math.min(8, freeRetries), signal); if (isCancelled(runId)) { release(outcome.errorType); return; } continue; }
-        if (action === "retry") { await interruptibleSleep(300 * attempt, signal); if (isCancelled(runId)) { release(outcome.errorType); return; } continue; }
-
-        writeCellOutcome(runId, rowId, columnId, attempt, outcome, hashes?.get(rowId), sheetId);
-        release(outcome.errorType);
-        break;
+      } finally {
+        // The last word on the slot and the reservation, because the code above can THROW: both
+        // `writeCellOutcome` and the lease are multi-statement database calls, and a throw that
+        // escaped here left `Pacer.inFlight` permanently high — after which the pacer makes every
+        // remaining worker of the run wait a quarter of a second, forever, for a slot that no longer
+        // exists. On every ordinary exit this is a no-op; `release` is idempotent.
+        release(null);
       }
 
       processed++;
@@ -1714,11 +1842,23 @@ async function runPerCell(
   };
 
   try {
-    await Promise.all(Array.from({ length: Math.min(concurrency, targetRows.length) }, worker));
+    /**
+     * allSettled, not all.
+     *
+     * `all` rejects on the FIRST worker to throw, and the caller's `finally` then terminalises the
+     * run and stamps its in-flight cells cancelled while the other five workers are still dispatching
+     * paid cells against a run nothing owns any more. Every worker is awaited; the first failure is
+     * still the pass's failure and is rethrown once they have all actually stopped.
+     */
+    const settled = await Promise.allSettled(
+      Array.from({ length: Math.min(concurrency, targetRows.length) }, worker),
+    );
+    const failed = settled.find((r): r is PromiseRejectedResult => r.status === "rejected");
+    if (failed) throw failed.reason;
   } finally {
-    finishColumnPass(runId, columnId);
+    finishColumnPass(runId, columnId, pausedMidPass);
   }
-  return processed;
+  return { processed, pausedMidPass };
 }
 
 /**
@@ -1730,9 +1870,12 @@ async function runPerCell(
  * and every undispatched job marked `done`, which erased the only record of the work that was NOT
  * done and left resume nothing to go on.
  */
-function finishColumnPass(runId: string, columnId: number): void {
+function finishColumnPass(runId: string, columnId: number, pausedMidPass = false): void {
   const stopped = isCancelled(runId);
-  const pausing = !stopped && paused.has(runId);
+  // What the workers DID, not only what the flag says now: a Resume between the last worker leaving
+  // and this running clears the flag, and the undispatched jobs would then be marked done — erasing
+  // the only record of the work the run still owes.
+  const pausing = !stopped && (pausedMidPass || paused.has(runId));
 
   const stuck = (db
     .prepare(

@@ -189,6 +189,30 @@ test("a schedule never stacks a second run on top of its own", () => {
   });
 });
 
+test("a run that stopped at its spending limit still counts as this schedule's run", () => {
+  // The expensive one. `paused_budget` was added for the per-firing ceiling and the overlap check
+  // never learned about it, so a schedule whose run stopped at its limit looked idle: every window
+  // started a fresh run and spent the whole ceiling again, indefinitely, while the paused runs piled
+  // up. Every kind of paused is a run with work left and a decision waiting, so none of them is idle.
+  for (const status of ["paused", "paused_quota", "paused_auth", "paused_budget"]) {
+    withRunner((calls) => {
+      const s = sheet(`paused-${status}`);
+      const sc = createSchedule({ sheetId: s.id, cadence: { kind: "interval", minutes: 60 } });
+      updateSchedule(sc.id, { enabled: true });
+      makeDue(sc.id);
+      tick(new Date());
+      const runId = getSchedule(sc.id)!.lastRunId!;
+      db.prepare("INSERT INTO runs (id, sheet_id, kind, scope_json, status, total) VALUES (?, ?, 'sheet', '{}', ?, 1)")
+        .run(runId, s.id, status);
+
+      makeDue(sc.id);
+      tick(new Date());
+      assert.equal(calls.length, 1, `${status} started a second run over the same columns`);
+      assert.match(getSchedule(sc.id)!.lastStatus, /still going/i);
+    });
+  }
+});
+
 test("a refusal is recorded on the schedule rather than thrown at the ticker", () => {
   withRunner((calls, fail) => {
     const s = sheet("refuse");

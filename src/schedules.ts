@@ -52,6 +52,7 @@
 
 import { db, tx } from "./db.ts";
 import { isFreeToRun } from "./autoRun.ts";
+import { PAUSED_STATUSES } from "./runs.ts";
 import type { RunScope } from "./scope.ts";
 
 /**
@@ -381,11 +382,20 @@ export type ScheduleRunner = (s: Schedule) => string;
 let runner: ScheduleRunner | null = null;
 export function registerScheduleRunner(fn: ScheduleRunner): void { runner = fn; }
 
-/** Whether a run this schedule started is still going. Its own last one only — never anyone else's. */
+/**
+ * Whether a run this schedule started is still going. Its own last one only — never anyone else's.
+ *
+ * A PAUSED run counts, and every kind of paused counts. It has work left and a Resume waiting for a
+ * decision, so firing a second run over the same columns is the stacking this rule exists to stop —
+ * and on the budget pause it is worse than stacking, because each new firing spends the whole
+ * per-firing ceiling again while the run that hit it sits there. The set is imported rather than
+ * listed here for exactly the reason it exists: this check was written before `paused_budget`, and a
+ * list written out in two places only agrees until one of them is added to.
+ */
 function stillRunning(runId: string | null): boolean {
   if (!runId) return false;
   const r = db.prepare("SELECT status FROM runs WHERE id = ?").get(runId) as any;
-  return !!r && (r.status === "running" || r.status === "pending" || r.status === "paused");
+  return !!r && (r.status === "running" || r.status === "pending" || PAUSED_STATUSES.has(r.status));
 }
 
 /**
