@@ -335,6 +335,17 @@ const ADD_ROWS_MAX = 1000;
  */
 const BULK_CELLS_MAX = 100_000;
 
+/**
+ * Rows the list-field discovery reads.
+ *
+ * It answers "what is inside these items, and how many would a fan-out produce", and it answers it
+ * by JSON-parsing every cell IN JAVASCRIPT. Unbounded, that is 11 seconds of a fully blocked event
+ * loop on a million-row table — for one GET, on a single-threaded server, while every other request
+ * waits. A sample answers the question; the response says it sampled and over how many rows, so the
+ * screen cannot present the count as a total.
+ */
+const LIST_FIELD_SAMPLE_ROWS = 2_000;
+
 export function createServer(bootId: string) {
   const app = express();
 
@@ -767,14 +778,76 @@ export function createServer(bootId: string) {
       "X-Accel-Buffering": "no",
     });
 
-    const send = (event: string, data: unknown, id?: number) => {
+    const write = (event: string, data: unknown, id?: number) => {
       if (id != null) res.write(`id: ${id}\n`);
       res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
     };
 
+    /**
+     * Which workbook a column belongs to, memoised for the life of this connection.
+     *
+     * A frame carries up to 2000 cells and a burst repeats the same handful of columns, so the
+     * alternative is thousands of identical lookups per second per subscriber. A column does not
+     * move between workbooks, so the memo cannot go stale in a way that matters.
+     */
+    const columnWorkbook = new Map<number, string | null>();
+    const workbookOfColumn = (columnId: number): string | null => {
+      const seen = columnWorkbook.get(columnId);
+      if (seen !== undefined) return seen;
+      const wb = (db
+        .prepare("SELECT s.workbook_id w FROM columns c JOIN sheets s ON s.id = c.sheet_id WHERE c.id = ?")
+        .get(columnId) as any)?.w;
+      const answer = wb == null ? null : String(wb);
+      columnWorkbook.set(columnId, answer);
+      return answer;
+    };
+
+    /**
+     * The same filter the REST reads apply, applied per subscriber.
+     *
+     * The bus broadcasts one frame to everyone, and the frame carries values, costs and error text.
+     * Without this, an account that is deliberately 404'd out of a restricted workbook still watched
+     * its cells fill in live — the gate held on every route and the stream handed over the data
+     * anyway. `hiddenWorkbooks` is re-read per frame rather than captured at connect, so removing
+     * someone's grant stops the frames without waiting for them to reconnect.
+     *
+     * Anything whose workbook cannot be resolved is dropped, not sent: "I could not work out what
+     * this touches" is the same fail-closed answer the request gate gives.
+     */
+    const forViewer = (event: string, data: unknown, hidden: Set<string>): unknown | null => {
+      const frame = data as any;
+      const shown = (workbookId: string | null): boolean => workbookId != null && !hidden.has(workbookId);
+      switch (event) {
+        case "cells": {
+          const cells = (Array.isArray(frame?.cells) ? frame.cells : []).filter((c: any) => {
+            const parsed = parseCellId(String(c?.i ?? ""));
+            return parsed ? shown(workbookOfColumn(Number(parsed.columnId))) : false;
+          });
+          return cells.length > 0 ? { ...frame, cells } : null;
+        }
+        case "run":
+          return shown(frame?.run?.sheetId ? workbookOfSheet(String(frame.run.sheetId)) : null) ? frame : null;
+        case "columnStats": {
+          const stats = (Array.isArray(frame?.stats) ? frame.stats : [])
+            .filter((s: any) => shown(workbookOfColumn(Number(s?.columnId))));
+          return stats.length > 0 ? { ...frame, stats } : null;
+        }
+        default:
+          // `hello` and `quota` are about the instance, not about a workbook.
+          return frame;
+      }
+    };
+
+    const send = (event: string, data: unknown, id?: number) => {
+      const hidden = hiddenWorkbooks(req);
+      if (hidden.size === 0) return write(event, data, id);
+      const kept = forViewer(event, data, hidden);
+      if (kept !== null) write(event, kept, id);
+    };
+
     // The stream never replays history — the client takes a snapshot via the REST window fetch and
     // then applies deltas, deduped by per-cell rev.
-    send("hello", { seq: currentSeq(), bootId });
+    write("hello", { seq: currentSeq(), bootId });
 
     const unsub = subscribe(send);
     // Some intermediaries drop an idle connection; a comment line keeps it warm without being an event.
@@ -786,7 +859,18 @@ export function createServer(bootId: string) {
 
   // ───────────────────────────────────────────────────── health
 
-  app.get("/api/health", wrap((_req, res) => {
+  app.get("/api/health", wrap((req, res) => {
+    /**
+     * The short answer for a caller with no session.
+     *
+     * This route is open so that a monitor can tell whether the process is up and so that the setup
+     * screen works before anyone has claimed the instance. It answered rather more than that: the
+     * absolute path of the database, how many tables and rows are in it, and which credential mode
+     * the engine is in, to anybody who could reach the port. On a shared bind that is a stranger.
+     * "Is it up" is still answered, in full, with a 200.
+     */
+    if (isClaimed() && !(req as any).person) return res.json({ ok: true });
+
     const counts = db
       .prepare("SELECT (SELECT COUNT(*) FROM sheets WHERE archived=0) AS sheets, (SELECT COUNT(*) FROM rows) AS rows")
       .get() as any;
@@ -1137,7 +1221,11 @@ export function createServer(bootId: string) {
     res.json({ check: await checkKey(key) });
   }));
 
-  app.delete("/api/providers/openrouter/key", wrap((_req, res) => {
+  app.delete("/api/providers/openrouter/key", wrap((req, res) => {
+    // The mirror of the guard on save, and missing here while its sibling at
+    // /api/llm-providers/:id/key had it. Removing the key repoints the engine just as surely as
+    // overwriting it does — the next run falls back to whatever else is configured.
+    if (!provenLocal(req)) return refuseUnproven(res);
     deleteProviderKey("openrouter");
     res.json({ status: providerKeyStatus("openrouter") });
   }));
@@ -3503,6 +3591,11 @@ export function createServer(bootId: string) {
     res.json({ secrets: listSecrets(), categories: listCategories() })));
 
   app.post("/api/secrets", wrap((req, res) => {
+    // Every other key-write route carries this guard and this one did not, which made it the way
+    // around all of them: `providerKeyFor` reads every non-OpenRouter provider's key out of this
+    // store, so writing a secret named after a provider is exactly the "changes which account
+    // Ferrum spends against" action the guard exists for.
+    if (!provenLocal(req)) return refuseUnproven(res);
     const b = (req.body ?? {}) as Record<string, unknown>;
     res.json({
       secret: saveSecret({
@@ -3515,6 +3608,9 @@ export function createServer(bootId: string) {
   }));
 
   app.delete("/api/secrets/:name", wrap((req, res) => {
+    // The mirror of the guard on save: deleting a provider's key stops the runs that depend on it,
+    // and deleting one a column refers to by name turns every row into an error on its next run.
+    if (!provenLocal(req)) return refuseUnproven(res);
     deleteSecret(decodeURIComponent(param(req, "name")));
     res.json({ ok: true });
   }));
@@ -4957,11 +5053,18 @@ export function createServer(bootId: string) {
 
     const cap = Math.max(1, Math.min(1000, Number(req.query.cap ?? 50)));
     const listPath = typeof req.query.path === "string" ? req.query.path : "";
-    const rowIds = (db.prepare("SELECT id FROM rows WHERE sheet_id = ?").all(col.sheetId) as any[]).map((r) => Number(r.id));
+    const rowIds = (db.prepare("SELECT id FROM rows WHERE sheet_id = ? LIMIT ?")
+      .all(col.sheetId, LIST_FIELD_SAMPLE_ROWS) as any[]).map((r) => Number(r.id));
+    const sheetRows = countRows(col.sheetId);
     res.json({
       fields: discoverListItemFields(columnId, 50, 200, listPath),
       ...countListItems(columnId, rowIds, cap, listPath),
       cap,
+      // What the counts above are OVER. The screen says "sampled N of M rows" from these, because a
+      // partial count presented as a total is a number somebody plans a fan-out against.
+      sampledRows: rowIds.length,
+      sheetRows,
+      sampled: sheetRows > rowIds.length,
     });
   }));
 

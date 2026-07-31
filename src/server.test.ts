@@ -16,7 +16,9 @@ import { addColumn, createSheet, getColumn, insertRows } from "./store.ts";
 import { createServer } from "./server.ts";
 import { saveScript } from "./scripts.ts";
 import { undo } from "./undo.ts";
-import { trashTable } from "./views.ts";
+import { createWorkbook, trashTable } from "./views.ts";
+import { flushNow, markCellsDirty } from "./bus.ts";
+import { claimInstance, createPerson, startSession, SESSION_COOKIE } from "./people.ts";
 
 const app = createServer("test-boot");
 const server = app.listen(0, "127.0.0.1");
@@ -602,4 +604,145 @@ test("changing a search ceiling makes existing cells stale", async () => {
   });
 
   assert.ok(getColumn(agent.id)!.promptVersion > before, "the ceiling is part of the question asked");
+});
+
+// ─────────────────────────────────────────────── the routes that guard a key
+
+test("saving a key refuses a request that cannot show it came from Ferrum's own page", async () => {
+  // Every sibling key-write route called `provenLocal` and these two did not, which made them the
+  // way around all of them: the provider keys for everything except OpenRouter are read straight out
+  // of this store. `call` sends no Origin and no Sec-Fetch-Site, which is exactly what a page that
+  // is not Ferrum's own looks like from here.
+  const saved = await call("/api/secrets", { method: "POST", body: { name: "ZZ Anthropic", value: "sk-test" } });
+  assert.equal(saved.status, 403);
+  assert.match(String(saved.body.error), /Ferrum's own page/);
+
+  const removed = await call("/api/secrets/ZZ%20Anthropic", { method: "DELETE" });
+  assert.equal(removed.status, 403);
+
+  const dropped = await call("/api/providers/openrouter/key", { method: "DELETE" });
+  assert.equal(dropped.status, 403, "removing a key repoints the engine as surely as overwriting it");
+});
+
+// ─────────────────────────────────────────────── discovering a list's fields
+
+test("list-fields samples, and says over how many rows", async () => {
+  // Unbounded, this read every row of the table and JSON-parsed every cell in JavaScript — 11
+  // seconds of blocked event loop on a million-row table, for one GET. The bound is only half the
+  // fix: a count over a sample presented as a total is a number somebody plans a fan-out against.
+  const sheet = createSheet("ZZ list fields");
+  const col = addColumn(sheet.id, { name: "Contacts", kind: "static", valueType: "json" });
+  insertRows(
+    sheet.id,
+    [{ values: { [Number(col.id)]: '[{"name":"Ada","email":"ada@acme.com"}]' } }],
+    0,
+    [Number(col.id)],
+  );
+
+  const res = await call(`/api/columns/${col.id}/list-fields`);
+  assert.equal(res.status, 200);
+  assert.equal(res.body.sampledRows, 1);
+  assert.equal(res.body.sheetRows, 1);
+  assert.equal(res.body.sampled, false, "nothing was left out of a one-row table");
+});
+
+// ─────────────────────────────────────────────── the live stream, per subscriber
+//
+// These two claim the instance, which every other test in this file relies on NOT being the case —
+// so each one puts it back in `finally`, whatever it does in between.
+
+/** A claimed instance with one ordinary member, and the way to undo that. */
+function claimed(tag: string) {
+  claimInstance(`owner-${tag}@ferrum.test`, "a-long-enough-password", "Owner");
+  const member = createPerson({ email: `member-${tag}@ferrum.test`, password: "a-long-enough-password", role: "member" });
+  const cookie = `${SESSION_COOKIE}=${startSession(member.id)}`;
+  return {
+    member,
+    cookie,
+    release: () => { db.prepare("DELETE FROM sessions").run(); db.prepare("DELETE FROM users").run(); },
+  };
+}
+
+/** Everything one subscriber received while `act` ran. */
+async function streamText(cookie: string, act: () => void): Promise<string> {
+  const ctrl = new AbortController();
+  const res = await fetch(`http://127.0.0.1:${port}/api/stream`, { headers: { Cookie: cookie }, signal: ctrl.signal });
+  assert.equal(res.status, 200);
+  const reader = (res.body as ReadableStream<Uint8Array>).getReader();
+  const decoder = new TextDecoder();
+  let text = "";
+  const pump = (async () => {
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        text += decoder.decode(value, { stream: true });
+      }
+    } catch { /* aborted, which is how this ends */ }
+  })();
+
+  // The subscription is registered when the handler runs, not when fetch resolves.
+  await new Promise((r) => setTimeout(r, 50));
+  act();
+  await new Promise((r) => setTimeout(r, 150));
+  ctrl.abort();
+  await pump;
+  return text;
+}
+
+test("the stream does not deliver a restricted workbook's cells to someone without a grant", async () => {
+  // The gate 404s this account on every REST route into that workbook — and the bus broadcast the
+  // same cells to every subscriber anyway, values, costs and error text included. So a workbook
+  // somebody had been deliberately shut out of filled in live in front of them.
+  const ctx = claimed("stream");
+  try {
+    const secretWb = createWorkbook("ZZ restricted");
+    const secretSheet = createSheet("ZZ secret", secretWb.id);
+    const secretCol = addColumn(secretSheet.id, { name: "Deal", kind: "static" });
+    insertRows(secretSheet.id, [{ values: { [Number(secretCol.id)]: "classified" } }], 0, [Number(secretCol.id)]);
+    db.prepare("UPDATE workbooks SET restricted = 1 WHERE id = ?").run(secretWb.id);
+
+    const openSheet = createSheet("ZZ open");
+    const openCol = addColumn(openSheet.id, { name: "Company", kind: "static" });
+    insertRows(openSheet.id, [{ values: { [Number(openCol.id)]: "Acme" } }], 0, [Number(openCol.id)]);
+
+    const rowOf = (sheetId: string): number =>
+      Number((db.prepare("SELECT id FROM rows WHERE sheet_id = ?").get(sheetId) as any).id);
+    const secretCell = `${rowOf(secretSheet.id)}:${Number(secretCol.id)}`;
+    const openCell = `${rowOf(openSheet.id)}:${Number(openCol.id)}`;
+
+    const text = await streamText(ctx.cookie, () => {
+      markCellsDirty([secretCell, openCell]);
+      flushNow();
+    });
+
+    // Matched on the delta's own id field rather than on the bare id, which is two numbers and a
+    // colon and could turn up anywhere in a frame.
+    const delivered = (cellId: string) => text.includes(`"i":"${cellId}"`);
+    assert.ok(text.includes("hello"), "the connection itself still works");
+    assert.ok(delivered(openCell), "the workbook they can reach still streams");
+    assert.ok(!delivered(secretCell), "the one they are 404'd out of does not");
+    assert.ok(!text.includes("classified"), "and neither does its value");
+  } finally {
+    ctx.release();
+  }
+});
+
+test("health tells an anonymous caller that it is up, and nothing else", async () => {
+  // Open by design, so a monitor can reach it — and it was answering with the absolute path of the
+  // database, the table and row counts and the credential mode, to anyone who could reach the port.
+  const ctx = claimed("health");
+  try {
+    const anon = await call("/api/health");
+    assert.equal(anon.status, 200);
+    assert.equal(anon.body.ok, true, "still usable as a health check");
+    assert.equal(anon.body.db, undefined, "no path and no counts");
+    assert.equal(anon.body.auth, undefined);
+
+    const res = await fetch(`http://127.0.0.1:${port}/api/health`, { headers: { Cookie: ctx.cookie } });
+    const body = await res.json() as any;
+    assert.ok(body.db?.path, "someone signed in still gets the whole thing");
+  } finally {
+    ctx.release();
+  }
 });
