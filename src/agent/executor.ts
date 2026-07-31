@@ -28,7 +28,7 @@ import { McpSpend, mcpToolsFor } from "../mcp/agentTools.ts";
 import { poolForRun } from "../mcp/client.ts";
 import { missingRequired, render } from "../http/httpColumn.ts";
 import { toList } from "../jsonPath.ts";
-import { accepts, parseWaterfall, type WaterfallStep } from "../waterfall.ts";
+import { accepts, parseWaterfall, STEP_KINDS, STEP_KIND_LABEL, type StepKind, type WaterfallStep } from "../waterfall.ts";
 import { getScript } from "../scripts.ts";
 import { runScriptColumn } from "../runtime/scriptRunner.ts";
 import { runAgent, finishTool, buildTaskPrompt, sanitize } from "./loop.ts";
@@ -521,6 +521,9 @@ export async function executeCell(job: CellJob): Promise<CellOutcome> {
  * that lane. No step has an implementation of its own — that is what keeps the HTTP guard, the budget
  * gate and the cache in one place each instead of two.
  */
+/** The kinds this loop knows how to run. Read from the module that defines them, never re-listed here. */
+const RUNNABLE_STEP_KINDS: ReadonlySet<StepKind> = new Set<StepKind>(STEP_KINDS);
+
 async function executeWaterfall(job: CellJob, column: Column): Promise<CellOutcome> {
   const { waterfall, dropped } = parseWaterfall(column.waterfall ?? null);
   const steps = waterfall.steps.filter((s) => s.enabled);
@@ -552,6 +555,23 @@ async function executeWaterfall(job: CellJob, column: Column): Promise<CellOutco
     // remaining steps of every cell already in flight.
     if (job.signal?.aborted) break;
 
+    // The second half of the refusal `parseWaterfall` makes, and not redundant: this loop is what
+    // hands a step to `once()`, and `once()` sends everything the lane fork does not recognise to the
+    // MODEL path. A step of a kind this build cannot run must fail here, by name, rather than become
+    // a model call that answers from memory on a lane the forecast priced at nothing.
+    if (!RUNNABLE_STEP_KINDS.has(step.kind)) {
+      lastError = {
+        status: "error",
+        errorType: "schema",
+        errorMsg: `"${step.name}" is a "${STEP_KIND_LABEL[step.kind]}" step, which cannot run inside a waterfall. `
+          + `Make it a column of its own and point a step at that column instead.`,
+      };
+      failures++;
+      ran++;
+      tried.push(`${step.name} (refused)`);
+      continue;
+    }
+
     const asColumn = stepAsColumn(column, step);
     const out = step.kind === "script"
       ? await runScriptStep(job, step)
@@ -559,6 +579,8 @@ async function executeWaterfall(job: CellJob, column: Column): Promise<CellOutco
     spent += out.costUsd ?? 0;
     ran++;
 
+    // No script runner is passed, and none is needed: `parseWaterfall` refuses a script accept rule
+    // outright, because judging a value with a generated rule is asynchronous and this is not.
     const rule = step.accept ?? waterfall.accept;
     if (accepts(out, rule)) {
       return {

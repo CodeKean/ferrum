@@ -10,7 +10,9 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { coerce, goodEnough } from "./executor.ts";
+import { addColumn, createSheet, setColumnWaterfall } from "../store.ts";
+import { coerce, executeCell, goodEnough } from "./executor.ts";
+import type { CellJob } from "../runs.ts";
 
 const ok = (v: unknown, type: Parameters<typeof coerce>[1], expected: string, opts = {}) => {
   const r = coerce(v, type, opts);
@@ -167,4 +169,49 @@ test("a confident nothing still goes to the expensive model", () => {
 test("an error or a skip is never good enough", () => {
   assert.equal(goodEnough({ status: "error", errorType: "timeout", confidence: "high" }), false);
   assert.equal(goodEnough({ status: "skipped", confidence: "high" }), false);
+});
+
+// ── what a waterfall step is allowed to become ──────────────────────────────
+//
+// Through the real `executeCell`, because the failure being pinned is entirely about ROUTING: every
+// step kind the lane fork does not recognise falls through to the model path, so a step with no lane
+// behind it does not fail — it quietly becomes a model call. Nothing that reads `accepts` in
+// isolation can see that.
+
+/** A waterfall column with these steps saved on it, and a job pointed at it. */
+function waterfallJob(name: string, waterfall: unknown): CellJob {
+  const sheet = createSheet(name);
+  const col = addColumn(sheet.id, { name: "Work email", kind: "waterfall", valueType: "email" });
+  setColumnWaterfall(Number(col.id), JSON.stringify(waterfall));
+  // No row is inserted: a waterfall with nothing runnable in it answers before it reads the row, and
+  // that is exactly the claim under test.
+  return { runId: `r-${name}`, sheetId: sheet.id, rowId: 1, columnId: Number(col.id), kind: "waterfall", attempt: 1 };
+}
+
+test("a lookup step is refused by the engine, never run as a model call", async () => {
+  // "Look it up in another table" was one click away in the step picker and had nothing behind it.
+  // On a fresh column it came back skipped while the cell's note said it had TRIED; on a column
+  // switched over from `ai`, which keeps its prompt, it made a real billable model call that answered
+  // from memory — on a step the forecast and the schedule gate had both priced at nothing.
+  const job = waterfallJob("wf-lookup", {
+    steps: [{ id: "a", name: "From Companies", kind: "lookup", config: { prompt: "What is their work email?" } }],
+  });
+  const out = await executeCell(job);
+
+  assert.equal(out.status, "skipped", "a step with no lane behind it must not answer");
+  assert.match(String(out.errorMsg), /cannot run inside a waterfall/);
+  assert.equal(out.costUsd ?? 0, 0);
+});
+
+test("a script accept rule never reaches the engine, because the engine cannot evaluate one", async () => {
+  // The engine calls `accepts` with no runner, so such a rule was false on every row: every step ran
+  // on every row and the bill was the sum of all of them, while the editor showed a rule that read as
+  // if it were being applied.
+  const job = waterfallJob("wf-script-rule", {
+    steps: [{ id: "a", name: "Guess", kind: "script", config: {}, accept: { kind: "script", scriptId: 7 } }],
+  });
+  const out = await executeCell(job);
+
+  assert.equal(out.status, "skipped");
+  assert.match(String(out.errorMsg), /cannot evaluate/);
 });

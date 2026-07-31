@@ -24,8 +24,25 @@
 // away from pulling node:sqlite into the browser bundle.
 
 /** The lanes a step can run on. Deliberately the same set a column has, minus the ones that make no sense inside a waterfall. */
-export const STEP_KINDS = ["http", "mcp", "ai", "agent", "script", "lookup"] as const;
-export type StepKind = (typeof STEP_KINDS)[number];
+export const STEP_KINDS = ["http", "mcp", "ai", "agent", "script"] as const;
+
+/**
+ * Kinds a SAVED waterfall may still name, and which this build refuses to run.
+ *
+ * `lookup` was offered as a step and had no implementation behind it. The lane fork in the executor
+ * routes `wait`, `http` and `mcp` and sends everything else to the model path, so a lookup step did
+ * not look anything up: on a fresh column it came back skipped while the cell's note said it had
+ * tried, and on a column converted from `ai` — which keeps its prompt — it made a real billable model
+ * call that answered from memory, on a step the forecast and the schedule gate had both priced at
+ * nothing. Refusing it by name is the honest version of that, and it stays refused rather than being
+ * quietly dropped, so the message can say what to do instead.
+ *
+ * They stay in the type (not in STEP_KINDS) so the step picker cannot offer one and the parser can
+ * still recognise one in a workspace that saved it before this build.
+ */
+export const REFUSED_STEP_KINDS = ["lookup"] as const;
+
+export type StepKind = (typeof STEP_KINDS)[number] | (typeof REFUSED_STEP_KINDS)[number];
 
 /**
  * "Is this result good enough to stop here?"
@@ -97,24 +114,41 @@ export function emptyWaterfall(): Waterfall {
 // ─────────────────────────────────────────────────────────────── reading one back
 
 function isStepKind(v: unknown): v is StepKind {
-  return typeof v === "string" && (STEP_KINDS as readonly string[]).includes(v);
+  return typeof v === "string"
+    && ((STEP_KINDS as readonly string[]).includes(v) || (REFUSED_STEP_KINDS as readonly string[]).includes(v));
 }
 
-function parseAccept(raw: unknown): AcceptRule | undefined {
-  if (!raw || typeof raw !== "object") return undefined;
+function isRunnableStepKind(v: StepKind): v is (typeof STEP_KINDS)[number] {
+  return (STEP_KINDS as readonly string[]).includes(v);
+}
+
+/**
+ * A rule, or the reason there is no rule.
+ *
+ * `refused` is not the same as absent, and the difference is the point: an absent rule falls back to
+ * the column's, which is a sensible default, while a rule that was WRITTEN and cannot be honoured must
+ * not quietly become a different rule. The caller reports it and leaves the step out.
+ */
+type ParsedAccept = { rule?: AcceptRule; refused?: string };
+
+function parseAccept(raw: unknown): ParsedAccept {
+  if (!raw || typeof raw !== "object") return {};
   const r = raw as Record<string, unknown>;
   switch (r.kind) {
-    case "non_empty": return { kind: "non_empty" };
-    case "any": return { kind: "any" };
+    case "non_empty": return { rule: { kind: "non_empty" } };
+    case "any": return { rule: { kind: "any" } };
     case "matches":
-      return typeof r.pattern === "string" && r.pattern.trim() ? { kind: "matches", pattern: r.pattern } : undefined;
+      return typeof r.pattern === "string" && r.pattern.trim() ? { rule: { kind: "matches", pattern: r.pattern } } : {};
     case "confidence":
-      return r.min === "high" || r.min === "medium" ? { kind: "confidence", min: r.min } : undefined;
-    case "script": {
-      const id = Number(r.scriptId);
-      return Number.isInteger(id) && id > 0 ? { kind: "script", scriptId: id } : undefined;
-    }
-    default: return undefined;
+      return r.min === "high" || r.min === "medium" ? { rule: { kind: "confidence", min: r.min } } : {};
+    case "script":
+      // The engine has no runner to hand `accepts`, and cannot get one from here: judging a value with
+      // a generated rule is asynchronous and `accepts` is not. So the rule fails closed on every row —
+      // which is not a safe no-op, it is a waterfall that runs every step on every row and bills for
+      // all of them, while the editor shows a rule that reads as if it were being applied. No screen
+      // can create one; a hand-written payload can, so it is refused in words here.
+      return { refused: 'a "stop when your rule says so" rule, which this build cannot evaluate. Use "looks like" with a pattern instead.' };
+    default: return {};
   }
 }
 
@@ -145,8 +179,19 @@ export function parseWaterfall(raw: unknown): { waterfall: Waterfall; dropped: s
   for (const [i, rawStep] of (Array.isArray(o.steps) ? o.steps : []).entries()) {
     if (!rawStep || typeof rawStep !== "object") { dropped.push(`Step ${i + 1} was not readable.`); continue; }
     const s = rawStep as Record<string, unknown>;
+    const label = String(s.name ?? "unnamed");
     if (!isStepKind(s.kind)) {
-      dropped.push(`Step ${i + 1} ("${String(s.name ?? "unnamed")}") asks for a kind of step this build does not have.`);
+      dropped.push(`Step ${i + 1} ("${label}") asks for a kind of step this build does not have.`);
+      continue;
+    }
+    // Refused rather than run, and refused HERE so the executor, the forecast and the schedule gate
+    // all see the same waterfall. A step this build cannot run must never reach the lane fork, where
+    // anything it does not recognise falls through to the model.
+    if (!isRunnableStepKind(s.kind)) {
+      dropped.push(
+        `Step ${i + 1} ("${label}") is a "${STEP_KIND_LABEL[s.kind]}" step, which cannot run inside a waterfall. `
+        + `Make it a column of its own and point a step at that column instead.`,
+      );
       continue;
     }
     const id = typeof s.id === "string" && s.id.trim() ? s.id : "";
@@ -154,6 +199,15 @@ export function parseWaterfall(raw: unknown): { waterfall: Waterfall; dropped: s
     // A duplicate id is worse than a missing one: two steps sharing an id means a cell's provenance
     // names a step that is not the one that produced it, and no amount of later reading can tell.
     if (seen.has(id)) { dropped.push(`Two steps share the id "${id}", so the second was left out.`); continue; }
+
+    // A step whose own rule cannot be honoured is left out rather than run under a different one.
+    // Falling back to the column's rule would judge this step by something the user never wrote, and
+    // the loose direction of that mistake writes an unchecked value and calls it done.
+    const accept = parseAccept(s.accept);
+    if (accept.refused) {
+      dropped.push(`Step ${i + 1} ("${label}") was left out: it carries ${accept.refused}`);
+      continue;
+    }
     seen.add(id);
 
     steps.push({
@@ -164,7 +218,7 @@ export function parseWaterfall(raw: unknown): { waterfall: Waterfall; dropped: s
       // off would make a freshly-built waterfall do nothing and look broken.
       enabled: s.enabled !== false,
       config: s.config && typeof s.config === "object" ? (s.config as Record<string, unknown>) : {},
-      accept: parseAccept(s.accept),
+      accept: accept.rule,
       // The null check comes FIRST and is not decoration. `Number(null)` is 0, and `Number(undefined)`
       // is NaN — so the obvious one-line version turned "nobody has said what this costs" into
       // "this costs nothing", which is precisely the reading that makes a forecast of paid providers
@@ -175,7 +229,12 @@ export function parseWaterfall(raw: unknown): { waterfall: Waterfall; dropped: s
     });
   }
 
-  return { waterfall: { steps, accept: parseAccept(o.accept) ?? { ...DEFAULT_ACCEPT } }, dropped };
+  const columnAccept = parseAccept(o.accept);
+  if (columnAccept.refused) {
+    dropped.push(`This waterfall's overall rule was ignored: it is ${columnAccept.refused} "Stop when it finds anything" was used instead.`);
+  }
+
+  return { waterfall: { steps, accept: columnAccept.rule ?? { ...DEFAULT_ACCEPT } }, dropped };
 }
 
 // ─────────────────────────────────────────────────────────────── the accept decision
@@ -292,13 +351,17 @@ export function waterfallCost(w: Waterfall): { best: number; worst: number; unpr
  *
  * Used by the auto-run and schedule gates, which must never start a paid waterfall on their own. A
  * step is treated as PAID unless it is provably free, and "provably free" is a short list on purpose:
- * a script, a lookup, and a model the caller confirms is local. Anything else — an HTTP call to an
- * unknown endpoint, an MCP server, a hosted model — is assumed to cost, because the failure mode of
- * guessing wrong in the other direction is an unattended bill.
+ * a script, and a model the caller confirms is local. Anything else — an HTTP call to an unknown
+ * endpoint, an MCP server, a hosted model — is assumed to cost, because the failure mode of guessing
+ * wrong in the other direction is an unattended bill.
+ *
+ * `lookup` used to be on the free list and is not, even though `parseWaterfall` now refuses one: this
+ * gate is handed a Waterfall, not a blob, so it cannot assume the blob was parsed by this build. A
+ * step that certifies itself free is exactly the shape the unattended bill arrived in.
  */
 export function waterfallSpends(w: Waterfall, isLocalModel: (id: string) => boolean): boolean {
   return w.steps.filter((s) => s.enabled).some((s) => {
-    if (s.kind === "script" || s.kind === "lookup") return false;
+    if (s.kind === "script") return false;
     if (s.kind === "ai" || s.kind === "agent") {
       const m = String(s.config.model ?? "").trim();
       return !m || m === "auto" || !isLocalModel(m);
