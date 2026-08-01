@@ -28,6 +28,35 @@ export interface GridView {
 
 export const EMPTY_VIEW: GridView = { search: "", status: [], sort: null, filter: null };
 
+/** A saved view as the engine stores it. Sorts are an ARRAY in storage; the grid reads one today. */
+export interface SavedView {
+  id: number;
+  name: string;
+  filter: FilterGroup;
+  sorts: Array<{ columnId: number; dir: "asc" | "desc" }>;
+  search: string | null;
+}
+
+/**
+ * Turning a SAVED view into the grid's current view. The one definition of "apply this view".
+ *
+ * It lived inside the view bar while the bar was the only thing that applied one. A table that opens
+ * on a default view applies one too, and two copies of this would eventually disagree about what a
+ * saved view means — which is the same failure `viewQuery` and `viewScope` sit here to prevent.
+ *
+ * A filter with no children becomes null rather than an empty group, so a view saved mid-edit cannot
+ * blank the grid. `status` is deliberately not carried: it is a transient "show me the errors"
+ * narrowing, not part of what a view names.
+ */
+export function savedViewToGrid(s: SavedView): GridView {
+  return {
+    search: s.search ?? "",
+    status: [],
+    sort: s.sorts?.[0] ?? null,
+    filter: s.filter?.children?.length ? s.filter : null,
+  };
+}
+
 /** A filter with no usable conditions must serialise as NOTHING, not as an empty group.
  *  An empty group compiles to a predicate that matches everything, which is harmless — but a
  *  half-built condition (a column picked, no value typed) would compile to one that matches nothing,

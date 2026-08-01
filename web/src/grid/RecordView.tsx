@@ -47,10 +47,17 @@ interface Props {
   onOpenCell: (cellId: string) => void;
   onNotice: (message: string) => void;
   canWrite: boolean;
+  /**
+   * The column that NAMES this row. Costs no extra request — the whole row is already loaded, so
+   * this is a lookup in `fields`. Null falls back to the position count alone, which is what this
+   * header showed for every row of every table before there was a way to say otherwise.
+   */
+  primaryColumnId?: string | null;
 }
 
 export function RecordView({
   sheetId, columns, position, total, view, onGo, onClose, onOpenCell, onNotice, canWrite,
+  primaryColumnId,
 }: Props) {
   const [fields, setFields] = useState<Field[] | null>(null);
   const [rowId, setRowId] = useState<string | null>(null);
@@ -135,10 +142,20 @@ export function RecordView({
     return () => window.removeEventListener("keydown", onKey);
   }, [position, first, last, onGo, onClose]);
 
+  // The row's name, read out of the fields already on screen. Blank is treated as no label rather
+  // than as an empty one, so a row whose name cell has not been filled in yet falls back to its
+  // position instead of rendering a gap where a title should be.
+  const label = primaryColumnId
+    ? (fields?.find((f) => String(f.column.id) === String(primaryColumnId))?.value ?? "").trim() || null
+    : null;
+
   return (
     <div className="cc-rec">
       <header className="cc-rec__head">
         <button className="cc-btn cc-btn--ghost" onClick={onClose}>← Back to the table</button>
+        {/* The row's own name, when the table says which column holds it. Truncated rather than
+            wrapped: a long company name must not grow the header and shift everything under it. */}
+        {label && <span className="cc-rec__label truncate" title={label}>{label}</span>}
         <span className="cc-rec__count mono">
           Row {(position + 1).toLocaleString()} of {total.toLocaleString()}
         </span>

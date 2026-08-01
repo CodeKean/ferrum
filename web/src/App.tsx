@@ -16,7 +16,7 @@ import { Select } from "./ui/Select.tsx";
 import { Modal } from "./ui/Modal.tsx";
 import { Toast } from "./ui/Toast.tsx";
 import { ContextMenu, useContextMenu, type MenuItem } from "./ui/ContextMenu.tsx";
-import { EMPTY_VIEW, isNarrowed, viewQuery, viewScope, type GridView } from "./view.ts";
+import { EMPTY_VIEW, isNarrowed, savedViewToGrid, viewQuery, viewScope, type GridView } from "./view.ts";
 import { RunStrip } from "./run/RunStrip.tsx";
 import { FilterBar } from "./filter/FilterBar.tsx";
 import { ViewBar } from "./filter/ViewBar.tsx";
@@ -328,7 +328,7 @@ export function App() {
    * through the switch path, which clears the editor by design.
    */
   const openSheet = useCallback(async (id: string) => {
-    const { sheet, columns } = await api.getSheet(id);
+    const { sheet, columns, defaultView } = await api.getSheet(id);
     cellStore.reset();
     cellStore.setTotal(sheet.rowCount);
     setSheet(sheet);
@@ -344,7 +344,13 @@ export function App() {
     // first option and read "Sheet order" over a sort that was very much still applied.
     // `applyView` rather than `setView`, so the search box empties with the view instead of typing
     // the old term back in a quarter of a second later.
-    applyView(EMPTY_VIEW);
+    //
+    // The table's own default view, when it has one, is applied INSTEAD of the empty one — through
+    // the same `applyView`, and through the same `savedViewToGrid` the view bar uses, so opening a
+    // table and picking that view from the bar cannot mean two different things. The clear above is
+    // still what protects against the previous table's column ids; this replaces it in one step
+    // rather than clearing and then narrowing, which would be two renders and a visible flash.
+    applyView(defaultView ? savedViewToGrid(defaultView) : EMPTY_VIEW);
     // Everything else anchored to a column or a cell of the table being left.
     setOpenCell(null);
     setFilterRequest(null);
@@ -1359,7 +1365,17 @@ export function App() {
                   was overwritten by the box's untouched text 250ms after being applied — so the view
                   cleared its own search and immediately read as edited — and "All rows — no view"
                   could not clear a typed one. */}
-              <ViewBar sheetId={sheet.id} view={view} onChange={applyView} onMutated={bump} />
+              <ViewBar
+                sheetId={sheet.id}
+                view={view}
+                onChange={applyView}
+                onMutated={bump}
+                defaultViewId={sheet.defaultViewId}
+                openedWith={sheet.defaultViewId ? Number(sheet.defaultViewId) : null}
+                onSetDefaultView={(viewId) => {
+                  void api.setDefaultView(sheet.id, viewId).then((r) => setSheet(r.sheet));
+                }}
+              />
               <FilterBar columns={columns} view={view} onChange={setView} request={filterRequest} />
               {isNarrowed(view) && (
                 <>
@@ -1477,6 +1493,10 @@ export function App() {
                   setSheet({ ...sheet, budgetUsd });
                   setSheets((s) => s.map((x) => (x.id === sheet.id ? { ...x, budgetUsd } : x)));
                 }}
+                onSheetChanged={(next) => {
+                  setSheet(next);
+                  setSheets((s) => s.map((x) => (x.id === next.id ? next : x)));
+                }}
                 onDedupe={() => setDedupeOpen(true)}
                 onSchedules={() => setSchedulesOpen(true)}
                 onLimits={() => setLimitsOpen(true)}
@@ -1515,6 +1535,7 @@ export function App() {
             total={visibleRows}
             view={view}
             canWrite={me.can.write}
+            primaryColumnId={sheet.primaryColumnId}
             onGo={setRecordAt}
             onClose={() => setRecordAt(null)}
             onNotice={setToast}
@@ -1561,6 +1582,13 @@ export function App() {
             onRowsAdded={() => { bump(); void refreshSheet(sheet.id); }}
             onOverrideCell={(rowId, column, current) => setOverriding({ rowId, column, current })}
             onPinColumn={(c, pinned) => { void pinColumn(c, pinned); }}
+            primaryColumnId={sheet.primaryColumnId}
+            onSetPrimaryColumn={(columnId) => {
+              void api.setPrimaryColumn(sheet.id, columnId).then((r) => {
+                setSheet(r.sheet);
+                setToast(columnId ? "Rows are named by that column now." : "Rows are back to being numbered.");
+              }).catch((e) => setToast(String(e?.message ?? e)));
+            }}
             onMoveColumn={(c, to) => { void moveColumn(c, to); }}
             onAddRow={() => { void addRow(); }}
             onOpenRecord={(position) => setRecordAt(position)}

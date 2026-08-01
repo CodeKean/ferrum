@@ -84,6 +84,9 @@ interface Props {
   onRefreshDerived?: (column: Column) => void;
   /** Keep a column on screen while the rest scrolls. Only a leading run of columns can be pinned. */
   onPinColumn?: (column: Column, pinned: boolean) => void;
+  /** The column that names a row, and the way to change it. */
+  primaryColumnId?: string | null;
+  onSetPrimaryColumn?: (columnId: string | null) => void;
   /** Put a column at a new place in the order. `toIndex` is a position in the visible order. */
   onMoveColumn?: (column: Column, toIndex: number) => void;
   /** Add one empty row at the end of the sheet. */
@@ -128,6 +131,7 @@ export function SheetGrid({
   sheetId, columns, onAddColumn, onOpenCell, onEditColumn, onRunColumn, columnStats, liveRun,
   view, onViewChange, onRenameColumn, onDeleteColumn, onRunCell, onRunRow, onDeleteRow,
   onRunScope, onRunRange, onExpandJson, onSendToTable, onRefreshDerived, onPinColumn, onMoveColumn,
+  primaryColumnId, onSetPrimaryColumn,
   onAddRow, onInsertColumn, onDuplicateColumn, onSaveTemplate, onDescribeColumn, onFilterColumn, onDedupeColumn,
   onNotice, onOverrideCell, onRowsAdded, onOpenRecord,
 }: Props) {
@@ -532,6 +536,18 @@ export function SheetGrid({
           ? "Only the leftmost unpinned column can be pinned — drag this one left first."
           : "Keep this column on screen while the rest scrolls",
       onSelect: () => onPinColumn?.(c, !c.frozen),
+    },
+    {
+      label: String(c.id) === String(primaryColumnId) ? "Stop using as the row label" : "Use as the row label",
+      // A row has to be called something. Without this every record page reads "Row 3 of 1,204",
+      // which says where the row is and nothing about what it is.
+      disabled: c.valueType === "json" || c.valueType === "array" || c.valueType === "file",
+      title:
+        c.valueType === "json" || c.valueType === "array" || c.valueType === "file"
+          ? "A row cannot be named by a column that holds a whole object or list."
+          : "Name each row by this column — shown on the record page and offered first when another table links here",
+      onSelect: () =>
+        onSetPrimaryColumn?.(String(c.id) === String(primaryColumnId) ? null : String(c.id)),
     },
     { separator: true },
     { label: "Delete column", danger: true, onSelect: () => onDeleteColumn?.(c) },

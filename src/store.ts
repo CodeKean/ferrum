@@ -14,12 +14,12 @@ import { compileFilter, escapeLike, type FilterGroup } from "./filter.ts";
 import { markColumnDirty, markSheetDirty } from "./columnStats.ts";
 import { invalidateRedo } from "./undo.ts";
 import { redactSecrets } from "./redact.ts";
-import { DATE_TYPES, NUMERIC_TYPES } from "./types.ts";
+import { DATE_TYPES, NUMERIC_TYPES, isSheetKind } from "./types.ts";
 import { lockReason } from "./columnLock.ts";
 // A cycle — refs.ts imports normalizeKey from here — and a safe one: neither side touches the other
 // at module-evaluation time, only from inside a function. See setColumnPrompt.
 import { canonicalizeRefs } from "./refs.ts";
-import type { Cell, CellStatus, Column, ColumnKind, Sheet, ValueType } from "./types.ts";
+import type { Cell, CellStatus, Column, ColumnKind, Sheet, SheetKind, ValueType } from "./types.ts";
 
 /** Normalized column key — what {{references}} resolve against. Must match on write and read. */
 export const normalizeKey = (name: string): string => name.trim().toLowerCase().replace(/\s+/g, " ");
@@ -34,11 +34,11 @@ export const normalizeKey = (name: string): string => name.trim().toLowerCase().
  * onto nothing and that nothing can ever fill, because the table it was created for was never
  * written. Either both land or neither does.
  */
-export function createSheet(name: string, workbookId?: string | null): Sheet {
-  return tx(() => createSheetInner(name, workbookId));
+export function createSheet(name: string, workbookId?: string | null, kind: SheetKind = "generic"): Sheet {
+  return tx(() => createSheetInner(name, workbookId, kind));
 }
 
-function createSheetInner(name: string, workbookId?: string | null): Sheet {
+function createSheetInner(name: string, workbookId?: string | null, kind: SheetKind = "generic"): Sheet {
   const id = randomUUID();
 
   /**
@@ -71,9 +71,63 @@ function createSheetInner(name: string, workbookId?: string | null): Sheet {
     .prepare("SELECT COALESCE(MAX(position), -1) AS p FROM sheets WHERE workbook_id = ?")
     .get(wb) as any;
   const pos = Number(row.p) + 1;
-  db.prepare("INSERT INTO sheets (id, name, workbook_id, position) VALUES (?, ?, ?, ?)")
-    .run(id, name, wb, pos);
+  db.prepare("INSERT INTO sheets (id, name, workbook_id, position, kind) VALUES (?, ?, ?, ?, ?)")
+    .run(id, name, wb, pos, isSheetKind(kind) ? kind : "generic");
   return getSheet(id)!;
+}
+
+/**
+ * Which column NAMES a row, and where that answer comes from.
+ *
+ * Three steps, in order: the column somebody chose, else a guess, else nothing. The guess exists
+ * because the alternative ships as a no-op — every table that already exists has a null pointer, so
+ * a feature that only works once a setting is found and set is a feature nobody sees.
+ *
+ * The guess deliberately skips `json`, `array` and `file`: a row labelled with a serialized object
+ * is worse than a row labelled with its position, which is what the caller falls back to.
+ */
+export function defaultPrimaryColumn(sheetId: string): string | null {
+  const r = db
+    .prepare(
+      `SELECT id FROM columns
+        WHERE sheet_id = ? AND deleted_at IS NULL
+          AND value_type NOT IN ('json', 'array', 'file')
+        ORDER BY CASE WHEN kind = 'static' THEN 0 ELSE 1 END, position
+        LIMIT 1`,
+    )
+    .get(sheetId) as any;
+  return r ? String(r.id) : null;
+}
+
+/** The explicit choice if there is one, otherwise the guess. */
+export function rowLabelColumn(sheetId: string): string | null {
+  return getSheet(sheetId)?.primaryColumnId ?? defaultPrimaryColumn(sheetId);
+}
+
+/**
+ * Point a table at the column that names its rows.
+ *
+ * Refuses a column that is not live on THIS table rather than storing it, because the read path
+ * resolves an unusable pointer to null — so a bad write would land, read back as "not set", and give
+ * the user no way to tell a rejected setting from one that never saved.
+ */
+export function setPrimaryColumn(sheetId: string, columnId: string | null): void {
+  if (columnId != null) {
+    const ok = db
+      .prepare("SELECT 1 FROM columns WHERE id = ? AND sheet_id = ? AND deleted_at IS NULL")
+      .get(Number(columnId), sheetId);
+    if (!ok) throw new Error("That column is not on this table.");
+  }
+  db.prepare("UPDATE sheets SET primary_column_id = ?, updated_at = datetime('now') WHERE id = ?")
+    .run(columnId == null ? null : Number(columnId), sheetId);
+  markSheetDirty(sheetId);
+}
+
+/** What these rows are. Refuses anything outside SHEET_KINDS rather than storing a typo. */
+export function setSheetKind(sheetId: string, kind: SheetKind): void {
+  if (!isSheetKind(kind)) throw new Error("A table is people, companies, or generic.");
+  db.prepare("UPDATE sheets SET kind = ?, updated_at = datetime('now') WHERE id = ?").run(kind, sheetId);
+  markSheetDirty(sheetId);
 }
 
 /**
@@ -186,8 +240,22 @@ export function duplicateSheet(sheetId: string, opts: { withRows?: boolean } = {
 // every sheet read, every list, every tab bar. `countRows` maintains the authoritative number in
 // memory (this process is the single writer) and every path that changes row cardinality already
 // invalidates it, so paying for the count again in SQL was buying a number the process already had.
+//
+// The two pointers are RESOLVED here rather than read raw, and that is load-bearing in both cases.
+// A column delete is soft (`deleted_at`) and a view delete is hard but undoable, reinserting the row
+// with its ORIGINAL id. So a pointer at something currently gone reads as null and comes back the
+// moment the delete is undone. The alternative — clearing the pointer when the target goes — throws
+// the setting away on an action the user is allowed to take back, and the loss is silent.
+//
+// Both are primary-key probes against one row, which is why they can sit on a statement this hot.
 const sheetSelect = `
-  SELECT s.id, s.name, s.workbook_id, s.created_at, s.updated_at, s.budget_usd
+  SELECT s.id, s.name, s.workbook_id, s.created_at, s.updated_at, s.budget_usd, s.kind,
+         (SELECT c.id FROM columns c
+           WHERE c.id = s.primary_column_id AND c.sheet_id = s.id AND c.deleted_at IS NULL)
+           AS primary_column_id,
+         (SELECT v.id FROM views v
+           WHERE v.id = s.default_view_id AND v.sheet_id = s.id)
+           AS default_view_id
     FROM sheets s`;
 
 /**
@@ -204,6 +272,9 @@ function toSheet(r: any): Sheet {
     workbookId: r.workbook_id ?? null,
     createdAt: r.created_at, updatedAt: r.updated_at,
     budgetUsd: r.budget_usd ?? null,
+    kind: isSheetKind(r.kind) ? r.kind : "generic",
+    primaryColumnId: r.primary_column_id == null ? null : String(r.primary_column_id),
+    defaultViewId: r.default_view_id == null ? null : String(r.default_view_id),
   };
 }
 

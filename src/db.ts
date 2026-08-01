@@ -97,10 +97,18 @@ db.exec(`
     workbook_id   TEXT REFERENCES workbooks(id) ON DELETE CASCADE,
     name          TEXT NOT NULL,
     position      INTEGER NOT NULL DEFAULT 0,
-    -- people | companies | generic — drives default columns and enrichment suggestions
+    -- What the rows ARE. The three values live in SHEET_KINDS in types.ts and nowhere else.
+    -- This comment used to claim the field drove default columns and enrichment suggestions while
+    -- nothing read it at all; it now seeds the table wizard's dedupe key and decides which column
+    -- templates suit a table.
     kind          TEXT NOT NULL DEFAULT 'generic',
-    -- The value shown in relations, the record view, and the mobile row list.
+    -- The column that NAMES a row: the record view's header, the first field a lookup offers, and
+    -- the send column's back-reference when one is set. RESOLVED on read rather than trusted --
+    -- see sheetSelect in store.ts. A column delete is soft and undoable, so a pointer at a deleted
+    -- column reads as null and comes back when the delete does.
     primary_column_id INTEGER,
+    -- The saved view this table opens on. NULL means all rows, which is what every table did before
+    -- anything read this. Resolved on read for the same reason as the pointer above.
     default_view_id   INTEGER,
     created_at    TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at    TEXT NOT NULL DEFAULT (datetime('now')),

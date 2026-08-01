@@ -33,7 +33,7 @@ import {
   moveSheet, nextRowPosition, readWindow, renameColumn, renameSheet, setCellValue,
   duplicateColumn, setColumnDescription, setColumnSendConfig, setColumnWaterfall, setColumnWidth, setColumnColor,
   setColumnAgent, setColumnAllowedTools, setColumnAutoRun, setColumnAutoRunBudget, setColumnMaxBudget, setColumnFrozen, setColumnHttpConfig, setColumnMcpConfig, setColumnMcpServers, setColumnFirstModel, setColumnKind, setColumnModel, setColumnPrompt,
-  setColumnValueType, unpinCell,
+  setColumnValueType, unpinCell, setPrimaryColumn, setSheetKind, rowLabelColumn,
   type ReadOptions,
 } from "./store.ts";
 import { proposeSetup, safeHttp, storeRefs, type SetupArea, type WaterfallStepProposal } from "./setup/aiSetup.ts";
@@ -49,7 +49,7 @@ import {
   updateSource, MAX_BODY_BYTES,
 } from "./sources/webhook.ts";
 import { exportCsv, importCsv, previewCsv } from "./csv.ts";
-import { isColumnKind, isValueType } from "./types.ts";
+import { isColumnKind, isSheetKind, isValueType } from "./types.ts";
 import { checkKey, normalizeAgentSettings, searchCostUsd } from "./providers/openrouter.ts";
 import { catalogAge, listModels, type CatalogModel } from "./providers/catalog.ts";
 import { defaultLocalUrl, discoverLocalModels, isLocalModel, isLocalRuntimeId, localRuntimes, localSecretName, setLocalUrl } from "./providers/local.ts";
@@ -95,7 +95,7 @@ import { deleteProviderKey, getProviderKey, providerKeyStatus, saveProviderKey }
 import type { FilterGroup } from "./filter.ts";
 import {
   createView, createWorkbook, deleteView, getView, getWorkbook, listTemplates,
-  listTables, listViews, listWorkbooks, restoreTable, rowStatuses, trashTable, updateView,
+  listTables, listViews, listWorkbooks, restoreTable, rowStatuses, setDefaultView, trashTable, updateView,
 } from "./views.ts";
 import {
   duplicateWorkbook, exportWorkbook, importWorkbook, templatizeWorkbook, useTemplate,
@@ -1534,7 +1534,10 @@ export function createServer(bootId: string) {
     // A new sheet joins the workbook it was created FROM. Without this every "+" from the tab bar
     // made a loose sheet that then vanished from the bar it was created in.
     const workbookId = typeof req.body?.workbookId === "string" ? req.body.workbookId : null;
-    res.json({ sheet: createSheet(name, workbookId) });
+    // An unrecognised kind degrades to generic rather than refusing the table. What the rows are is
+    // a hint that improves defaults; it is never worth failing a table creation over.
+    const kind = isSheetKind(req.body?.kind) ? req.body.kind : "generic";
+    res.json({ sheet: createSheet(name, workbookId, kind) });
   }));
 
   /** The sheets sharing a tab bar with this one — its workbook's, or the loose ones. */
@@ -1564,7 +1567,11 @@ export function createServer(bootId: string) {
     // routes are "scroll it", and a recents list built from scrolling is a list of nothing.
     markOpened("table", sheet.id);
     if (sheet.workbookId) markOpened("workbook", sheet.workbookId);
-    res.json({ sheet, columns: listColumns(sheet.id) });
+    // The default view travels WITH the sheet, in this payload, rather than as a second request the
+    // opener would have to make. One indexed row, and it is what lets the grid apply the narrowing
+    // before its first read of the rows instead of painting everything and then snapping to a subset.
+    const defaultView = sheet.defaultViewId ? getView(Number(sheet.defaultViewId)) : null;
+    res.json({ sheet, columns: listColumns(sheet.id), defaultView });
   }));
 
   app.patch("/api/sheets/:id", wrap((req, res) => {
@@ -1606,6 +1613,60 @@ export function createServer(bootId: string) {
         db.prepare("UPDATE sheets SET budget_usd = ? WHERE id = ?").run(n, id);
       }
     }
+
+    // The three settings that live on the sheet row and name something else: the column that labels a
+    // row, the view the table opens on, and what the rows are. Each refuses a target that is not on
+    // this table rather than storing it, because the read path resolves an unusable pointer to null —
+    // so a stored bad value would read back as "not set" and look identical to a save that failed.
+    // All three record the same undo kind.
+    if (req.body?.primaryColumnId !== undefined) {
+      const before = getSheet(id)?.primaryColumnId ?? null;
+      const raw = req.body.primaryColumnId;
+      const next = raw === null ? null : String(raw);
+      try {
+        setPrimaryColumn(id, next);
+      } catch (e: any) {
+        return res.status(400).json({ error: String(e?.message ?? "That column is not on this table.") });
+      }
+      if (before !== next) {
+        record(id, "sheet.setting", next ? "Change the row label" : "Clear the row label", {
+          sheetId: id, field: "primary_column_id",
+          from: before == null ? null : Number(before), to: next == null ? null : Number(next),
+        });
+      }
+    }
+
+    if (req.body?.defaultViewId !== undefined) {
+      const before = getSheet(id)?.defaultViewId ?? null;
+      const raw = req.body.defaultViewId;
+      const next = raw === null ? null : String(raw);
+      try {
+        setDefaultView(id, next == null ? null : Number(next));
+      } catch (e: any) {
+        return res.status(400).json({ error: String(e?.message ?? "That view is not on this table.") });
+      }
+      if (before !== next) {
+        record(id, "sheet.setting", next ? "Change which view this table opens on" : "Open this table on all rows", {
+          sheetId: id, field: "default_view_id",
+          from: before == null ? null : Number(before), to: next == null ? null : Number(next),
+        });
+      }
+    }
+
+    if (req.body?.kind !== undefined) {
+      if (!isSheetKind(req.body.kind)) {
+        return res.status(400).json({ error: "A table is people, companies, or generic." });
+      }
+      const before = getSheet(id)?.kind ?? "generic";
+      const next = req.body.kind;
+      setSheetKind(id, next);
+      if (before !== next) {
+        record(id, "sheet.setting", `Say these rows are ${next === "generic" ? "neither people nor companies" : next}`, {
+          sheetId: id, field: "kind", from: before, to: next,
+        });
+      }
+    }
+
     res.json({ sheet: getSheet(id) });
   }));
 

@@ -23,6 +23,17 @@
   flex: 0 0 auto;
 }
 
+/* The row's name. `flex: 0 1 auto` with `min-width: 0` rather than `1 1 auto`: the COUNT stays the
+   element that fills the row, so a record with no label lays out exactly as it did before this
+   existed and no void opens up. This shrinks and truncates instead of growing the header. */
+.cc-rec__label {
+  flex: 0 1 auto;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
 /* Between the back button and the arrows, so the row is filled edge to edge rather than leaving the
    nav floating at the far right with a void beside it. Tabular figures: the count changes on every
    step and must not resize as it does. */

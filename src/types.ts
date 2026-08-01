@@ -54,6 +54,26 @@ export function isColumnKind(v: unknown): v is ColumnKind {
 }
 
 /**
+ * What a table's rows ARE — people, companies, or neither.
+ *
+ * Declared here as an array for the same reason `VALUE_TYPES` below is: the runtime check and the
+ * type derive from one list, so a request arriving over HTTP is validated against exactly the thing
+ * the compiler enforces. This list previously existed twice — once in the schema comment and once as
+ * a private `KINDS` set inside the workbook importer — and two hand-maintained copies of three
+ * strings is the drift that comment argues against.
+ *
+ * `generic` is the default and means "neither", not "unknown". A table is generic until somebody
+ * says otherwise, and every table that existed before this shipped is generic.
+ */
+export const SHEET_KINDS = ["generic", "people", "companies"] as const;
+
+export type SheetKind = (typeof SHEET_KINDS)[number];
+
+export function isSheetKind(v: unknown): v is SheetKind {
+  return typeof v === "string" && (SHEET_KINDS as readonly string[]).includes(v);
+}
+
+/**
  * A column's data type. Drives the output schema handed to a model, the coercion applied to a
  * result, the cell renderer, the sort comparator, and which filter operators are offered.
  *
@@ -228,6 +248,19 @@ export interface Sheet {
   createdAt: string;
   updatedAt: string;
   budgetUsd: number | null;
+  /** What these rows are. Drives the table wizard's defaults and which column templates suit. */
+  kind: SheetKind;
+  /**
+   * The column that NAMES a row — shown in the record view's header, offered first in a lookup's
+   * field picker, and written as the send column's back-reference when one is set.
+   *
+   * Resolved on read rather than stored blindly: a column delete is soft and undoable, so a pointer
+   * at a deleted column reads as null and comes BACK when the delete is undone. Clearing it on
+   * delete would lose the setting for good.
+   */
+  primaryColumnId: string | null;
+  /** The saved view this table opens on. Null means all rows, which is what every table did before. */
+  defaultViewId: string | null;
 }
 
 export interface Cell {

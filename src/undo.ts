@@ -54,6 +54,10 @@ export type UndoKind =
   | "cell.edit"
   | "cells.bulk"
   | "sheet.rename"
+  // One kind for every scalar setting that lives ON the sheet row — the row label, the default view,
+  // what the rows are. A kind per setting would be three near-identical cases whose only difference
+  // is a column name, and the next setting would make it four.
+  | "sheet.setting"
   | "view.delete";
 
 export interface UndoEntry {
@@ -336,6 +340,25 @@ function apply(kind: UndoKind, p: any, dir: "undo" | "redo"): void {
       if (!name) throw new Error("That entry does not say what the table was called.");
       const res = db.prepare("UPDATE sheets SET name = ?, updated_at = datetime('now') WHERE id = ?")
         .run(name, String(p.sheetId));
+      if (Number(res.changes ?? 0) === 0) throw new Error("That table no longer exists.");
+      break;
+    }
+
+    /**
+     * A scalar setting on the sheet row. The payload names the column, so one case covers all of
+     * them — but the column name is checked against a fixed list rather than interpolated, because
+     * this value reaches SQL and an undo entry is a stored document.
+     */
+    case "sheet.setting": {
+      const FIELDS = ["primary_column_id", "default_view_id", "kind"] as const;
+      const field = String(p.field ?? "");
+      if (!(FIELDS as readonly string[]).includes(field)) {
+        throw new Error("That entry names a table setting this version does not know how to put back.");
+      }
+      const v = dir === "undo" ? p.from : p.to;
+      const res = db
+        .prepare(`UPDATE sheets SET ${field} = ?, updated_at = datetime('now') WHERE id = ?`)
+        .run(v ?? null, String(p.sheetId));
       if (Number(res.changes ?? 0) === 0) throw new Error("That table no longer exists.");
       break;
     }

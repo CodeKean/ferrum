@@ -8,7 +8,8 @@
 import { randomUUID } from "node:crypto";
 import { db } from "./db.ts";
 import type { FilterGroup } from "./filter.ts";
-import type { CellStatus } from "./types.ts";
+import { isSheetKind } from "./types.ts";
+import type { CellStatus, SheetKind } from "./types.ts";
 
 // ─────────────────────────────────────────────────────────────── workbooks
 
@@ -64,7 +65,7 @@ export function listTemplates(): Workbook[] {
     .map(toWorkbook);
 }
 
-export function listTables(workbookId: string): Array<{ id: string; name: string; position: number; kind: string; rowCount: number }> {
+export function listTables(workbookId: string): Array<{ id: string; name: string; position: number; kind: SheetKind; rowCount: number }> {
   return (
     db
       .prepare(
@@ -75,7 +76,11 @@ export function listTables(workbookId: string): Array<{ id: string; name: string
           ORDER BY s.position`,
       )
       .all(workbookId) as any[]
-  ).map((r) => ({ id: r.id, name: r.name, position: r.position, kind: r.kind, rowCount: Number(r.row_count) }));
+  ).map((r) => ({
+    id: r.id, name: r.name, position: r.position,
+    kind: isSheetKind(r.kind) ? r.kind : "generic",
+    rowCount: Number(r.row_count),
+  }));
 }
 
 /** Soft delete — a destructive action on a large table has to be recoverable. */
@@ -175,6 +180,23 @@ export function updateView(id: number, patch: Partial<View>): View | null {
 
 export function deleteView(id: number): void {
   db.prepare("DELETE FROM views WHERE id = ?").run(Number(id));
+}
+
+/**
+ * The view a table opens on.
+ *
+ * Deliberately NOT cleared when the view it names is deleted. A view delete is undoable and restores
+ * the row with its original id (see `undo.ts`), so the pointer heals itself; the read path in
+ * `store.ts` resolves a currently-dangling one to null. Clearing it here would turn an undoable
+ * action into a silent, permanent loss of the setting.
+ */
+export function setDefaultView(sheetId: string, viewId: number | null): void {
+  if (viewId != null) {
+    const ok = db.prepare("SELECT 1 FROM views WHERE id = ? AND sheet_id = ?").get(Number(viewId), sheetId);
+    if (!ok) throw new Error("That view is not on this table.");
+  }
+  db.prepare("UPDATE sheets SET default_view_id = ?, updated_at = datetime('now') WHERE id = ?")
+    .run(viewId == null ? null : Number(viewId), sheetId);
 }
 
 // ─────────────────────────────────────────────────────────────── per-row status

@@ -8,7 +8,8 @@ import { useCallback, useRef, useState } from "react";
 import { Popover } from "./ui/Popover.tsx";
 import { Modal } from "./ui/Modal.tsx";
 import { IconMore } from "./ui/Icon.tsx";
-import { api, type Sheet } from "./api.ts";
+import { Select } from "./ui/Select.tsx";
+import { api, type Sheet, type SheetKind } from "./api.ts";
 import { isNarrowed, viewQuery, type GridView } from "./view.ts";
 import "./SheetMenu.css";
 
@@ -30,6 +31,8 @@ interface Props {
   onTrashed: () => void | Promise<void>;
   /** The saved sheet comes back so the menu label and the engine agree on the current limit. */
   onBudgetSet?: (budgetUsd: number | null) => void;
+  /** The whole sheet back, for settings that change more than one field of it. */
+  onSheetChanged?: (sheet: Sheet) => void;
   /** Open the duplicate-rows screen. A table-level job, so it belongs on the table's own menu. */
   onDedupe?: () => void;
   /**
@@ -60,7 +63,7 @@ interface Props {
   onRestorePoints?: () => void;
 }
 
-export function SheetMenu({ sheet, view, visibleRows, onRenamed, onTrashed, onBudgetSet, onDedupe, onUsage, onSchedules, onRestorePoints, onLimits }: Props) {
+export function SheetMenu({ sheet, view, visibleRows, onRenamed, onTrashed, onBudgetSet, onSheetChanged, onDedupe, onUsage, onSchedules, onRestorePoints, onLimits }: Props) {
   const ref = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
   const [rect, setRect] = useState<DOMRect | null>(null);
@@ -69,6 +72,8 @@ export function SheetMenu({ sheet, view, visibleRows, onRenamed, onTrashed, onBu
   const [confirmTrash, setConfirmTrash] = useState(false);
   const [budgeting, setBudgeting] = useState(false);
   const [budget, setBudget] = useState("");
+  const [kinding, setKinding] = useState(false);
+  const [kind, setKind] = useState<SheetKind>("generic");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -111,6 +116,21 @@ export function SheetMenu({ sheet, view, visibleRows, onRenamed, onTrashed, onBu
       setBudgeting(false);
     } catch {
       setError("Could not reach the engine to save the limit.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /** What the rows are. A hint that improves defaults — it never changes a value already stored. */
+  const saveKind = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await api.setSheetKind(sheet.id, kind);
+      onSheetChanged?.(res.sheet);
+      setKinding(false);
+    } catch (e: any) {
+      setError(String(e?.message ?? "Could not reach the engine to save that."));
     } finally {
       setBusy(false);
     }
@@ -179,6 +199,14 @@ export function SheetMenu({ sheet, view, visibleRows, onRenamed, onTrashed, onBu
           >
             Spending limit{sheet.budgetUsd != null ? ` · ${sheet.budgetUsd}` : ""}
           </button>
+          {/* The current answer is in the label for the same reason the spending limit's is: a
+              setting you cannot see without opening a form is one you forget you set. */}
+          <button
+            className="cc-menu2__item"
+            onClick={() => { setOpen(false); setKind(sheet.kind); setKinding(true); }}
+          >
+            What these rows are{sheet.kind !== "generic" ? ` · ${sheet.kind}` : ""}
+          </button>
           {onLimits && (
             <button className="cc-menu2__item" onClick={() => { setOpen(false); onLimits(); }}>
               Speed limits…
@@ -226,6 +254,43 @@ export function SheetMenu({ sheet, view, visibleRows, onRenamed, onTrashed, onBu
           onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void rename(); } }}
         />
+      </Modal>
+
+      <Modal
+        open={kinding}
+        onClose={() => setKinding(false)}
+        title="What these rows are"
+        footNote={error ?? "A hint for the defaults. It never changes a value already in the table."}
+        footer={
+          <>
+            <button className="cc-btn" onClick={() => setKinding(false)}>Cancel</button>
+            <button className="cc-btn cc-btn--primary" onClick={() => void saveKind()} disabled={busy}>
+              Save
+            </button>
+          </>
+        }
+      >
+        <label className="cc-field">
+          <span className="cc-field__label">Each row is</span>
+          <Select<SheetKind>
+            label="Rows are"
+            value={kind}
+            showLabel={false}
+            size="md"
+            onChange={setKind}
+            options={[
+              { value: "generic", label: "Neither — something else", hint: "the default" },
+              { value: "people", label: "People", hint: "matched on email" },
+              { value: "companies", label: "Companies", hint: "matched on domain" },
+            ]}
+          />
+          <span className="cc-field__hint">
+            Saying what a table holds lets the table assistant pick a sensible key to deduplicate on,
+            and lets the column gallery say which saved columns suit this table. Both are
+            <strong> suggestions you can change</strong> — nothing here runs anything or spends
+            anything.
+          </span>
+        </label>
       </Modal>
 
       <Modal

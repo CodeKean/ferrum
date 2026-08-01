@@ -37,6 +37,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { db, tx } from "./db.ts";
 import { normalizeHttpConfig } from "./http/httpColumn.ts";
+import { isSheetKind } from "./types.ts";
 import { getWorkbook, type Workbook } from "./views.ts";
 import { invalidateRowCount } from "./store.ts";
 
@@ -684,7 +685,7 @@ export function importWorkbook(doc: unknown, name?: string): ImportResult {
       const sheetId = randomUUID();
       const tableName = String(t.name ?? `Table ${i + 1}`).slice(0, 200);
       db.prepare("INSERT INTO sheets (id, workbook_id, name, position, kind) VALUES (?, ?, ?, ?, ?)").run(
-        sheetId, newId, tableName, i, KINDS.has(String(t.kind)) ? String(t.kind) : "generic",
+        sheetId, newId, tableName, i, isSheetKind(t.kind) ? t.kind : "generic",
       );
       sheetIds.set(tableName, sheetId);
       colIds.set(tableName, new Map());
@@ -875,7 +876,7 @@ export function importWorkbook(doc: unknown, name?: string): ImportResult {
   });
 }
 
-const KINDS = new Set(["people", "companies", "generic"]);
+// A COLUMN kind, hand-maintained and SHORT OF THE REAL LIST — see the note at its use site.
 const KIND_SET = new Set(["static", "script", "http", "mcp", "ai", "agent", "send", "lookup", "rollup"]);
 
 /**

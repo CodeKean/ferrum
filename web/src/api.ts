@@ -1,6 +1,6 @@
 // Thin API client. Commands are POST/PATCH; live state arrives separately over SSE.
 
-import { EMPTY_VIEW, viewQuery, type GridView } from "./view.ts";
+import { EMPTY_VIEW, viewQuery, type GridView, type SavedView } from "./view.ts";
 import type { CellDelta } from "./types.ts";
 import type { RuleSet } from "@shared/validate.ts";
 
@@ -13,7 +13,16 @@ export interface Sheet {
   createdAt: string;
   updatedAt: string;
   budgetUsd: number | null;
+  /** What the rows are. Seeds the table wizard's defaults and decides which templates suit. */
+  kind: SheetKind;
+  /** The column that names a row. Null means fall back to the row's position. */
+  primaryColumnId: string | null;
+  /** The saved view this table opens on. Null means all rows. */
+  defaultViewId: string | null;
 }
+
+/** Mirrors SHEET_KINDS in src/types.ts. */
+export type SheetKind = "generic" | "people" | "companies";
 
 /** Mirrors src/types.ts — keep the two in step when a type is added. */
 export type ValueType =
@@ -497,7 +506,19 @@ export const api = {
    */
   createSheet: (name: string, workbookId?: string | null) =>
     req<{ sheet: Sheet }>("/api/sheets", { method: "POST", body: JSON.stringify({ name, workbookId: workbookId ?? null }) }),
-  getSheet: (id: string) => req<{ sheet: Sheet; columns: Column[] }>(`/api/sheets/${id}`),
+  // `defaultView` travels in this payload rather than as a second request, so the opener can apply
+  // the narrowing before the grid's first read of the rows instead of painting everything and then
+  // snapping to a subset.
+  getSheet: (id: string) =>
+    req<{ sheet: Sheet; columns: Column[]; defaultView: SavedView | null }>(`/api/sheets/${id}`),
+  /** The column that names a row. Null clears it and falls back to the row's position. */
+  setPrimaryColumn: (id: string, primaryColumnId: string | null) =>
+    req<{ sheet: Sheet }>(`/api/sheets/${id}`, { method: "PATCH", body: JSON.stringify({ primaryColumnId }) }),
+  /** The view this table opens on. Null returns it to all rows. */
+  setDefaultView: (id: string, defaultViewId: string | null) =>
+    req<{ sheet: Sheet }>(`/api/sheets/${id}`, { method: "PATCH", body: JSON.stringify({ defaultViewId }) }),
+  setSheetKind: (id: string, kind: SheetKind) =>
+    req<{ sheet: Sheet }>(`/api/sheets/${id}`, { method: "PATCH", body: JSON.stringify({ kind }) }),
   renameSheet: (id: string, name: string) =>
     req<{ sheet: Sheet }>(`/api/sheets/${id}`, { method: "PATCH", body: JSON.stringify({ name }) }),
   /** Soft delete — recoverable. The UI never hard-deletes a sheet. */

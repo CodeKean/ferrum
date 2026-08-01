@@ -17,16 +17,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Popover } from "../ui/Popover.tsx";
 import { Modal } from "../ui/Modal.tsx";
 import { IconMore, IconPlus } from "../ui/Icon.tsx";
-import { EMPTY_VIEW, usableFilter, type GridView } from "../view.ts";
+import { EMPTY_VIEW, savedViewToGrid, usableFilter, type GridView, type SavedView } from "../view.ts";
 import "./ViewBar.css";
-
-interface SavedView {
-  id: number;
-  name: string;
-  filter: { conj: "and" | "or"; children: any[] };
-  sorts: Array<{ columnId: number; dir: "asc" | "desc" }>;
-  search: string | null;
-}
 
 interface Props {
   sheetId: string;
@@ -34,6 +26,11 @@ interface Props {
   onChange: (v: GridView) => void;
   /** Bumped so the undo bar re-reads after a view is deleted. */
   onMutated: () => void;
+  /** The view this table opens on, so the bar can show which one it is and change it. */
+  defaultViewId?: string | null;
+  onSetDefaultView?: (viewId: string | null) => void;
+  /** The view applied on open, so the trigger names it instead of reading "Views" over a narrowed grid. */
+  openedWith?: number | null;
 }
 
 /** Same shape on both sides of the comparison, so key order cannot make an identical view look edited. */
@@ -44,14 +41,7 @@ const fingerprint = (v: GridView) =>
     search: v.search.trim(),
   });
 
-const viewToGrid = (s: SavedView): GridView => ({
-  search: s.search ?? "",
-  status: [],
-  sort: s.sorts?.[0] ?? null,
-  filter: s.filter?.children?.length ? s.filter : null,
-});
-
-export function ViewBar({ sheetId, view, onChange, onMutated }: Props) {
+export function ViewBar({ sheetId, view, onChange, onMutated, defaultViewId, onSetDefaultView, openedWith }: Props) {
   const [views, setViews] = useState<SavedView[]>([]);
   const [activeId, setActiveId] = useState<number | null>(null);
   const [open, setOpen] = useState(false);
@@ -77,17 +67,20 @@ export function ViewBar({ sheetId, view, onChange, onMutated }: Props) {
     } catch { /* the bar degrades to "save this view" rather than blocking the toolbar */ }
   }, [sheetId]);
 
-  useEffect(() => { void load(); setActiveId(null); }, [load]);
+  // Reset to whatever the table was OPENED with, not to null. A table with a default view opens
+  // narrowed, and a trigger reading "Views" over a narrowed grid is the drift this file's header
+  // warns about — the name has to say what is on screen.
+  useEffect(() => { void load(); setActiveId(openedWith ?? null); }, [load, openedWith]);
 
   const active = views.find((v) => v.id === activeId) ?? null;
   // Whether what is on screen still matches the view that was applied. Compared by value, because
   // the point is "does this still show what the name promises", not "was the object replaced".
-  const drifted = active ? fingerprint(viewToGrid(active)) !== fingerprint(view) : false;
+  const drifted = active ? fingerprint(savedViewToGrid(active)) !== fingerprint(view) : false;
 
   const apply = (v: SavedView | null) => {
     setOpen(false);
     setActiveId(v?.id ?? null);
-    onChange(v ? viewToGrid(v) : EMPTY_VIEW);
+    onChange(v ? savedViewToGrid(v) : EMPTY_VIEW);
   };
 
   const save = async () => {
@@ -215,13 +208,54 @@ export function ViewBar({ sheetId, view, onChange, onMutated }: Props) {
 
       <Popover open={open} anchor={rect ? { rect } : null} anchorEl={trigger} onClose={() => setOpen(false)} width={260} role="menu" label="Views">
         <div className="cc-vb__menu">
-          <button className={`cc-vb__item${activeId === null ? " cc-vb__item--on" : ""}`} onClick={() => apply(null)}>
-            All rows — no view
-          </button>
+          <div className={`cc-vb__row${activeId === null ? " cc-vb__row--on" : ""}`}>
+            <button className="cc-vb__item truncate" onClick={() => apply(null)}>
+              All rows — no view
+            </button>
+            {onSetDefaultView && defaultViewId != null && (
+              <button
+                className="hk-icon-btn cc-vb__del"
+                onClick={() => onSetDefaultView(null)}
+                aria-label="Open this table on all rows"
+                title="Open this table on all rows instead of a saved view"
+              >
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M8 2l1.8 3.9 4.2.5-3.1 2.9.8 4.2L8 11.5 4.3 13.5l.8-4.2L2 6.4l4.2-.5z" />
+                </svg>
+              </button>
+            )}
+          </div>
 
           {views.map((v) => (
             <div key={v.id} className={`cc-vb__row${activeId === v.id ? " cc-vb__row--on" : ""}`}>
               <button className="cc-vb__item truncate" onClick={() => apply(v)}>{v.name}</button>
+              {onSetDefaultView && (
+                <button
+                  className="hk-icon-btn cc-vb__del"
+                  onClick={() => onSetDefaultView(String(v.id) === defaultViewId ? null : String(v.id))}
+                  aria-label={
+                    String(v.id) === defaultViewId
+                      ? `Stop opening this table on ${v.name}`
+                      : `Open this table on ${v.name}`
+                  }
+                  // Named rather than left to the icon: this is the one control here that changes
+                  // what somebody else sees when they open the table, and a filtered landing state
+                  // costs an index build on the first open after any data change.
+                  title={
+                    String(v.id) === defaultViewId
+                      ? `This table opens on “${v.name}”. Click to open on all rows instead.`
+                      : `Open this table on “${v.name}” every time`
+                  }
+                >
+                  <svg
+                    width="12" height="12" viewBox="0 0 16 16"
+                    fill={String(v.id) === defaultViewId ? "currentColor" : "none"}
+                    stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"
+                  >
+                    <path d="M8 2l1.8 3.9 4.2.5-3.1 2.9.8 4.2L8 11.5 4.3 13.5l.8-4.2L2 6.4l4.2-.5z" />
+                  </svg>
+                </button>
+              )}
               <button
                 className="hk-icon-btn cc-vb__del"
                 onClick={() => void remove(v)}
