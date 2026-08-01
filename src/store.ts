@@ -1061,21 +1061,29 @@ function viewKey(sheetId: string, opts: ReadOptions): string {
  * rather than SQLite's LOWER, which only folds ASCII, so "Ärzte" would otherwise sort away from
  * "arzte" instead of beside it.
  */
-function orderClause(sheetId: string, sort: ReadOptions["sort"]): string {
-  if (!sort) return "r.position ASC";
+function orderPlan(sheetId: string, sort: ReadOptions["sort"]): { join: string; order: string } {
+  const byPosition = { join: "", order: "r.position ASC" };
+  if (!sort) return byPosition;
   const col = Number(sort.columnId);
-  if (!Number.isInteger(col)) return "r.position ASC";
+  if (!Number.isInteger(col)) return byPosition;
 
   // Resolved against THIS sheet's live columns, not merely checked for being a number. A stale id
   // from a reopened tab, or one belonging to another table, produced a correlated subquery that
   // returned NULL for every row — so the sort silently did nothing while the caret said it had, and
   // the whole sheet paid for a per-row lookup that could never match.
   const column = listColumns(sheetId).find((c) => Number(c.id) === col);
-  if (!column) return "r.position ASC";
+  if (!column) return byPosition;
 
   const dir = sort.dir === "desc" ? "DESC" : "ASC";
   const valueType = column.valueType;
-  const v = `(SELECT c.value_text FROM cells c WHERE c.row_id = r.id AND c.column_id = ${col})`;
+
+  // The sorted value is JOINED in rather than fetched by a correlated subquery. It appears three
+  // times in the ORDER BY — twice in the blank test, once in the key — and as a subquery SQLite ran
+  // all three per row: three million lookups to sort a million rows, measured at 4.6 seconds with
+  // the engine's single connection blocked throughout. `cells` is keyed on (row_id, column_id), so
+  // the join is a primary-key seek matching exactly one row or none, and the value is read once.
+  const v = "sortc.value_text";
+  const join = `LEFT JOIN cells sortc ON sortc.row_id = r.id AND sortc.column_id = ${col}`;
 
   const key =
     valueType && NUMERIC_TYPES.has(valueType) ? `CAST(${v} AS REAL)`
@@ -1084,7 +1092,7 @@ function orderClause(sheetId: string, sort: ReadOptions["sort"]): string {
 
   // r.position last, so rows with equal values keep a stable, repeatable order across pages —
   // without it a window at offset 400 could re-order rows it already showed at offset 200.
-  return `(${v} IS NULL OR ${v} = '') ASC, ${key} ${dir}, r.position ASC`;
+  return { join, order: `(${v} IS NULL OR ${v} = '') ASC, ${key} ${dir}, r.position ASC` };
 }
 
 /**
@@ -1148,10 +1156,12 @@ function ensureViewIndex(
     db.prepare("DELETE FROM view_index WHERE view_key = ?").run(key);
     // One INSERT..SELECT: the predicate is evaluated exactly once for the whole view, not once per
     // scroll. ROW_NUMBER gives the dense sequence the window seeks on.
+    const plan = orderPlan(sheetId, opts.sort);
     db.prepare(
       `INSERT INTO view_index (view_key, seq, row_id)
-       SELECT ?, ROW_NUMBER() OVER (ORDER BY ${orderClause(sheetId, opts.sort)}) - 1, r.id
+       SELECT ?, ROW_NUMBER() OVER (ORDER BY ${plan.order}) - 1, r.id
          FROM rows r
+         ${plan.join}
         WHERE r.sheet_id = ? AND (${compiled.sql})`,
     ).run(key, sheetId, ...compiled.params);
 

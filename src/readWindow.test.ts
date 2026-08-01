@@ -58,6 +58,24 @@ test("a numeric column sorts numerically, not as text", () => {
   assert.deepEqual(asc, ["9", "20", "100"]);
 });
 
+test("sorting joins the sort column in without losing or duplicating a row", () => {
+  const sheet = createSheet("sort-join");
+  const name = Number(addColumn(sheet.id, { name: "Name" }).id);
+  const note = Number(addColumn(sheet.id, { name: "Note" }).id);
+  // Only `name` is listed, and insertRows writes cells for the listed columns alone — so these rows
+  // hold no `cells` row at all for `note`. Not an empty string: no row. The old correlated subquery
+  // returned NULL for them; a plain JOIN drops them from the sheet, which is why it has to be LEFT.
+  insertRows(sheet.id, ["pear", "apple", "fig"].map((v) => ({ values: { [String(name)]: v } })), 0, [name]);
+
+  const byName = readWindow(sheet.id, 0, 10, { sort: { columnId: name, dir: "asc" } });
+  assert.deepEqual(valuesOf(byName, name), ["apple", "fig", "pear"]);
+  assert.equal(byName.total, 3, "the join must not fan a row out into several");
+
+  const byNote = readWindow(sheet.id, 0, 10, { sort: { columnId: note, dir: "asc" } });
+  assert.equal(byNote.total, 3, "every row survives a sort on a column it has no cell in");
+  assert.equal(new Set(byNote.rows.map((r) => r.id)).size, 3);
+});
+
 test("search matches across columns and treats LIKE wildcards as literal text", () => {
   const { sheetId, colId } = fixture("search", ["100 percent", "1000 units", "half"]);
 
