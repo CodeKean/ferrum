@@ -208,7 +208,7 @@ virtualiser cannot address a million rows.
 ## Development
 
 ```bash
-npm test           # 1,056 tests across 78 files, each with its own database
+npm test           # 1,099 tests across 82 files, each with its own database
 npm run typecheck  # both TypeScript projects, server and browser
 npm run web:build  # production build of the grid
 ```
@@ -216,12 +216,16 @@ npm run web:build  # production build of the grid
 CI runs all of these on every push and pull request.
 
 ```
-src/          the engine: storage, runs, columns, providers, agent loop
-src/agent/    the per-cell executor and the research-agent tool loop
-src/http/     web-call columns, with a guard against internal addresses
-src/runtime/  the sandboxed rule runners
-src/setup/    the AI that configures a column from a description
-web/src/      the React grid, the column editor, settings
+src/            the engine: storage, runs, columns, scheduling, undo
+src/agent/      the per-cell executor and the research-agent tool loop
+src/providers/  the AI providers, local runtimes, model catalogue and prices
+src/http/       web-call columns, with a guard against internal addresses
+src/mcp/        connected apps: the client, the server registry, the column lane
+src/search/     the web-search backends a research agent can use
+src/sources/    data coming in, including webhook ingest
+src/runtime/    the sandboxed rule runners
+src/setup/      the AI that configures a column from a description
+web/src/        the React grid, the column editor, settings
 ```
 
 Contributions are welcome. Please run `npm test` and `npm run typecheck` before opening a pull
