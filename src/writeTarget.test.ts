@@ -11,6 +11,7 @@ import assert from "node:assert/strict";
 import { db } from "./db.ts";
 import { addColumn, countRows, createSheet, insertRows, setCellValue } from "./store.ts";
 import { trashTable } from "./views.ts";
+import { createRelation } from "./relations.ts";
 import {
   applyWrite,
   buildWriteItems,
@@ -278,4 +279,49 @@ test("the scope helper says when a run condition will narrow what actually gets 
 
   const unmapped = resolveSendScope({ ...cfg, mapping: {} }, src.rowIds);
   assert.ok(unmapped.errors.some((e) => /mapped/.test(e)));
+});
+
+test("a send refreshes the relation index it just invalidated", () => {
+  // Accounts on one side, contacts on the other, linked by company name.
+  const wb = `wb-rel-${Math.random().toString(36).slice(2)}`;
+  db.prepare("INSERT INTO workbooks (id, name) VALUES (?, ?)").run(wb, "Rel");
+  const inWb = (s: { id: string }) => db.prepare("UPDATE sheets SET workbook_id = ? WHERE id = ?").run(wb, s.id);
+  const accounts = createSheet("rel-accounts");
+  inWb(accounts);
+  const aName = Number(addColumn(accounts.id, { name: "Company" }).id);
+  insertRows(accounts.id, [{ values: { [String(aName)]: "Monzo" } }], 0, [aName]);
+
+  const contacts = createSheet("rel-contacts");
+  inWb(contacts);
+  const cRole = Number(addColumn(contacts.id, { name: "Role" }).id);
+  const cAccount = Number(addColumn(contacts.id, { name: "Account" }).id);
+
+  const rel = createRelation({
+    fromSheetId: contacts.id, fromColumnId: cAccount,
+    toSheetId: accounts.id, toColumnId: aName,
+    cardinality: "many_to_one", matchMode: "normalized",
+  });
+  // Nothing on the contacts side yet, so the link starts empty and honest.
+  assert.equal(countRows(contacts.id), 0);
+
+  const target: SendConfig = {
+    ...DEFAULT_SEND,
+    targetSheetId: contacts.id,
+    mapping: { [cRole]: { from: "item", path: "role" }, [cAccount]: { from: "item", path: "account" } },
+    onConflict: "insert",
+  };
+  const items = [
+    { sourceRowId: 1, value: { role: "CEO", account: "Monzo" } },
+    { sourceRowId: 1, value: { role: "CTO", account: "Monzo" } },
+  ];
+  applyWrite(items, targetOf(target));
+  assert.equal(countRows(contacts.id), 2, "the rows themselves land");
+
+  // The regression: the rows existed and the match rule was right, but relation_keys still described
+  // the table as it was BEFORE the send. rollup answered 0 and lookup answered empty, both with no
+  // error — a confident wrong number, which is the worst shape this can take.
+  const keyed = db
+    .prepare("SELECT COUNT(*) AS c FROM relation_keys WHERE relation_id = ? AND side = 'from'")
+    .get(rel.id) as { c: number };
+  assert.equal(keyed.c, 2, "the send must reindex the link, not leave it describing the old table");
 });

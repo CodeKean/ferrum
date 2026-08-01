@@ -24,6 +24,7 @@ import { getPath, toList, toText } from "./jsonPath.ts";
 import { backfillCells, getSheet, invalidateRowCount, listColumns, nextRowPosition } from "./store.ts";
 import { bumpDataVersion } from "./store.ts";
 import { markSheetDirty } from "./columnStats.ts";
+import { listRelations, rebuildRelationKeys } from "./relations.ts";
 
 export type ConflictPolicy = "upsert" | "insert" | "skip";
 
@@ -465,6 +466,24 @@ export function applyWrite(items: WriteItem[], target: WriteTarget): WriteResult
   invalidateRowCount(target.targetSheetId);
   bumpDataVersion(target.targetSheetId);
   markSheetDirty(target.targetSheetId);
+  /**
+   * The rows are new, so every link that touches this table has a stale index.
+   *
+   * Without this, a send that fans a list out into another table left `relation_keys` describing the
+   * table as it was BEFORE the send — and the two lanes that read a relation answered from it
+   * without complaint. Measured: a per-item send wrote six committee rows, then `rollup` returned 0
+   * for all five accounts and `lookup` returned empty for all six rows, both with `err=0`. Nothing
+   * failed and nothing warned, because zero is a perfectly plausible count. A manual rebuild
+   * reported `matched: 6, unmatched: 0` and the identical columns then answered correctly.
+   *
+   * That is the worst shape a defect can take here: a confident wrong number in front of somebody
+   * deciding who to contact.
+   *
+   * Once per send rather than once per row, and only for links that actually involve this table.
+   * It is a full reindex of those links, which is the honest cost of the rows having changed —
+   * the same work `setMatchMode` already does for the same reason.
+   */
+  for (const rel of listRelations(target.targetSheetId)) rebuildRelationKeys(rel.id);
   markCellsDirty(dirty);
   return result;
 }

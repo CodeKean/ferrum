@@ -23,7 +23,16 @@ export function parsePath(path: string): PathSegment[] {
   let m: RegExpExecArray | null;
   while ((m = re.exec(path)) !== null) {
     if (m[2] !== undefined) segs.push(Number(m[2]));
-    else if (m[1] !== undefined) segs.push(m[1].trim());
+    else if (m[1] !== undefined) {
+      const name = m[1].trim();
+      // A bare integer between dots is an ARRAY INDEX. `a.0.b` is how most people write one, it is
+      // what a JSONPath-lite library accepts, and it is what anyone copying a path off a JSON sample
+      // reaches for first — but it parsed as the string "0", and `step` refuses a string against an
+      // array, so it silently found nothing. Measured against a live endpoint: `Answer.0.data`
+      // returned "No Answer.0.data in the response" while `Answer[0].data` on the identical payload
+      // filled every row. An object whose key really is "0" still works — see `step`.
+      segs.push(/^\d+$/.test(name) ? Number(name) : name);
+    }
   }
   return segs;
 }
@@ -77,8 +86,12 @@ function step(cur: unknown, seg: PathSegment): unknown {
   // Prototype keys are never data. Reading them would leak engine internals into a cell.
   if (typeof seg === "string" && PROTO_KEYS.has(seg)) return undefined;
   if (typeof seg === "number") {
-    if (!Array.isArray(cur)) return undefined;
-    return cur[seg];
+    if (Array.isArray(cur)) return cur[seg];
+    // A numeric segment against an OBJECT falls back to the string key, because `{"0": …}` is real
+    // data — an API keyed by id, a year, a rank. Without this, teaching `a.0.b` to mean an index
+    // would have taken that shape away, trading one silent nothing for another.
+    if (typeof cur === "object") return (cur as Record<string, unknown>)[String(seg)];
+    return undefined;
   }
   if (typeof cur !== "object" || Array.isArray(cur)) return undefined;
   return (cur as Record<string, unknown>)[seg];

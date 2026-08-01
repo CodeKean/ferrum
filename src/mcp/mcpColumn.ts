@@ -53,7 +53,11 @@ function pairs(raw: unknown): Pair[] {
   const out: Pair[] = [];
   for (const p of raw as Array<Record<string, unknown>>) {
     const name = String(p?.name ?? "").trim();
-    if (!name) continue;
+    // Refused, not dropped. A silently discarded argument is a config that cannot work on ANY row,
+    // saved with a 200 and discovered once per row at run time as the far end's own validation
+    // error — "expected string, received undefined at message" — which names the tool's parameter
+    // and nothing the user can act on. Saving is the moment to say it.
+    if (!name) throw new Error("Every argument needs a name. One of them is blank.");
     out.push({ name, value: String(p?.value ?? "") });
   }
   return out;

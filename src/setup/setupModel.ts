@@ -188,7 +188,7 @@ export async function designCall(
   if (!call) {
     throw new Error(
       `${model} answered without filling in the settings. Some models — free ones especially — cannot ` +
-        `be made to answer in a fixed shape. Pick a different model under Settings → Building with AI, ` +
+        `be made to answer in a fixed shape. Pick a different model under Settings → Models → What builds columns for you, ` +
         `or describe what you want in one plain sentence and try again.`,
     );
   }

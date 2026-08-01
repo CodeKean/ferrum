@@ -315,7 +315,7 @@ export async function proposePromotion(
           // Distinguished from "no rule was written": the model DID write one and it would not compile,
           // twice. That is a different thing to tell someone, and it points at the model rather than
           // at their column.
-          ? `${res.model} wrote a rule twice and neither version would compile. That is a limit of the model, not of this column — a stronger one under Settings → Building with AI would likely manage it.`
+          ? `${res.model} wrote a rule twice and neither version would compile. That is a limit of the model, not of this column — a stronger one under Settings → Models → What builds columns for you would likely manage it.`
           : "No rule could be written from these answers, so this column stays on the model.",
     };
   }

@@ -1240,13 +1240,13 @@ export async function proposeSetup(req: SetupRequest, signal?: AbortSignal): Pro
    */
   const thin: string[] = [];
   if (req.area === "link" && !linkOut.link && linkOut.missing.length === 0) {
-    thin.push(`${res.model} picked the right kind of column but did not fill in which table to read from. Pick it below, or switch to a stronger model under Settings → Building with AI.`);
+    thin.push(`${res.model} picked the right kind of column but did not fill in which table to read from. Pick it below, or switch to a stronger model under Settings → Models → What builds columns for you.`);
   }
   if (req.area === "steps" && waterfallOut.steps.length === 0) {
-    thin.push(`${res.model} did not come back with any steps. Add them below, or switch to a stronger model under Settings → Building with AI.`);
+    thin.push(`${res.model} did not come back with any steps. Add them below, or switch to a stronger model under Settings → Models → What builds columns for you.`);
   }
   if (req.area === "destination" && !sendOut.send && sendOut.missing.length === 0) {
-    thin.push(`${res.model} did not say where the rows should go. Pick the destination below, or switch to a stronger model under Settings → Building with AI.`);
+    thin.push(`${res.model} did not say where the rows should go. Pick the destination below, or switch to a stronger model under Settings → Models → What builds columns for you.`);
   }
 
   const missing = [
