@@ -233,3 +233,52 @@ test("the model that ANSWERED is reported, not the one that was asked for", asyn
     await s.close();
   }
 });
+
+test("the caller giving up is reported as a cancellation, not as a timeout", async () => {
+  // A server that accepts the request and never answers, so the only way out is an abort.
+  const server = createServer(() => { /* hang */ });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  const port = (server.address() as any).port;
+
+  try {
+    const ac = new AbortController();
+    // Far longer than the test takes, so if this comes back as a timeout the message is reporting a
+    // ceiling nobody reached — which is exactly what the assistant panel showed: "Timed out after
+    // 180000ms" twenty-five seconds after the request started.
+    const provider = createOpenAIProvider({ id: "t", baseUrl: `http://127.0.0.1:${port}/v1`, timeoutMs: 180_000 });
+    const call = provider.chat({ model: "m", system: "s", messages: [{ role: "user", content: "hi" }], signal: ac.signal } as any);
+    setTimeout(() => ac.abort(new Error("superseded")), 50);
+
+    const err = await call.then(() => null, (e) => e);
+    assert.ok(err instanceof ProviderError, "an abort must still arrive classified");
+    assert.equal(err.cls, "cancelled", "the caller stopped it; the provider did nothing wrong");
+    assert.doesNotMatch(err.message, /timed out/i, "must not name a timeout that did not happen");
+    assert.doesNotMatch(err.message, /180000/, "must not quote a ceiling nobody waited for");
+  } finally {
+    await new Promise<void>((r) => server.close(() => r()));
+  }
+});
+
+test("a real timeout reports how long it actually waited, not the ceiling", async () => {
+  const server = createServer(() => { /* hang */ });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  const port = (server.address() as any).port;
+
+  try {
+    const provider = createOpenAIProvider({ id: "t", baseUrl: `http://127.0.0.1:${port}/v1`, timeoutMs: 120 });
+    const err = await provider
+      .chat({ model: "m", system: "s", messages: [{ role: "user", content: "hi" }] } as any)
+      .then(() => null, (e) => e);
+
+    assert.ok(err instanceof ProviderError);
+    assert.equal(err.cls, "timeout");
+    const ms = Number(/(\d+)ms/.exec(err.message)?.[1]);
+    // STRICTLY greater than the ceiling. Elapsed time always overshoots the timer it fired from —
+    // the abort has to propagate and the rejection has to be handled — whereas printing the ceiling
+    // back gives exactly 120. `>= 120` would pass on both and prove nothing.
+    assert.ok(ms > 120, `reported exactly the ${ms}ms ceiling, so this is the setting and not elapsed time`);
+    assert.ok(ms < 30_000, `reported ${ms}ms for a 120ms ceiling`);
+  } finally {
+    await new Promise<void>((r) => server.close(() => r()));
+  }
+});

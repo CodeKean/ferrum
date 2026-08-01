@@ -187,7 +187,17 @@ export function createOpenAIProvider(cfg: OpenAIConfig): Provider {
       // worker slot until the process dies — and a stalled connection is a far more common failure
       // than an error response.
       const ac = new AbortController();
-      const timer = setTimeout(() => ac.abort(new Error("provider timeout")), timeoutMs);
+      // Which of the two aborts fired, and when the attempt started. Both cancel the SAME controller,
+      // so the catch below cannot tell them apart from the error alone — and reporting the caller's
+      // own cancellation as "Timed out after 180000ms" is a message that names a duration nobody
+      // waited and a cause that did not happen. Seen in the assistant panel: a superseded request
+      // came back as a three-minute timeout twenty-five seconds in.
+      let timedOut = false;
+      const startedAt = Date.now();
+      const timer = setTimeout(() => {
+        timedOut = true;
+        ac.abort(new Error("provider timeout"));
+      }, timeoutMs);
       const onAbort = () => ac.abort(req.signal?.reason);
       req.signal?.addEventListener("abort", onAbort, { once: true });
 
@@ -206,10 +216,18 @@ export function createOpenAIProvider(cfg: OpenAIConfig): Provider {
         });
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
-        throw new ProviderError(
-          /abort/i.test(msg) ? `Timed out after ${timeoutMs}ms` : `Could not reach ${cfg.id}: ${msg}`,
-          /abort/i.test(msg) ? "timeout" : "overloaded",
-        );
+        // Classified from the SIGNALS, never from the text of the error. `/abort/i.test(message)` was
+        // the old test, and an AbortController carries whatever reason the caller passed it: a UI
+        // that aborts a superseded request with `new Error("superseded")` produced a message with no
+        // "abort" in it, so a cancellation was classified `overloaded` — the class the retry policy
+        // retries. Work the user had already cancelled was sent again, and on a paid model that is
+        // money spent on an answer nobody is waiting for.
+        //
+        // Elapsed, not the ceiling: the number tells someone how long they actually waited, and the
+        // ceiling is a setting they can already read.
+        if (timedOut) throw new ProviderError(`Timed out after ${Date.now() - startedAt}ms`, "timeout");
+        if (req.signal?.aborted) throw new ProviderError("Cancelled before the model answered.", "cancelled");
+        throw new ProviderError(`Could not reach ${cfg.id}: ${msg}`, "overloaded");
       } finally {
         clearTimeout(timer);
         req.signal?.removeEventListener("abort", onAbort);

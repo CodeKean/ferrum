@@ -99,7 +99,10 @@ export interface ChatRequest {
 export class ProviderError extends Error {
   constructor(
     message: string,
-    readonly cls: "auth" | "rate_limit" | "overloaded" | "timeout" | "budget" | "schema" | "unknown",
+    // "cancelled" is the caller having given up, not a fault of the provider — a superseded request,
+    // a closed panel, a stopped run. Kept distinct from "timeout" because the two want opposite
+    // handling: a timeout is worth retrying and worth reporting, a cancellation is neither.
+    readonly cls: "auth" | "rate_limit" | "overloaded" | "timeout" | "budget" | "schema" | "cancelled" | "unknown",
     readonly status?: number,
     readonly retryAfterMs?: number,
   ) {
