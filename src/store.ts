@@ -56,7 +56,13 @@ function createSheetInner(name: string, workbookId?: string | null): Sheet {
   let wb = workbookId ?? null;
   if (!wb) {
     wb = randomUUID();
-    db.prepare("INSERT INTO workbooks (id, name) VALUES (?, ?)").run(wb, name);
+    // The workbook is NOT named after the table. A table called "Untitled sheet" produced a workbook
+    // called "Untitled sheet" too, so a fresh workspace read `Untitled sheet / Untitled sheet` and
+    // nothing on screen said which level was which. A named table keeps its name for the workbook,
+    // which is the useful case — "Target accounts" in "Target accounts" is at least true — but the
+    // default one gets the word for what it actually is.
+    db.prepare("INSERT INTO workbooks (id, name) VALUES (?, ?)")
+      .run(wb, name === "Untitled sheet" ? "Untitled workbook" : name);
   }
 
   // Placed after the last sheet of whichever set it joins, so the tab bar's order is the order

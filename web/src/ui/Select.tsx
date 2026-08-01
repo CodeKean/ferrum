@@ -18,7 +18,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Popover } from "./Popover.tsx";
-import { resolveSelected } from "./selectValue.ts";
+import { matchesQuery, resolveSelected } from "./selectValue.ts";
 import "./Select.css";
 
 export interface SelectOption<T extends string> {
@@ -66,12 +66,19 @@ interface Props<T extends string> {
  */
 const SEARCH_AT = 12;
 
-/** Case-insensitive substring over both the label and the value, so a model id matches too. */
-function matches<T extends string>(o: SelectOption<T>, q: string): boolean {
-  if (!q) return true;
-  const needle = q.toLowerCase();
-  return o.label.toLowerCase().includes(needle) || String(o.value).toLowerCase().includes(needle);
-}
+/**
+ * Every word must appear, in the label or the value. Order does not matter.
+ *
+ * The whole query used to be one substring, so `free nemotron 3 ultra` matched nothing at all while
+ * `NVIDIA: Nemotron 3 Ultra (free)` sat in the list — the words are all there, just not adjacent and
+ * not in that order. Typing what you remember about a model, in the order you remember it, is the
+ * only way anyone uses a box like this, and the command palette in this same app already splits on
+ * spaces. Two search boxes, one app, one rule now.
+ *
+ * Matched against label AND value together rather than each separately, so "google flash" finds a
+ * model whose family is in the id and whose variant is in the label.
+ */
+const matches = <T extends string>(o: SelectOption<T>, q: string): boolean => matchesQuery(o, q);
 
 export function Select<T extends string>({
   label, value, options, onChange, size = "sm", showLabel = true, scrollContainer, searchable,

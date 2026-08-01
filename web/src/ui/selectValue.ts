@@ -26,3 +26,17 @@ export function resolveSelected<T extends string>(
   if (match) return match;
   return value ? { value, label: value } : options[0];
 }
+
+/**
+ * Does this option match a search query?
+ *
+ * Every word must appear, in the label or the value, in any order. The whole query used to be one
+ * substring, so `free nemotron 3 ultra` matched nothing while `NVIDIA: Nemotron 3 Ultra (free)` sat
+ * in the list. Label and value are searched as one string, so "google flash" finds a model whose
+ * family is in the id and whose variant is in the label.
+ */
+export function matchesQuery<T extends string>(o: { label: string; value: T }, q: string): boolean {
+  if (!q) return true;
+  const hay = `${o.label} ${String(o.value)}`.toLowerCase();
+  return q.toLowerCase().split(/\s+/).filter(Boolean).every((w) => hay.includes(w));
+}
