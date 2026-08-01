@@ -38,7 +38,8 @@ import { createHash, randomUUID } from "node:crypto";
 import { db, tx } from "./db.ts";
 import { normalizeHttpConfig } from "./http/httpColumn.ts";
 import { wasRedacted } from "./redact.ts";
-import { isSheetKind } from "./types.ts";
+import { scriptPointerColumn } from "./scripts.ts";
+import { isColumnKind, isSheetKind } from "./types.ts";
 import { getWorkbook, type Workbook } from "./views.ts";
 import { invalidateRowCount } from "./store.ts";
 
@@ -599,6 +600,14 @@ export function exportWorkbook(workbookId: string): WorkbookDoc {
         width: c.width ?? null,
         frozen: !!c.frozen,
         rollup: c.rollup ? safeJson(c.rollup, null) : null,
+        // The three that were missing. A workbook holding a waterfall, an MCP or a wait column
+        // exported and re-imported as an EMPTY static column, silently — the kind was degraded by a
+        // short list and the configuration was never written at all. `toNames` on the waterfall for
+        // the same reason it runs on a prompt: its steps carry `{{col:N}}` references, and an id
+        // means nothing in the file the copy lands in.
+        waterfall: c.waterfall_json ? safeJson(toNames(c.waterfall_json), null) : null,
+        mcpConfig: c.mcp_config ? safeJson(toNames(c.mcp_config), null) : null,
+        waitSeconds: c.wait_seconds == null ? null : Number(c.wait_seconds),
         /** By name, so a lookup or rollup re-points onto the imported copy's own columns. */
         lookupColumn: c.lookup_column_id == null ? null : colName.get(Number(c.lookup_column_id)) ?? null,
         sourceColumn: c.source_column_id == null ? null : colName.get(Number(c.source_column_id)) ?? null,
@@ -707,11 +716,17 @@ export function importWorkbook(doc: unknown, name?: string): ImportResult {
             `INSERT INTO columns (sheet_id, name, key, position, kind, value_type, prompt, description,
                                   model, max_turns, max_budget_usd, timeout_ms, allowed_tools, mcp_servers,
                                   http_config, enum_values, json_schema, format, width, frozen, rollup,
-                                  json_path, on_upstream_empty, on_upstream_error, auto_recompute, auto_run)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
+                                  json_path, on_upstream_empty, on_upstream_error, auto_recompute,
+                                  waterfall_json, mcp_config, wait_seconds, auto_run)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
           ).run(
             sheetId, raw, key, j,
-            KIND_SET.has(String((c as any).kind)) ? String((c as any).kind) : "static",
+            // `isColumnKind`, not a private list. The hand-written one here knew nine of the eleven
+            // kinds, so a shared workbook's `waterfall` and `wait` columns silently arrived as empty
+            // `static` ones — with their configuration dropped by the field list below, which did not
+            // carry it either. Both halves had to be fixed together: restoring the kind alone would
+            // have produced a waterfall column with no steps.
+            isColumnKind((c as any).kind) ? String((c as any).kind) : "static",
             String((c as any).valueType ?? "text"),
             str((c as any).prompt), str((c as any).description),
             str((c as any).model) ?? "auto",
@@ -738,6 +753,11 @@ export function importWorkbook(doc: unknown, name?: string): ImportResult {
             str((c as any).onUpstreamEmpty) ?? "skip",
             str((c as any).onUpstreamError) ?? "block",
             (c as any).autoRecompute ? 1 : 0,
+            // A waterfall's steps carry references, so they go through the same name-to-id pass the
+            // prompt does, below. Stored as written for now; rewritten with everything else.
+            (c as any).waterfall ? JSON.stringify((c as any).waterfall) : null,
+            (c as any).mcpConfig ? JSON.stringify((c as any).mcpConfig) : null,
+            posInt((c as any).waitSeconds, 0),
           ).lastInsertRowid,
         );
         colIds.get(tableName)!.set(raw, id);
@@ -745,14 +765,31 @@ export function importWorkbook(doc: unknown, name?: string): ImportResult {
 
         for (const s of (c as any).scripts ?? []) {
           if (typeof s?.code !== "string") continue;
-          db.prepare(
-            `INSERT INTO scripts (column_id, hook, runtime, intent, code, hash, approved_at, refs)
-             VALUES (?, ?, ?, ?, ?, ?, NULL, '[]')`,
-          ).run(
-            id, String(s.hook ?? "transform"), String(s.runtime ?? "js"), String(s.intent ?? ""),
-            s.code, createHash("sha256").update(String(s.code)).digest("hex"),
+          const hook = String(s.hook ?? "transform");
+          const scriptId = Number(
+            db
+              .prepare(
+                `INSERT INTO scripts (column_id, hook, runtime, intent, code, hash, approved_at, refs)
+                 VALUES (?, ?, ?, ?, ?, ?, NULL, '[]')`,
+              )
+              .run(
+                id, hook, String(s.runtime ?? "js"), String(s.intent ?? ""),
+                s.code, createHash("sha256").update(String(s.code)).digest("hex"),
+              ).lastInsertRowid,
           );
           scriptsPending++;
+
+          /**
+           * Point the column AT the script. Without this the import was a silent no-op on every
+           * script column it carried: the row landed, the editor showed it, the pill read "Needs
+           * review", Approve worked — and `runs.ts` returns 0 for a column whose pointer is null, so
+           * the column produced nothing, forever, with nothing on screen saying why.
+           *
+           * The duplicate path has always done this through its own id map. Only the FILE path did
+           * not, and no test covered it.
+           */
+          const field = scriptPointerColumn(hook);
+          if (field) db.prepare(`UPDATE columns SET ${field} = ? WHERE id = ?`).run(scriptId, id);
         }
       }
     }
@@ -780,7 +817,8 @@ export function importWorkbook(doc: unknown, name?: string): ImportResult {
             });
 
         db.prepare(
-          "UPDATE columns SET prompt = ?, description = ?, http_config = ?, source_column_id = ?, lookup_column_id = ? WHERE id = ?",
+          `UPDATE columns SET prompt = ?, description = ?, http_config = ?, source_column_id = ?,
+                              lookup_column_id = ?, waterfall_json = ?, mcp_config = ? WHERE id = ?`,
         ).run(
           fix(str((c as any).prompt)),
           fix(str((c as any).description)),
@@ -791,6 +829,13 @@ export function importWorkbook(doc: unknown, name?: string): ImportResult {
           lower.get(String((c as any).sourceColumn ?? "").trim().toLowerCase()) ?? null,
           // A lookup's field lives on the OTHER table, so it is resolved after the relations below.
           null,
+          // A waterfall step holds a prompt, and an MCP call holds arguments — both carry the same
+          // `{{Name}}` references a prompt does, so both go through the same rewrite. Passed through
+          // `fix` as TEXT rather than walked field by field: a reference means the same thing
+          // wherever it appears, and a walker would have to be taught every step shape that is ever
+          // added to a waterfall.
+          fix((c as any).waterfall ? JSON.stringify((c as any).waterfall) : null),
+          fix((c as any).mcpConfig ? JSON.stringify((c as any).mcpConfig) : null),
           id,
         );
       }
@@ -926,8 +971,9 @@ function stripSecretRefs(text: string): string {
   return text.replace(/\{\{\s*secret\s*:[^}]*\}\}/gi, "");
 }
 
-// A COLUMN kind, hand-maintained and SHORT OF THE REAL LIST — see the note at its use site.
-const KIND_SET = new Set(["static", "script", "http", "mcp", "ai", "agent", "send", "lookup", "rollup"]);
+// The hand-written column-kind list that used to live here is gone. It knew nine of the eleven
+// kinds, and `isColumnKind` derives from COLUMN_KINDS, so a kind added tomorrow is understood here
+// the day it is added rather than silently degrading to `static`.
 
 /**
  * An imported column's web-request settings, through the same normaliser a saved column goes through

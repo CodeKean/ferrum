@@ -29,6 +29,24 @@ function toScript(r: any): GeneratedScript {
   };
 }
 
+/**
+ * The column that POINTS AT a script for a given hook, or null for a hook with no storage yet.
+ *
+ * A script row is not reachable by itself: the runner reads `col.transformScriptId`, never
+ * "the newest script for this column". So a script saved without this pointer being set exists,
+ * shows in the editor, can be approved — and never runs. That is exactly what an imported workbook
+ * produced for the life of the file format, silently, on every script column it carried.
+ *
+ * `key`, `score` and `filter` return null: they are hooks in name only until they have storage.
+ */
+export function scriptPointerColumn(hook: string): string | null {
+  return hook === "condition" ? "condition_script_id"
+    : hook === "transform" ? "transform_script_id"
+    : hook === "accept" ? "accept_script_id"
+    : hook === "map" ? "map_script_id"
+    : null;
+}
+
 export function getScript(id: number | string): GeneratedScript | null {
   const r = db.prepare("SELECT * FROM scripts WHERE id = ?").get(Number(id)) as any;
   return r ? toScript(r) : null;
@@ -140,10 +158,7 @@ export function saveScript(input: SaveScriptInput): SaveScriptResult {
 
     // Attach to the column so the dependency graph can see it, then re-derive edges. A condition's
     // references are real dependencies, exactly like a prompt's.
-    const field = input.hook === "condition" ? "condition_script_id"
-      : input.hook === "transform" ? "transform_script_id"
-      : input.hook === "accept" ? "accept_script_id"
-      : input.hook === "map" ? "map_script_id" : null;
+    const field = scriptPointerColumn(input.hook);
     if (field) db.prepare(`UPDATE columns SET ${field} = ? WHERE id = ?`).run(id, input.columnId);
 
     rebuildDeps(input.sheetId, input.columnId);
