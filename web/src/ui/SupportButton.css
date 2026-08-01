@@ -1,0 +1,70 @@
+/* The support button.
+ *
+ * Bottom-right, clear of the two things already anchored down there: the sheet-tab strip runs the
+ * full width of the grid at `--wbtabs-h`, and toasts sit bottom-CENTRE at 24px. Sitting above the
+ * tab strip costs nothing on the file browser, where there is no strip — the button simply sits a
+ * little higher than it strictly needs to, which is better than covering a tab on every other
+ * screen.
+ *
+ * z-index 50: over the grid and its sticky header, under the toast (60) and far under the modals,
+ * popovers and the command palette (1000+). A support button that covered a confirmation dialog
+ * would be obstructing the very decision it exists to help with.
+ */
+.cc-support {
+  position: fixed;
+  right: var(--s-4);
+  bottom: calc(var(--wbtabs-h) + var(--s-3));
+  z-index: 50;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* Square, and the same 34px as the toolbar controls it sits below, so it reads as part of the set
+     rather than as a badge dropped on top. It floats over someone's data — every pixel it takes is
+     a cell it hides, so the glyph carries it and the name lives in the tooltip and the aria-label. */
+  width: 34px;
+  height: 34px;
+  padding: 0;
+
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  background: var(--primary);
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1;
+  text-decoration: none;
+  white-space: nowrap;
+
+  /* A genuinely floating layer, so it gets real elevation rather than a flat card's hairline. */
+  box-shadow: var(--elev-2);
+  transition: transform 120ms ease, box-shadow 120ms ease, background-color 120ms ease;
+}
+
+/* `--primary-deep`, which the dark theme redefines to go LIGHTER — so hover stays a visible change
+   in both themes rather than darkening into the ground. */
+.cc-support:hover {
+  background: var(--primary-deep);
+  box-shadow: var(--elev-3);
+  transform: translateY(-1px);
+}
+
+/* Pressed goes DOWN and loses the lift, or the button reads as stuck up. */
+.cc-support:active {
+  transform: translateY(0);
+  box-shadow: var(--elev-1);
+}
+
+.cc-support:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cc-support,
+  .cc-support:hover,
+  .cc-support:active {
+    transition: none;
+    transform: none;
+  }
+}

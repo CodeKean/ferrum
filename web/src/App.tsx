@@ -15,6 +15,7 @@ import { RecordView } from "./grid/RecordView.tsx";
 import { Select } from "./ui/Select.tsx";
 import { Modal } from "./ui/Modal.tsx";
 import { Toast } from "./ui/Toast.tsx";
+import { SupportButton } from "./ui/SupportButton.tsx";
 import { ContextMenu, useContextMenu, type MenuItem } from "./ui/ContextMenu.tsx";
 import { EMPTY_VIEW, isNarrowed, savedViewToGrid, viewQuery, viewScope, type GridView } from "./view.ts";
 import { RunStrip } from "./run/RunStrip.tsx";
@@ -1906,6 +1907,9 @@ export function App() {
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} commands={commands} />
 
       <Toast message={toast} onDone={() => setToast(null)} />
+
+      {/* Last in the tree and lowest of the floating layers, so it is never what covers a dialog. */}
+      <SupportButton />
     </div>
   );
 }
