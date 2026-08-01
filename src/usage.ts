@@ -144,6 +144,12 @@ export function recordUsage(input: {
  * Guarded by a kv flag so it runs once. Without it the reporting screen would open on an empty
  * history for a workspace that has been used for weeks, which reads as the feature being broken
  * rather than as the data starting today.
+ *
+ * Aggregated in SQL rather than looped in JS. This runs on the boot path, before `listen()`, so
+ * whatever it costs is time the engine is not answering anything — and the earlier version pulled
+ * every attempt the workspace had ever made into an array and then ran one upsert per element.
+ * A workspace with a million attempts held a million objects in memory to write the handful of
+ * daily rows they collapse into. The GROUP BY does the collapsing before anything is materialized.
  */
 export function backfillUsage(): number {
   const KEY = "usage.backfill.v1";
@@ -151,25 +157,44 @@ export function backfillUsage(): number {
 
   let folded = 0;
   tx(() => {
-    const rows = db
-      .prepare(
-        `SELECT a.started_at AS at, a.model AS model, a.status AS status,
-                a.cost_usd AS cost, a.duration_ms AS ms,
-                a.tokens_in AS ti, a.tokens_out AS to_, a.tokens_cache_read AS cr, a.tokens_cache_create AS cc,
-                c.id AS column_id, c.sheet_id AS sheet_id, c.kind AS lane
-           FROM cell_attempts a
-           JOIN columns c ON c.id = a.column_id`,
-      )
-      .all() as any[];
-    for (const r of rows) {
-      recordUsage({
-        sheetId: String(r.sheet_id), columnId: Number(r.column_id), lane: String(r.lane ?? ""),
-        model: r.model, status: String(r.status ?? ""),
-        costUsd: r.cost, tokensIn: r.ti, tokensOut: r.to_, cacheRead: r.cr, cacheCreate: r.cc,
-        durationMs: r.ms, at: String(r.at ?? ""),
-      });
-      folded++;
-    }
+    folded = Number(
+      (
+        db
+          .prepare(
+            "SELECT COUNT(*) AS c FROM cell_attempts a JOIN columns c ON c.id = a.column_id",
+          )
+          .get() as any
+      ).c,
+    );
+    // Mirrors recordUsage's upsert exactly, including model defaulting to '' rather than NULL —
+    // NULL in the primary key would give every attempt on a lane with no model its own row. Units
+    // are zero because cell_attempts predates them; a re-run fills them in.
+    db.prepare(
+      `INSERT INTO usage_daily
+         (day, sheet_id, column_id, lane, model, attempts, errors, cost_usd,
+          tokens_in, tokens_out, cache_read, cache_create, duration_ms, units, unit)
+       SELECT substr(COALESCE(a.started_at, ''), 1, 10),
+              c.sheet_id, c.id, COALESCE(c.kind, ''), COALESCE(a.model, ''),
+              COUNT(*),
+              SUM(CASE WHEN a.status = 'error' THEN 1 ELSE 0 END),
+              COALESCE(SUM(a.cost_usd), 0),
+              COALESCE(SUM(a.tokens_in), 0), COALESCE(SUM(a.tokens_out), 0),
+              COALESCE(SUM(a.tokens_cache_read), 0), COALESCE(SUM(a.tokens_cache_create), 0),
+              COALESCE(SUM(a.duration_ms), 0), 0, ''
+         FROM cell_attempts a
+         JOIN columns c ON c.id = a.column_id
+        WHERE true
+        GROUP BY 1, 2, 3, 4, 5
+       ON CONFLICT(day, sheet_id, column_id, lane, model) DO UPDATE SET
+         attempts     = attempts + excluded.attempts,
+         errors       = errors + excluded.errors,
+         cost_usd     = cost_usd + excluded.cost_usd,
+         tokens_in    = tokens_in + excluded.tokens_in,
+         tokens_out   = tokens_out + excluded.tokens_out,
+         cache_read   = cache_read + excluded.cache_read,
+         cache_create = cache_create + excluded.cache_create,
+         duration_ms  = duration_ms + excluded.duration_ms`,
+    ).run();
     setKv(KEY, "1");
   });
   return folded;

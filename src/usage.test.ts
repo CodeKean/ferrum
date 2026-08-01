@@ -8,7 +8,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { db } from "./db.ts";
 import { addColumn, createSheet } from "./store.ts";
-import { recordUsage, usageReport } from "./usage.ts";
+import { backfillUsage, recordUsage, usageReport } from "./usage.ts";
 
 function workbook(name: string): string {
   const id = `wb-${name}-${Math.random().toString(36).slice(2)}`;
@@ -244,4 +244,38 @@ test("an attempt that burned nothing cannot blank a real label", () => {
   const r = usageReport("table", s.id);
   assert.equal(r.byUnit[0]?.key, "credits");
   assert.equal(r.byUnit[0]?.units, 3);
+});
+
+test("the backfill folds old attempts into the daily rollup, and only once", () => {
+  const s = createSheet("ZZ usage backfill");
+  const c = addColumn(s.id, { name: "Ask", kind: "ai", valueType: "text" });
+  const col = Number(c.id);
+
+  // Attempts as they were written before usage_daily existed: no rollup row accompanies them.
+  const attempt = (at: string, status: string, cost: number) =>
+    db
+      .prepare(
+        `INSERT INTO cell_attempts (row_id, column_id, attempt, started_at, status, model, cost_usd,
+                                    tokens_in, tokens_out, duration_ms)
+         VALUES (1, ?, 1, ?, ?, 'm', ?, 100, 20, 250)`,
+      )
+      .run(col, at, status, cost);
+  attempt("2026-06-01T10:00:00Z", "done", 0.5);
+  attempt("2026-06-01T11:00:00Z", "error", 0.25);
+  attempt("2026-06-02T10:00:00Z", "done", 1);
+
+  assert.equal(usageReport("table", s.id).totals.attempts, 0, "nothing is rolled up yet");
+
+  // Two days of attempts collapse into two rows regardless of how many attempts there were, which is
+  // the property the SQL GROUP BY has to preserve now that it is not one upsert per attempt.
+  assert.equal(backfillUsage(), 3, "returns how many attempts it folded");
+  const r = usageReport("table", s.id);
+  assert.equal(r.totals.attempts, 3);
+  assert.equal(r.totals.errors, 1);
+  assert.equal(r.totals.costUsd, 1.75);
+  assert.equal(r.byDay.length, 2);
+
+  // Guarded by a kv flag: a second boot must not double every historical number.
+  assert.equal(backfillUsage(), 0);
+  assert.equal(usageReport("table", s.id).totals.attempts, 3);
 });
