@@ -154,9 +154,11 @@ export function Home({ startAt, onOpenTable, onBuildTable, onClose, onPathChange
   /** The workbook whose sharing is open. Null when it is not. */
   const [sharing, setSharing] = useState<{ id: string; name: string } | null>(null);
   /** Columns carrying a typed-in credential, held while the user decides whether to send the file. */
-  const [exportWarn, setExportWarn] = useState<
-    { id: string; secrets: Array<{ table: string; column: string }> } | null
-  >(null);
+  const [exportWarn, setExportWarn] = useState<{
+    id: string;
+    secrets: Array<{ table: string; column: string }>;
+    droppedRelations: Array<{ table: string; otherTable: string }>;
+  } | null>(null);
 
   /**
    * Download the file, ASKING FIRST if anything credential-shaped would leave with it.
@@ -170,7 +172,12 @@ export function Home({ startAt, onOpenTable, onBuildTable, onClose, onPathChange
     const go = () => { window.location.href = `/api/workbooks/${id}/export.json`; };
     try {
       const r = await fetch(`/api/workbooks/${id}/export-check`).then((x) => x.json());
-      if (Array.isArray(r?.secrets) && r.secrets.length) { setExportWarn({ id, secrets: r.secrets }); return; }
+      const secrets = Array.isArray(r?.secrets) ? r.secrets : [];
+      const droppedRelations = Array.isArray(r?.droppedRelations) ? r.droppedRelations : [];
+      if (secrets.length || droppedRelations.length) {
+        setExportWarn({ id, secrets, droppedRelations });
+        return;
+      }
     } catch { /* fall through — see above */ }
     go();
   }, []);
@@ -860,8 +867,12 @@ export function Home({ startAt, onOpenTable, onBuildTable, onClose, onPathChange
       <Modal
         open={!!exportWarn}
         onClose={() => setExportWarn(null)}
-        title="This file would carry a key"
-        footNote="Names only — the value is not shown here, and nothing has been downloaded yet."
+        title={
+          exportWarn?.secrets.length
+            ? "This file would carry a key"
+            : "Some links cannot travel in this file"
+        }
+        footNote="Names only — no value is shown here, and nothing has been downloaded yet."
         footer={
           <>
             <button className="cc-btn" onClick={() => setExportWarn(null)}>Cancel</button>
@@ -880,27 +891,54 @@ export function Home({ startAt, onOpenTable, onBuildTable, onClose, onPathChange
           </>
         }
       >
-        <p>
-          These columns have something that looks like a key written directly into them. A key typed
-          into a column is part of that column, so it travels inside the file — to whoever you send
-          it, and to anyone they forward it to.
-        </p>
-        <ul className="cc-fx__leaks">
-          {exportWarn?.secrets.map((s) => (
-            <li key={`${s.table}.${s.column}`}>
-              <strong>{s.column}</strong> <span className="cc-fx__note">in {s.table}</span>
-            </li>
-          ))}
-        </ul>
-        <p>
-          To share this safely: save the key under a name in <strong>Settings → Keys</strong>, put
-          <code> {"{{secret:Name}}"} </code> in the column where the key is now, and export again. A
-          saved key is referenced by name, so the name travels and the value never does.
-        </p>
-        <p className="cc-fx__note">
-          If it is already in a file you have sent, changing it here is not enough — rotate it with
-          whoever issued it.
-        </p>
+        {!!exportWarn?.secrets.length && (
+          <>
+            <p>
+              These columns have something that looks like a key written directly into them. A key
+              typed into a column is part of that column, so it travels inside the file — to whoever
+              you send it, and to anyone they forward it to.
+            </p>
+            <ul className="cc-fx__leaks">
+              {exportWarn.secrets.map((s) => (
+                <li key={`${s.table}.${s.column}`}>
+                  <strong>{s.column}</strong> <span className="cc-fx__note">in {s.table}</span>
+                </li>
+              ))}
+            </ul>
+            <p>
+              To share this safely: save the key under a name in <strong>Settings → Keys</strong>,
+              put <code>{"{{secret:Name}}"}</code> in the column where the key is now, and export
+              again. A saved key is referenced by name, so the name travels and the value never does.
+            </p>
+            <p className="cc-fx__note">
+              If it is already in a file you have sent, changing it here is not enough — rotate it
+              with whoever issued it.
+            </p>
+          </>
+        )}
+
+        {!!exportWarn?.droppedRelations.length && (
+          <>
+            <p>
+              {exportWarn.secrets.length ? "Separately: these" : "These"} tables are linked to a
+              table in a different workbook. A file describes links by name, and the name of a table
+              this file does not contain means nothing to whoever opens it — so these links are left
+              out, and the copy will not read across.
+            </p>
+            <ul className="cc-fx__leaks">
+              {exportWarn.droppedRelations.map((r) => (
+                <li key={`${r.table}.${r.otherTable}`}>
+                  <strong>{r.table}</strong>{" "}
+                  <span className="cc-fx__note">is linked to {r.otherTable}, which is not in this workbook</span>
+                </li>
+              ))}
+            </ul>
+            <p className="cc-fx__note">
+              Moving a linked table out of its workbook is refused now, so this is a link made before
+              that. Move both tables into one workbook and link them again to keep it.
+            </p>
+          </>
+        )}
       </Modal>
 
       <ContextMenu menu={ctx.menu} onClose={ctx.close} />

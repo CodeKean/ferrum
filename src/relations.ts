@@ -194,6 +194,48 @@ function workbookOf(sheetId: string): string {
   return String(r.workbook_id);
 }
 
+/**
+ * Links that would end up spanning two workbooks if this table moved to `toWorkbookId`.
+ *
+ * `createRelation` refuses a pair whose tables sit in different workbooks, and then nothing enforced
+ * that rule ever again: moving one end afterwards produced exactly the state the product declines to
+ * build. It has no symptom — the link goes on matching, because `lookupConfig` resolves from sheet
+ * ids and never re-checks the workbook — but the copy drops it, the export dropped it silently, and
+ * `relations.workbook_id` is what `scopeOf` authorizes the link against, so it would be checked
+ * against a workbook one of its tables had left.
+ *
+ * Returned rather than deleted. A link is configuration somebody built, and the fix for "I want to
+ * move this table" is theirs to choose: unlink first, or move both tables.
+ */
+export function relationsSpanning(
+  sheetId: string,
+  toWorkbookId: string,
+): Array<{ id: number; fromTable: string; toTable: string }> {
+  return (
+    db
+      .prepare(
+        `SELECT r.id,
+                r.from_sheet_id, r.to_sheet_id,
+                f.name AS from_name, t.name AS to_name,
+                f.workbook_id AS from_wb, t.workbook_id AS to_wb
+           FROM relations r
+           JOIN sheets f ON f.id = r.from_sheet_id
+           JOIN sheets t ON t.id = r.to_sheet_id
+          WHERE (r.from_sheet_id = ? OR r.to_sheet_id = ?)
+            AND f.deleted_at IS NULL AND t.deleted_at IS NULL`,
+      )
+      .all(sheetId, sheetId) as any[]
+  )
+    .filter((r) => {
+      // Where the OTHER end sits. The moving table lands in `toWorkbookId` by definition, so the
+      // link spans exactly when the end that is staying put is somewhere else.
+      const otherWorkbook =
+        String(r.from_sheet_id) === sheetId ? String(r.to_wb ?? "") : String(r.from_wb ?? "");
+      return otherWorkbook !== String(toWorkbookId);
+    })
+    .map((r) => ({ id: Number(r.id), fromTable: String(r.from_name), toTable: String(r.to_name) }));
+}
+
 export function createRelation(input: RelationInput): Relation {
   const { fromSheetId, toSheetId } = input;
   if (fromSheetId === toSheetId) {

@@ -71,7 +71,7 @@ function stripPresetOnly(p: SearchPreset): Record<string, unknown> {
 }
 import { cacheDirectModels, directModelsForPicker, forgetDirectModels, verifyProviderKey } from "./providers/direct.ts";
 import { deletePrice, pricesFor, savePrice } from "./providers/prices.ts";
-import { createRelation, deleteRelation, listRelations, rebuildRelationKeys, relationHealth, setMatchMode } from "./relations.ts";
+import { createRelation, deleteRelation, listRelations, rebuildRelationKeys, relationHealth, relationsSpanning, setMatchMode } from "./relations.ts";
 import { lookupColumnsFor, noteRelationChange, setLookup } from "./lookup.ts";
 import { setRollup } from "./rollup.ts";
 import { usageReport } from "./usage.ts";
@@ -98,7 +98,8 @@ import {
   listTables, listViews, listWorkbooks, restoreTable, rowStatuses, setDefaultView, trashTable, updateView,
 } from "./views.ts";
 import {
-  duplicateWorkbook, exportWorkbook, importWorkbook, literalSecretsIn, templatizeWorkbook, useTemplate,
+  droppedRelationsIn, duplicateWorkbook, exportWorkbook, importWorkbook, literalSecretsIn,
+  templatizeWorkbook, useTemplate,
 } from "./workbookCopy.ts";
 import { explainBlanks } from "./blanks.ts";
 import {
@@ -1591,6 +1592,25 @@ export function createServer(bootId: string) {
     // file, and until this existed the only way to get them there was to rebuild one of them.
     if (typeof req.body?.workbookId === "string" && req.body.workbookId) {
       if (!getWorkbook(req.body.workbookId)) return res.status(404).json({ error: "Workbook not found" });
+
+      // A link may only join two tables in ONE workbook — `createRelation` refuses anything else.
+      // Nothing re-checked that after the fact, so this move used to produce exactly the state the
+      // product declines to build: a link that keeps matching, that a copy drops, that an export
+      // dropped silently, and whose stored workbook is what authorizes access to it.
+      //
+      // Refused rather than repaired. Moving the link with the table is impossible — its other end
+      // stays — and deleting it would throw away configuration on a menu click. Which to give up,
+      // the link or the move, is the user's call, so the refusal names what is in the way.
+      const spanning = relationsSpanning(id, req.body.workbookId);
+      if (spanning.length) {
+        const pairs = spanning.map((r) => `${r.fromTable} → ${r.toTable}`).join(", ");
+        return res.status(409).json({
+          error:
+            `This table is linked to ${spanning.length === 1 ? "another table" : "other tables"} in its ` +
+            `current workbook (${pairs}). A link can only join two tables in the same workbook, so ` +
+            `moving this one would break it. Remove the link first, or move both tables together.`,
+        });
+      }
       const pos = Number(
         (db.prepare("SELECT COALESCE(MAX(position), -1) AS p FROM sheets WHERE workbook_id = ?").get(req.body.workbookId) as any).p,
       ) + 1;
@@ -1996,7 +2016,7 @@ export function createServer(bootId: string) {
   app.get("/api/workbooks/:id/export-check", wrap((req, res) => {
     const wb = getWorkbook(param(req, "id"));
     if (!wb) return res.status(404).json({ error: "Workbook not found" });
-    res.json({ secrets: literalSecretsIn(wb.id) });
+    res.json({ secrets: literalSecretsIn(wb.id), droppedRelations: droppedRelationsIn(wb.id) });
   }));
 
   app.get("/api/workbooks/:id/export.json", wrap((req, res) => {

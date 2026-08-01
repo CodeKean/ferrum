@@ -641,6 +641,9 @@ export function exportWorkbook(workbookId: string): WorkbookDoc {
       cardinality: String(r.cardinality ?? "many_to_one"),
       matchMode: String(r.match_mode ?? "normalized"),
     }))
+    // A link with an end outside this workbook cannot be described by name in a file that does not
+    // contain that table. It is dropped — but see `droppedRelationsIn`: the drop used to be entirely
+    // silent, which made an exported workbook quietly less than the one it was exported from.
     .filter((r) => r.fromTable && r.toTable && r.fromColumn && r.toColumn);
 
   return {
@@ -956,6 +959,39 @@ export function literalSecretsIn(workbookId: string): Array<{ table: string; col
     }
   }
   return out;
+}
+
+/**
+ * Links this workbook holds that its exported file cannot carry.
+ *
+ * A relation is written by NAME, and a name only means something if the file contains that table. So
+ * a link with one end in another workbook is dropped on the way out — silently, until now, which
+ * made an exported workbook quietly smaller than the one it was exported from.
+ *
+ * Moving a table between workbooks is refused while it is linked, so new spanning links cannot be
+ * made. This exists for the ones already sitting in databases from before that refusal.
+ */
+export function droppedRelationsIn(workbookId: string): Array<{ table: string; otherTable: string }> {
+  return (
+    db
+      .prepare(
+        `SELECT f.name AS from_name, t.name AS to_name,
+                f.workbook_id AS from_wb, t.workbook_id AS to_wb
+           FROM relations r
+           JOIN sheets f ON f.id = r.from_sheet_id
+           JOIN sheets t ON t.id = r.to_sheet_id
+          WHERE r.workbook_id = ? AND f.deleted_at IS NULL AND t.deleted_at IS NULL`,
+      )
+      .all(workbookId) as any[]
+  )
+    .filter((r) => String(r.from_wb ?? "") !== workbookId || String(r.to_wb ?? "") !== workbookId)
+    .map((r) => {
+      const inside = String(r.from_wb ?? "") === workbookId;
+      return {
+        table: inside ? String(r.from_name) : String(r.to_name),
+        otherTable: inside ? String(r.to_name) : String(r.from_name),
+      };
+    });
 }
 
 /**
