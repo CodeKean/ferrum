@@ -18,6 +18,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Popover } from "./Popover.tsx";
+import { resolveSelected } from "./selectValue.ts";
 import "./Select.css";
 
 export interface SelectOption<T extends string> {
@@ -83,7 +84,7 @@ export function Select<T extends string>({
   const [query, setQuery] = useState("");
 
   const canSearch = searchable ?? options.length > SEARCH_AT;
-  const selected = useMemo(() => options.find((o) => o.value === value) ?? options[0], [options, value]);
+  const selected = useMemo(() => resolveSelected(options, value), [options, value]);
 
   /** What is actually on screen — every index below is into THIS, never into `options`. */
   const shown = useMemo(() => (canSearch ? options.filter((o) => matches(o, query)) : options), [options, query, canSearch]);
