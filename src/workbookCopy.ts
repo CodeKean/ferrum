@@ -37,6 +37,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { db, tx } from "./db.ts";
 import { normalizeHttpConfig } from "./http/httpColumn.ts";
+import { wasRedacted } from "./redact.ts";
 import { isSheetKind } from "./types.ts";
 import { getWorkbook, type Workbook } from "./views.ts";
 import { invalidateRowCount } from "./store.ts";
@@ -874,6 +875,55 @@ export function importWorkbook(doc: unknown, name?: string): ImportResult {
       notes,
     };
   });
+}
+
+/**
+ * Columns whose own definition carries something credential-shaped.
+ *
+ * A key typed straight into a header is part of the column, so it travels into a duplicate, a
+ * template and an exported file — `secrets.ts` opens by calling that the worst thing in the product,
+ * and the column-template dialog has always warned about it. The workbook export did not: its menu
+ * item promised "never a key", which is the one direction a safety claim must never be wrong in.
+ *
+ * So the export ASKS FIRST rather than either lying or silently stripping. Stripping would be worse
+ * than it sounds — the file would import as a column that looks complete and 401s on every row, and
+ * the person who received it has no way to know what was removed.
+ *
+ * Detection is `wasRedacted`, so there is exactly ONE definition in this product of what looks like
+ * a credential, and a shape added to it protects this path the same day.
+ */
+export function literalSecretsIn(workbookId: string): Array<{ table: string; column: string }> {
+  const rows = db
+    .prepare(
+      `SELECT s.name AS sheet_name, c.name AS column_name, c.http_config, c.prompt, c.mcp_config
+         FROM columns c
+         JOIN sheets s ON s.id = c.sheet_id
+        WHERE s.workbook_id = ? AND s.deleted_at IS NULL AND c.deleted_at IS NULL
+        ORDER BY s.position, c.position`,
+    )
+    .all(workbookId) as any[];
+
+  const out: Array<{ table: string; column: string }> = [];
+  for (const r of rows) {
+    const blob = [r.http_config, r.prompt, r.mcp_config].filter(Boolean).join("\n");
+    if (wasRedacted(stripSecretRefs(blob))) {
+      out.push({ table: String(r.sheet_name), column: String(r.column_name) });
+    }
+  }
+  return out;
+}
+
+/**
+ * Remove `{{secret:Name}}` references before asking whether anything looks like a credential.
+ *
+ * The reference is the SAFE form — a name, whose value lives outside the database — but the redactor
+ * flags it anyway, because one of its patterns matches anything that NAMES itself a secret
+ * (`secret:…`), which is right for masking log text and wrong here. Without this, the export warning
+ * would fire on the exact habit the product is trying to teach, and a warning that goes off on
+ * correct usage is dismissed by reflex, which costs more than never having written it.
+ */
+function stripSecretRefs(text: string): string {
+  return text.replace(/\{\{\s*secret\s*:[^}]*\}\}/gi, "");
 }
 
 // A COLUMN kind, hand-maintained and SHORT OF THE REAL LIST — see the note at its use site.

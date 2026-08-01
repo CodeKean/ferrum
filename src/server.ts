@@ -98,7 +98,7 @@ import {
   listTables, listViews, listWorkbooks, restoreTable, rowStatuses, setDefaultView, trashTable, updateView,
 } from "./views.ts";
 import {
-  duplicateWorkbook, exportWorkbook, importWorkbook, templatizeWorkbook, useTemplate,
+  duplicateWorkbook, exportWorkbook, importWorkbook, literalSecretsIn, templatizeWorkbook, useTemplate,
 } from "./workbookCopy.ts";
 import { explainBlanks } from "./blanks.ts";
 import {
@@ -1986,6 +1986,19 @@ export function createServer(bootId: string) {
    * an artefact to keep — a JSON blob rendered into a browser tab is one the user then has to save
    * by hand and name themselves.
    */
+  /**
+   * What would leave with the file that the person sending it might not mean to send.
+   *
+   * Asked BEFORE the download, for the same reason a send is dry-run before it writes: the file is
+   * the point of no return. Once it is in a chat message, a key inside it has to be rotated, not
+   * deleted. This is a read of the workbook's own columns and returns names, never values.
+   */
+  app.get("/api/workbooks/:id/export-check", wrap((req, res) => {
+    const wb = getWorkbook(param(req, "id"));
+    if (!wb) return res.status(404).json({ error: "Workbook not found" });
+    res.json({ secrets: literalSecretsIn(wb.id) });
+  }));
+
   app.get("/api/workbooks/:id/export.json", wrap((req, res) => {
     const wb = getWorkbook(param(req, "id"));
     if (!wb) return res.status(404).json({ error: "Workbook not found" });

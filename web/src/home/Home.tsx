@@ -153,6 +153,27 @@ export function Home({ startAt, onOpenTable, onBuildTable, onClose, onPathChange
   /** Which copy dialog is open, and what it is about. One slot — only one can be open at a time. */
   /** The workbook whose sharing is open. Null when it is not. */
   const [sharing, setSharing] = useState<{ id: string; name: string } | null>(null);
+  /** Columns carrying a typed-in credential, held while the user decides whether to send the file. */
+  const [exportWarn, setExportWarn] = useState<
+    { id: string; secrets: Array<{ table: string; column: string }> } | null
+  >(null);
+
+  /**
+   * Download the file, ASKING FIRST if anything credential-shaped would leave with it.
+   *
+   * A download is the point of no return — once the file is in a chat message a key inside it has to
+   * be rotated, not deleted. If the check finds nothing, or cannot run, the export proceeds: a
+   * safety prompt that blocks the feature when the engine hiccups is a worse trade than the warning
+   * it exists to give.
+   */
+  const startExport = useCallback(async (id: string) => {
+    const go = () => { window.location.href = `/api/workbooks/${id}/export.json`; };
+    try {
+      const r = await fetch(`/api/workbooks/${id}/export-check`).then((x) => x.json());
+      if (Array.isArray(r?.secrets) && r.secrets.length) { setExportWarn({ id, secrets: r.secrets }); return; }
+    } catch { /* fall through — see above */ }
+    go();
+  }, []);
   const [copying, setCopying] = useState<
     | { how: "duplicate" | "templatize" | "use"; entry: Entry }
     | { how: "import" }
@@ -380,10 +401,11 @@ export function Home({ startAt, onOpenTable, onBuildTable, onClose, onPathChange
           {
             label: "Export to a file",
             hint: ".ferrum.json",
-            title: "The tables, columns and prompts — never the rows, and never a key",
-            // A plain navigation: the response carries Content-Disposition, so the browser saves it
-            // and the page does not move.
-            onSelect: () => { window.location.href = `/api/workbooks/${e.id}/export.json`; },
+            // This used to end "and never a key", which was false and false in the one direction a
+            // safety claim must never be wrong in: a key TYPED INTO A HEADER is part of the column's
+            // definition, so it travels. Saved keys are referenced by name and genuinely do not.
+            title: "The tables, columns and prompts — never the rows. A key typed into a column travels with it; a saved key does not.",
+            onSelect: () => { void startExport(e.id); },
           },
         ] as MenuItem[])
       : []),
@@ -834,6 +856,52 @@ export function Home({ startAt, onOpenTable, onBuildTable, onClose, onPathChange
           onClose={() => setSharing(null)}
         />
       )}
+
+      <Modal
+        open={!!exportWarn}
+        onClose={() => setExportWarn(null)}
+        title="This file would carry a key"
+        footNote="Names only — the value is not shown here, and nothing has been downloaded yet."
+        footer={
+          <>
+            <button className="cc-btn" onClick={() => setExportWarn(null)}>Cancel</button>
+            {/* The dangerous action is NOT the primary button. Somebody who opened this dialog by
+                reflex should land on the safe side of it. */}
+            <button
+              className="cc-btn"
+              onClick={() => {
+                const id = exportWarn!.id;
+                setExportWarn(null);
+                window.location.href = `/api/workbooks/${id}/export.json`;
+              }}
+            >
+              Export anyway
+            </button>
+          </>
+        }
+      >
+        <p>
+          These columns have something that looks like a key written directly into them. A key typed
+          into a column is part of that column, so it travels inside the file — to whoever you send
+          it, and to anyone they forward it to.
+        </p>
+        <ul className="cc-fx__leaks">
+          {exportWarn?.secrets.map((s) => (
+            <li key={`${s.table}.${s.column}`}>
+              <strong>{s.column}</strong> <span className="cc-fx__note">in {s.table}</span>
+            </li>
+          ))}
+        </ul>
+        <p>
+          To share this safely: save the key under a name in <strong>Settings → Keys</strong>, put
+          <code> {"{{secret:Name}}"} </code> in the column where the key is now, and export again. A
+          saved key is referenced by name, so the name travels and the value never does.
+        </p>
+        <p className="cc-fx__note">
+          If it is already in a file you have sent, changing it here is not enough — rotate it with
+          whoever issued it.
+        </p>
+      </Modal>
 
       <ContextMenu menu={ctx.menu} onClose={ctx.close} />
     </div>

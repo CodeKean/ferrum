@@ -216,6 +216,21 @@
 }
 .cc-fx__moveitem:hover { background: var(--control-hover); }
 
+/* The columns named in the export warning. Bounded height so a workbook with thirty offending
+   columns scrolls inside the dialog rather than pushing its buttons off the screen — the Cancel
+   button has to stay reachable in exactly the case the warning matters most. */
+.cc-fx__leaks {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  margin: var(--s-3) 0;
+  max-height: 40vh;
+  overflow-y: auto;
+  padding-left: var(--s-4);
+}
+.cc-fx__leaks li { font-size: 12.5px; }
+.cc-fx__note { color: var(--ink-mute-2); font-size: 12px; }
+
 @media (max-width: 720px) {
   /* The two date columns are the first thing to go: on a narrow screen the name and the count are
      what identify a row. */
