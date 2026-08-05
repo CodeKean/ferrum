@@ -253,13 +253,27 @@ export function parseLocalModel(modelId: string): { runtime: LocalRuntime; model
   return runtime ? { runtime, model: rest.slice(slash + 1) } : null;
 }
 
-interface Entry { models: LocalModel[]; at: number }
+/**
+ * What happened when we knocked. Four outcomes, not one.
+ *
+ * The probe used to return an empty list for all of them, so the screen could only ever say
+ * "nothing answered at any of those addresses" — and then told the user to install a runtime, start
+ * it and load a model. On a machine with LM Studio running and serving on 1234 that is three
+ * instructions, two of which were already done, and the one that mattered was buried in the middle.
+ *
+ * The distinction is free: it is already in the response. A connection refusal is `off`; a 200 with
+ * an empty list is a running server with nothing loaded; a non-ok status is a server that answered
+ * and would not say — which on the two runtimes that need a token is almost always the token.
+ */
+export type LocalReach = "ok" | "no_models" | "refused" | "off";
+
+interface Entry { models: LocalModel[]; reach: Record<string, LocalReach>; at: number }
 let cache: Entry | null = null;
 
 /** Short: a runtime is started and stopped far more often than a hosted price list changes. */
 const TTL_MS = 30_000;
 
-async function probe(rt: LocalRuntime, timeoutMs: number): Promise<LocalModel[]> {
+async function probe(rt: LocalRuntime, timeoutMs: number): Promise<{ models: LocalModel[]; reach: LocalReach }> {
   try {
     const key = localKey(rt.id);
     const res = await fetch(`${rt.baseUrl}/models`, {
@@ -271,11 +285,12 @@ async function probe(rt: LocalRuntime, timeoutMs: number): Promise<LocalModel[]>
       // one can hang — and discovery must never be the thing that makes the app feel broken.
       signal: AbortSignal.timeout(timeoutMs),
     });
-    if (!res.ok) return [];
+    // Something IS listening here. Whatever it said, "install it and start it" is the wrong advice.
+    if (!res.ok) return { models: [], reach: "refused" };
     const json = (await res.json()) as { data?: Array<{ id?: string }> };
-    if (!Array.isArray(json?.data)) return [];
+    if (!Array.isArray(json?.data)) return { models: [], reach: "refused" };
 
-    return json.data
+    const models = json.data
       .filter((m) => typeof m?.id === "string" && m.id)
       .map((m) => ({
         id: `${LOCAL_PREFIX}${rt.id}/${m.id}`,
@@ -283,10 +298,12 @@ async function probe(rt: LocalRuntime, timeoutMs: number): Promise<LocalModel[]>
         runtime: rt.id,
         runtimeLabel: rt.label,
       }));
+    // Running, and holding nothing. LM Studio only lists LOADED models and auto-evicts when idle,
+    // so this is the single most common state on a machine that is set up correctly.
+    return { models, reach: models.length > 0 ? "ok" : "no_models" };
   } catch {
-    // Not running, wrong port, or too slow. All three mean "nothing to offer from here", and none of
-    // them is an error worth showing — the user has not asked for a local model yet.
-    return [];
+    // Not running, wrong port, or too slow to be usable. Nothing is listening as far as we can tell.
+    return { models: [], reach: "off" };
   }
 }
 
@@ -294,9 +311,23 @@ export async function discoverLocalModels(force = false, timeoutMs = 1200): Prom
   if (!force && cache && Date.now() - cache.at < TTL_MS) return cache.models;
   // Probed in parallel: two sequential timeouts would make a machine with neither runtime installed
   // wait twice as long to be told nothing is there.
-  const found = (await Promise.all(localRuntimes().map((rt) => probe(rt, timeoutMs)))).flat();
-  cache = { models: found, at: Date.now() };
-  return found;
+  const runtimes = localRuntimes();
+  const results = await Promise.all(runtimes.map((rt) => probe(rt, timeoutMs)));
+  const reach: Record<string, LocalReach> = {};
+  runtimes.forEach((rt, i) => { reach[rt.id] = results[i]!.reach; });
+  cache = { models: results.flatMap((r) => r.models), reach, at: Date.now() };
+  return cache.models;
+}
+
+/**
+ * What the last probe found at each address, so the screen can give the right instruction.
+ *
+ * Read from the SAME cache the discovery fills rather than re-probing: two probes a second apart
+ * can disagree — LM Studio evicts an idle model — and a count that disagrees with the advice beside
+ * it is worse than either alone.
+ */
+export function localReach(): Record<string, LocalReach> {
+  return { ...(cache?.reach ?? {}) };
 }
 
 /**

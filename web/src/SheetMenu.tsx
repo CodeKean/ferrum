@@ -166,7 +166,7 @@ export function SheetMenu({ sheet, view, visibleRows, onRenamed, onTrashed, onBu
         <IconMore />
       </button>
 
-      <Popover open={open} anchor={rect ? { rect } : null} anchorEl={ref} onClose={() => setOpen(false)} width={220} role="menu" label="Sheet actions" placement="bottom-end">
+      <Popover open={open} anchor={rect ? { rect } : null} anchorEl={ref} onClose={() => setOpen(false)} width={220} role="menu" label="Table actions" placement="bottom-end">
         <div className="cc-menu2">
           {/*
             Whose settings these are, said before the first one.
@@ -265,7 +265,7 @@ export function SheetMenu({ sheet, view, visibleRows, onRenamed, onTrashed, onBu
       <Modal
         open={renaming}
         onClose={() => setRenaming(false)}
-        title="Rename sheet"
+        title="Rename this table"
         footNote={error ?? ""}
         footer={
           <>
@@ -278,7 +278,7 @@ export function SheetMenu({ sheet, view, visibleRows, onRenamed, onTrashed, onBu
           className="cc-input"
           value={name}
           autoFocus
-          aria-label="Sheet name"
+          aria-label="Table name"
           onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void rename(); } }}
         />
@@ -324,7 +324,7 @@ export function SheetMenu({ sheet, view, visibleRows, onRenamed, onTrashed, onBu
       <Modal
         open={confirmTrash}
         onClose={() => setConfirmTrash(false)}
-        title="Move this sheet to the trash?"
+        title="Move this table to the trash?"
         footNote={error ?? "Recoverable — nothing is deleted."}
         footer={
           <>
@@ -342,8 +342,8 @@ export function SheetMenu({ sheet, view, visibleRows, onRenamed, onTrashed, onBu
       <Modal
         open={budgeting}
         onClose={() => setBudgeting(false)}
-        title="Spending limit for this sheet"
-        footNote={error ?? "Counts every run ever made against this sheet."}
+        title="Spending limit for this table"
+        footNote={error ?? "Counts every run ever made against this table."}
         footer={
           <>
             <button className="cc-btn" onClick={() => setBudgeting(false)}>Cancel</button>

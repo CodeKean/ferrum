@@ -752,7 +752,7 @@ function ActionMenu({ open, node, rect, mode, columns, sourceColumnId, busy, onC
 
             <div className="cc-act__or"><span>or fill a column that already exists</span></div>
             <div className="cc-act__list">
-              {mappable.length === 0 && <p className="cc-act__none">There is no other column on this sheet yet.</p>}
+              {mappable.length === 0 && <p className="cc-act__none">There is no other column on this table yet.</p>}
               {mappable.map((c) => (
                 <button key={c.id} className="cc-act__item" disabled={!!busy} onClick={() => onMap(c.id)}>
                   <span className="cc-act__glyph mono" aria-hidden>T</span>

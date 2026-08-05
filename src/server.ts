@@ -55,7 +55,7 @@ import { exportCsv, importCsv, previewCsv } from "./csv.ts";
 import { isColumnKind, isSheetKind, isValueType } from "./types.ts";
 import { checkKey, normalizeAgentSettings, searchCostUsd } from "./providers/openrouter.ts";
 import { catalogAge, listModels, type CatalogModel } from "./providers/catalog.ts";
-import { defaultLocalUrl, discoverLocalModels, isLocalModel, isLocalRuntimeId, localRuntimes, localSecretName, setLocalUrl } from "./providers/local.ts";
+import { defaultLocalUrl, discoverLocalModels, isLocalModel, isLocalRuntimeId, localReach, localRuntimes, localSecretName, setLocalUrl } from "./providers/local.ts";
 import { effectiveDefaultModel, getDefaultModelSetting, providerHasKey, providerKeyFor, setDefaultModelSetting } from "./providers/resolve.ts";
 import { LLM_PROVIDERS, llmProvider } from "./providers/registry.ts";
 /** What provider keys are filed under, so one can be told apart from a key the user made themselves. */
@@ -3496,6 +3496,10 @@ export function createServer(bootId: string) {
    */
   app.get("/api/settings/local-runtimes", wrap(async (_req, res) => {
     const found = await discoverLocalModels().catch(() => []);
+    // Read AFTER the discovery, from the cache that discovery just filled — so the count and the
+    // reason beside it come from the same probe. Two probes a second apart can disagree, because
+    // LM Studio evicts an idle model.
+    const reach = localReach();
     res.json({
       runtimes: localRuntimes().map((r) => ({
         id: r.id,
@@ -3508,6 +3512,9 @@ export function createServer(bootId: string) {
         defaultUrl: defaultLocalUrl(r.id),
         isDefault: r.baseUrl === defaultLocalUrl(r.id),
         detected: found.filter((m) => m.runtime === r.id).length,
+        // WHY there are none, when there are none. "Nothing is listening here" and "it is running
+        // and holding no model" need different sentences, because the next action is different.
+        reach: reach[r.id] ?? "off",
         models: found.filter((m) => m.runtime === r.id).map((m) => ({ id: m.id, name: m.name })),
       })),
     });
@@ -3522,7 +3529,12 @@ export function createServer(bootId: string) {
     const saved = setLocalUrl(id, url);
     // Re-probed straight away and reported, so pressing Save answers "did that work?" in the same
     // round trip rather than leaving the user to guess and re-open the screen.
-    const found = await discoverLocalModels().catch(() => []);
+    //
+    // FORCED. This route is what the Check button calls, and discovery caches for 30 seconds — so
+    // pressing Check within half a minute of loading the screen replayed the cached answer without
+    // going near the address. The user starts their runtime, presses Check, and is told the same
+    // thing as before by a probe that never ran. Check has to actually check.
+    const found = await discoverLocalModels(true).catch(() => []);
     res.json({
       id,
       url: saved?.baseUrl ?? "",
@@ -3531,6 +3543,9 @@ export function createServer(bootId: string) {
       // and silently ignoring it would be the worst outcome on the one lane advertised as private.
       rejected: !!url.trim() && saved?.baseUrl !== url.trim().replace(/\/+$/, ""),
       detected: found.filter((m) => m.runtime === id).length,
+      // So the answer to "did that work?" can name what actually happened rather than only whether
+      // a count came back above zero. A running server holding no model is not a failed address.
+      reach: localReach()[id] ?? "off",
     });
   }));
 

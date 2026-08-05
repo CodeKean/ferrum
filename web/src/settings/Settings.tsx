@@ -69,7 +69,33 @@ interface Runtime {
   defaultUrl: string;
   isDefault: boolean;
   detected: number;
+  /**
+   * What happened when Ferrum knocked, when nothing came back.
+   *
+   * `off` is nothing listening. `no_models` is a server that answered and is holding no model —
+   * the most common state on a machine that is set up correctly, because LM Studio lists only
+   * LOADED models and evicts them when idle. `refused` is a server that answered and would not say,
+   * which on the runtimes that need a token is almost always the token.
+   *
+   * All three used to be one thing, so the screen could only say "nothing answered at any of those
+   * addresses" and then give three instructions, two of which were usually already done.
+   */
+  reach: "ok" | "no_models" | "refused" | "off";
   models: Array<{ id: string; name: string }>;
+}
+
+/** One sentence per outcome, in the words of the next thing to do about it. */
+function reachSays(rt: { label: string; reach: Runtime["reach"]; needsKey: boolean; hasKey: boolean }): string {
+  switch (rt.reach) {
+    case "ok": return `${rt.label} is running and has models loaded.`;
+    case "no_models":
+      return `${rt.label} is running, but has no model loaded. Load one in ${rt.label} and press Check — nothing needs installing.`;
+    case "refused":
+      return rt.needsKey && !rt.hasKey
+        ? `${rt.label} is running but would not answer without a token. Add one above.`
+        : `${rt.label} is running but refused to list its models.${rt.needsKey ? " The saved token may be wrong." : ""}`;
+    default: return `Nothing is listening at this address.`;
+  }
 }
 
 export type SettingsSection = "models" | "local" | "openrouter" | "providers" | "search" | "apps" | "keys" | "usage" | "people" | "account";
@@ -256,9 +282,14 @@ export function Settings({ section, onSection, onClose, usageScope, usageScopeId
         setError(`That address is not on this machine or your own network, so it was not used. ${res.url} is still in use.`);
       } else {
         setError(null);
+        // Names the outcome rather than only whether a count came back above zero. "Nothing answered"
+        // was wrong for a running server holding no model, which is the usual reason someone is on
+        // this screen pressing this button.
         setNote(res.detected > 0
           ? `Found ${res.detected} model${res.detected === 1 ? "" : "s"} there.`
-          : "Saved, but nothing answered at that address. Is the app running?");
+          : res.reach === "no_models" ? "That address answered, but no model is loaded there yet."
+          : res.reach === "refused" ? "Something is running at that address but would not list its models."
+          : "Saved, but nothing is listening at that address. Is the app running?");
       }
       // Both lists change: the runtime's own row, and the catalogue the pickers read.
       await load();
@@ -601,8 +632,8 @@ export function Settings({ section, onSection, onClose, usageScope, usageScopeId
 
                   <RuntimeAddress
                     rt={rt}
-                    onSave={(url) => void saveRuntimeUrl(rt.id, url)}
-                    onSaveKey={(key) => void saveRuntimeKey(rt.id, key)}
+                    onSave={(url) => saveRuntimeUrl(rt.id, url)}
+                    onSaveKey={(key) => saveRuntimeKey(rt.id, key)}
                   />
                 </div>
               ))}
@@ -619,13 +650,25 @@ export function Settings({ section, onSection, onClose, usageScope, usageScopeId
                     {runtimes.filter((rt) => rt.detected === 0).map((rt) => (
                       <li key={rt.id} className="cc-set__quietrow">
                         <div className="cc-set__quietmain">
-                          <span className="cc-set__quietname">{rt.label}</span>
-                          <p className="cc-set__quietnote">{rt.note}</p>
+                          <span className="cc-set__quietname">
+                            {rt.label}
+                            {/* A runtime that is running and empty is not in the same state as one
+                                that is not installed, and burying both in the same collapsed list
+                                with the same blurb said they were. */}
+                            {rt.reach !== "off" && (
+                              <span className={`cc-set__reach cc-set__reach--${rt.reach}`}>
+                                {rt.reach === "no_models" ? "running · no model loaded" : "running · would not answer"}
+                              </span>
+                            )}
+                          </span>
+                          <p className="cc-set__quietnote">
+                            {rt.reach === "off" ? rt.note : reachSays(rt)}
+                          </p>
                         </div>
                         <RuntimeAddress
                           rt={rt}
-                          onSave={(url) => void saveRuntimeUrl(rt.id, url)}
-                          onSaveKey={(key) => void saveRuntimeKey(rt.id, key)}
+                          onSave={(url) => saveRuntimeUrl(rt.id, url)}
+                          onSaveKey={(key) => saveRuntimeKey(rt.id, key)}
                         />
                       </li>
                     ))}
@@ -633,12 +676,34 @@ export function Settings({ section, onSection, onClose, usageScope, usageScopeId
                 </details>
               )}
 
-              {runtimes != null && locals.length === 0 && (
-                <p className="cc-set__hint">
-                  Nothing answered at any of those addresses. Install one of them, start it, load a
-                  model, then press Check. If yours runs somewhere else, put its address in above.
-                </p>
-              )}
+              {/*
+                What to do next, and only what is actually left to do.
+
+                This said "Install one of them, start it, load a model, then press Check" whenever no
+                model was found — including with LM Studio running and answering on 1234 with nothing
+                loaded. Three instructions, two already done, and the one that mattered in the middle.
+                A runtime that ANSWERED gets its own sentence now, and the generic advice is kept for
+                the case it was written for: nothing listening anywhere.
+              */}
+              {runtimes != null && locals.length === 0 && (() => {
+                const answering = runtimes.filter((rt) => rt.reach === "no_models" || rt.reach === "refused");
+                if (answering.length === 0) {
+                  return (
+                    <p className="cc-set__hint">
+                      Nothing is listening at any of those addresses. Install one of them, start it,
+                      load a model, then press Check. If yours runs somewhere else, put its address
+                      in above.
+                    </p>
+                  );
+                }
+                return (
+                  <div className="cc-set__found" role="status">
+                    {answering.map((rt) => (
+                      <p key={rt.id} className="cc-set__hint">{reachSays(rt)}</p>
+                    ))}
+                  </div>
+                );
+              })()}
 
               <div className="cc-set__msg" role="status" aria-live="polite">
                 {error && <span className="cc-set__err"><IconAlert /> {error}</span>}
@@ -788,11 +853,43 @@ function RuntimeAddress({
   rt, onSave, onSaveKey,
 }: {
   rt: Runtime;
-  onSave: (url: string) => void;
-  onSaveKey: (key: string) => void;
+  onSave: (url: string) => Promise<void> | void;
+  onSaveKey: (key: string) => Promise<void> | void;
 }) {
   const [url, setUrl] = useState(rt.url);
   const [key, setKey] = useState("");
+  /**
+   * What Check is doing, and what it found.
+   *
+   * It had neither. The button fired a request and the panel re-rendered with the same numbers —
+   * and the reason you press Check is that something was wrong, so the same numbers are the common
+   * answer. With nothing pending and nothing reported, a working button and a dead one look
+   * identical. `result` holds the sentence from the probe that just ran, so pressing it says what
+   * happened even when the answer has not changed.
+   */
+  const [checking, setChecking] = useState(false);
+  /**
+   * Whether Check has been pressed at all in this session.
+   *
+   * A flag rather than a stored sentence, deliberately: the sentence is derived from `rt` at render
+   * time, so it follows the refetch. Holding the text in state instead meant reporting what was true
+   * when the request went out, which on the one screen whose whole job is "is it running NOW" is the
+   * wrong tense.
+   */
+  const [checked, setChecked] = useState(false);
+
+  const runCheck = async (next: string) => {
+    setChecking(true);
+    setChecked(true);
+    try {
+      // Awaited, so "Checking…" lasts as long as the probe does. The handler has to hand its promise
+      // back for that — a `void`-ed call resolves instantly and the pending state flickers out
+      // before it has been painted, which looks exactly like a button that does nothing.
+      await onSave(next);
+    } finally {
+      setChecking(false);
+    }
+  };
   // Re-synced when the server reports a different address than what is on screen — a rejected value
   // falls back, and leaving the refused text in the box implies it was accepted.
   useEffect(() => { setUrl(rt.url); }, [rt.url]);
@@ -846,8 +943,13 @@ function RuntimeAddress({
       )}
 
       <div className="cc-set__row">
-        <button className="cc-btn" onClick={() => onSave(url)}>
-          {dirty ? "Save and check" : "Check"}
+        <button
+          className="cc-btn"
+          onClick={() => void runCheck(url)}
+          disabled={checking}
+          title={`Knock on ${url || rt.defaultUrl} and report what answers`}
+        >
+          {checking ? "Checking…" : dirty ? "Save and check" : "Check"}
         </button>
         {rt.needsKey && (
           <button className="cc-btn" onClick={() => { onSaveKey(key); setKey(""); }} disabled={!key.trim() && !rt.hasKey}>
@@ -855,8 +957,18 @@ function RuntimeAddress({
           </button>
         )}
         {!rt.isDefault && (
-          <button className="cc-btn" onClick={() => onSave("")}>Reset to the usual address</button>
+          <button className="cc-btn" onClick={() => { setUrl(""); void runCheck(""); }}>
+            Reset to the usual address
+          </button>
         )}
+      </div>
+
+      {/* The answer, in this runtime's own row rather than in the panel-wide message strip at the
+          bottom of the page — which is where it used to go, several hundred pixels from the button
+          that caused it, on a screen with eight of these. Reserved height so reporting cannot shift
+          the rows underneath. */}
+      <div className="cc-set__checked" role="status" aria-live="polite">
+        {checking ? `Knocking on ${url || rt.defaultUrl}…` : checked ? reachSays(rt) : ""}
       </div>
     </div>
   );

@@ -94,7 +94,7 @@ export function ModePicker({ column, fireAndForget, rowCount, basis, onPick, mod
           </>
         ) : (
           <>
-            The prices are for this sheet's {rowCount.toLocaleString()}{" "}
+            The prices are for this table's {rowCount.toLocaleString()}{" "}
             {rowCount === 1 ? "row" : "rows"}, estimated — see the note at the bottom.
           </>
         )}
@@ -206,7 +206,7 @@ export function ModePicker({ column, fireAndForget, rowCount, basis, onPick, mod
               <strong>Web search is far and away the most expensive mode.</strong>{" "}
               {basis.local
                 ? "This column is set to a model on this machine, so the model calls bill nothing — but each row is still several of them, and the searches themselves go through a provider."
-                : "The price list has not loaded, so this sheet has not been costed yet."}{" "}
+                : "The price list has not loaded, so this table has not been costed yet."}{" "}
             </>
           )}
           If the answer is already somewhere in the row, switch to “The model reads the row” — or to

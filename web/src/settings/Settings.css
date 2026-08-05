@@ -261,3 +261,29 @@
   line-height: 1.5;
   color: var(--ink-mute);
 }
+
+/* What Check found, reported in the runtime's own row rather than in the page-wide strip at the
+   bottom. Reserved height so an answer arriving cannot shift the rows underneath it. */
+.cc-set__checked {
+  min-height: 18px;
+  padding-top: 2px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--ink-mute);
+}
+
+/* A runtime that answered but has nothing to offer. Not an error — nothing failed — and not the
+   "on" green either, or it would read as ready to use. */
+.cc-set__reach {
+  margin-left: var(--s-2);
+  padding: 1px 6px;
+  border-radius: var(--r-xs);
+  background: var(--canvas-sunk);
+  color: var(--ink-mute);
+  font-size: 10.5px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.cc-set__reach--refused { background: var(--band-queued); color: var(--ink-secondary); }
+
+.cc-set__found { display: flex; flex-direction: column; gap: 2px; }

@@ -225,7 +225,7 @@ export function App() {
 
   const sortOptions = useMemo(
     () => [
-      { value: "none", label: "Sheet order" },
+      { value: "none", label: "Table order" },
       ...columns.flatMap((c) => [
         { value: `${c.id}:asc`, label: `${c.name} ↑` },
         { value: `${c.id}:desc`, label: `${c.name} ↓` },
@@ -511,7 +511,7 @@ export function App() {
    */
   const newSheet = useCallback(async () => {
     try {
-      const { sheet: made } = await api.createSheet("Untitled sheet", sheet?.workbookId ?? null);
+      const { sheet: made } = await api.createSheet("Untitled table", sheet?.workbookId ?? null);
       setSheets((s) => [made, ...s]);
       await goToSheet(made.id);
     } catch {
@@ -1346,7 +1346,13 @@ export function App() {
       ) : loading ? (
         <SheetSkeleton />
       ) : !sheet ? (
-        <EmptyState onNew={newSheet} error={bootError} onRetry={() => void boot()} />
+        <EmptyState
+          onNew={newSheet}
+          error={bootError}
+          onRetry={() => void boot()}
+          onBuild={() => setWizardOpen(true)}
+          onBrowse={() => { setHomeAt({ view: "files" }); setHomeOpen(true); }}
+        />
       ) : (
         <>
           {/* ONE toolbar row.
@@ -1570,6 +1576,40 @@ export function App() {
                has no cell rectangle to point at. */
             onOpenCell={(cellId) => setOpenCell({ cellId, rect: new DOMRect() })}
           />
+          ) : columns.length === 0 ? (
+            /*
+              A table with no columns yet.
+
+              The grid rendered anyway: a single empty header cell with a lone `+` in the corner and
+              the rest of the window blank. Nothing said what a column is, and the three real ways to
+              get one — add it, import a file, describe it — were spread across a toolbar button, a
+              second toolbar button and the command palette.
+
+              Rows are not offered here on purpose. A row with no columns has nowhere to put a value,
+              so "+ Row" first is a step that achieves nothing.
+            */
+            <div className="cc-empty cc-empty--cols">
+              <div className="cc-empty__body">
+                <h2 className="cc-empty__title cc-empty__title--sm">
+                  “{sheet.name}” has no columns yet
+                </h2>
+                <p className="cc-empty__copy">
+                  Every column decides for itself where its values come from: typed in, pulled from
+                  another column by a rule, fetched from an API, or answered by a model once per row.
+                </p>
+                <div className="cc-empty__actions">
+                  <button className="cc-btn cc-btn--primary" disabled={!me.can.write} onClick={() => void addColumn()}>
+                    <IconPlus /> <span>Column</span>
+                  </button>
+                  <button className="cc-btn" onClick={() => setSourcesOpen(true)} title="A CSV brings its own columns with it">
+                    Import a CSV
+                  </button>
+                  <button className="cc-btn" onClick={() => setAssistantOpen(true)} title="Describe the table you want and it proposes the columns">
+                    Ask the assistant
+                  </button>
+                </div>
+              </div>
+            </div>
           ) : (
           <SheetGrid
             sheetId={sheet.id}
@@ -1969,15 +2009,34 @@ function SheetSkeleton() {
    `error` is the case where the workspace was never read at all. "No sheets yet" is a claim about
    what is in there, and making it on a request that failed is worse than saying nothing: it reads
    as an empty workspace next to a button that cannot possibly work. */
-function EmptyState({ onNew, error, onRetry }: { onNew: () => void; error?: string | null; onRetry: () => void }) {
+function EmptyState({
+  onNew, error, onRetry, onBuild, onBrowse,
+}: {
+  onNew: () => void;
+  error?: string | null;
+  onRetry: () => void;
+  onBuild: () => void;
+  onBrowse: () => void;
+}) {
   return (
     <div className="cc-empty">
+      {/*
+        A bounded panel, not a paragraph adrift in the viewport.
+
+        It was `flex: 1` with a 460px block inside it, so on a full-height window a title and two
+        lines floated in the middle of an otherwise empty screen with nothing to give it an edge —
+        the fill-it-or-shrink-it case, answered both ways at once: shrink the box to its content,
+        and fill it with the routes that actually exist.
+
+        The copy already said "bring in a CSV" and offered no way to do it, which is the other half
+        of why this read as empty: one button under a sentence describing three things.
+      */}
       <div className="cc-empty__body">
-        <h1 className="cc-empty__title">{error ? "Can't read your tables" : "No sheets yet"}</h1>
+        <h1 className="cc-empty__title">{error ? "Can’t read your tables" : "No tables yet"}</h1>
         <p className="cc-empty__copy">
           {error
             ? `${error} Ferrum runs on this machine — start it, then press Try again.`
-            : "Make a sheet, bring in a CSV of companies or people, then add a column that runs a prompt on every row."}
+            : "A table is a grid of rows where each column can be typed in, or fill itself in by asking a model, running a rule or calling an API."}
         </p>
         <div className="cc-empty__actions">
           {error ? (
@@ -1985,9 +2044,19 @@ function EmptyState({ onNew, error, onRetry }: { onNew: () => void; error?: stri
               Try again
             </button>
           ) : (
-            <button className="cc-btn cc-btn--primary" onClick={onNew}>
-              <IconPlus /> Create a sheet
-            </button>
+            <>
+              <button className="cc-btn cc-btn--primary" onClick={onNew}>
+                <IconPlus /> <span>Table</span>
+              </button>
+              {/* Both of these already existed and were reachable only from the command palette or a
+                  right-click, neither of which anyone finds on their first screen. */}
+              <button className="cc-btn" onClick={onBuild} title="Describe what you want and answer a few questions">
+                Build one with AI
+              </button>
+              <button className="cc-btn" onClick={onBrowse} title="Folders, workbooks and templates">
+                Browse your files
+              </button>
+            </>
           )}
         </div>
       </div>

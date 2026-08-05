@@ -308,7 +308,7 @@ export function CsvImport({ sheetId, columns, onImported }: Props) {
           <div className="cc-field cc-field--tight">
             <span className="cc-field__label">
               Skip rows that repeat a value
-              <span className="cc-field__sub">so importing the same file twice cannot double the sheet</span>
+              <span className="cc-field__sub">so importing the same file twice cannot double the table</span>
             </span>
             <Select
               label="Dedupe on"
@@ -358,7 +358,7 @@ export function CsvImport({ sheetId, columns, onImported }: Props) {
               disabled={busy === "import" || landing === 0}
               title={landing === 0 ? "Every column is being left out — nothing would arrive." : undefined}
             >
-              {busy === "import" ? "Importing…" : "Import into this sheet"}
+              {busy === "import" ? "Importing…" : "Import into this table"}
             </button>
           </div>
         </>

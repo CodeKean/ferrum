@@ -87,7 +87,7 @@ export function Sources({ sheetId, columns, onClose, onChanged }: Props) {
       setSources(res.sources ?? []);
       setSelected((cur) => cur ?? res.sources?.[0]?.id ?? null);
     } catch {
-      setError("Could not load this sheet's sources.");
+      setError("Could not load this table’s sources.");
     }
   }, [sheetId]);
 
@@ -204,7 +204,7 @@ export function Sources({ sheetId, columns, onClose, onChanged }: Props) {
     <Modal
       open
       onClose={onClose}
-      title="Data arriving into this sheet"
+      title="Data arriving into this table"
       width={720}
       footNote={
         kind === "file"

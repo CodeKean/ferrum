@@ -328,16 +328,29 @@
 
 /* ── empty state ────────────────────────────────────────────── */
 
+/* The area the panel sits in. It still takes the leftover height so the page does not jump when a
+   table arrives — but the panel inside it is anchored to the top rather than floating in the middle
+   of it, because content starts at the top of a page and an empty state is content. */
 .cc-empty {
   flex: 1 1 auto;
   display: flex;
-  align-items: center;
-  padding: var(--s-9);
+  align-items: flex-start;
+  padding: var(--s-7) var(--s-6);
   /* min-height so an empty -> populated transition cannot snap the page */
   min-height: 320px;
 }
 
-.cc-empty__body { max-width: 460px; }
+/* Shrinks to its content and carries a hairline, so it reads as a defined block rather than as a
+   paragraph adrift. Flat, per the elevation rule — this is resting content, not something floating. */
+.cc-empty__body {
+  max-width: 560px;
+  width: max-content;
+  min-width: 0;
+  padding: var(--s-6);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-lg);
+  background: var(--canvas-soft);
+}
 
 .cc-empty__title {
   font-size: 26px;
@@ -352,7 +365,9 @@
   font-size: 13px;
 }
 
-.cc-empty__actions { display: flex; gap: var(--s-2); }
+/* Wraps rather than overflowing: three actions and a 560px cap do not fit on one line at a phone
+   width, and a row that scrolls sideways inside a panel is worse than one that takes two lines. */
+.cc-empty__actions { display: flex; flex-wrap: wrap; gap: var(--s-2); }
 
 /* ── a toolbar too narrow for its controls ───────────────────────────────────────────────────────
    Placed AFTER every base rule above, deliberately: a container query carries the specificity of
@@ -641,3 +656,8 @@
   .cc-whoami { transition: none; }
   .cc-whoami:active { transform: none; }
 }
+
+/* The no-columns state sits inside the grid area, which already has the toolbar above it — so it
+   needs less top room than the whole-workspace one. */
+.cc-empty--cols { padding: var(--s-6); }
+.cc-empty__title--sm { font-size: 18px; }

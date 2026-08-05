@@ -181,7 +181,7 @@ export function SampleForecast({ runId, onDone }: Props) {
           {f.estimateRatio! > 1
             ? `${f.estimateRatio!.toFixed(1)}× more`
             : `${(1 / f.estimateRatio!).toFixed(1)}× less`}
-          . Estimates for this sheet's other columns will be out by roughly the same amount.
+          . Estimates for this table’s other columns will be out by roughly the same amount.
         </p>
       )}
 
