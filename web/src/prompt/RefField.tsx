@@ -131,8 +131,22 @@ export function RefField({
     el.append(label);
 
     if (showChips && n.columnId) {
-      const toggle = document.createElement("button");
-      toggle.type = "button";
+      /**
+       * A SPAN, not a button, and the difference is not cosmetic.
+       *
+       * `<button>` is a labelable element. A `<label>` with no `for` forwards every click inside it
+       * to its first labelable descendant — so the moment this field sat inside one (which the
+       * column editor's prompt field did), clicking anywhere in the prompt pressed the first chip's
+       * switch and moved focus onto it. The field could not be typed into at all, and the control
+       * being flipped is the one that decides whether a row is paid for.
+       *
+       * The wrapper was fixed too, but this is what stops it coming back: a span cannot be a
+       * label's control, so no future wrapper can re-create it. Nothing is lost — these carry
+       * `tabIndex = -1` and were never keyboard stops; a chip's role is announced from its own
+       * `aria-label`, and the switch keeps `role="switch"` so it still reads as one.
+       */
+      const toggle = document.createElement("span");
+      toggle.setAttribute("role", "switch");
       toggle.className = "cc-ref__toggle";
       toggle.dataset.act = "toggle";
       toggle.tabIndex = -1;
@@ -147,8 +161,9 @@ export function RefField({
       el.append(toggle);
     }
 
-    const kill = document.createElement("button");
-    kill.type = "button";
+    // A span for the same reason as the switch above: not labelable, so no wrapper can hijack it.
+    const kill = document.createElement("span");
+    kill.setAttribute("role", "button");
     kill.className = "cc-ref__x";
     kill.dataset.act = "remove";
     kill.tabIndex = -1;
@@ -313,6 +328,18 @@ export function RefField({
   // One listener rather than React props per chip, because the chips are DOM an effect wrote. It
   // also means a handler cannot go stale: it reads the element it was actually given.
 
+  /**
+   * Pressing a chip's control must not move the caret out of the text.
+   *
+   * `preventDefault` on MOUSEDOWN is the only place this works — by `click` the browser has already
+   * moved focus, and the field has already lost the caret. Without it, flipping one chip from
+   * required to optional ended the edit: the next keystroke went nowhere, and getting back to where
+   * you were meant clicking into the sentence again and finding your place.
+   */
+  const onMouseDown = (e: React.MouseEvent) => {
+    if ((e.target as HTMLElement)?.dataset?.act) e.preventDefault();
+  };
+
   const onClick = (e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
     const act = target?.dataset?.act;
@@ -385,6 +412,7 @@ export function RefField({
         onInput={() => { emit(); remember(); refreshTrigger(); }}
         onKeyUp={() => { remember(); refreshTrigger(); }}
         onMouseUp={remember}
+        onMouseDown={onMouseDown}
         onClick={onClick}
         onMouseOver={onOver}
         onMouseLeave={() => setPreview(null)}

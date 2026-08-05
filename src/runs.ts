@@ -158,7 +158,11 @@ export interface RunSummary {
   done: number;
   errors: number;
   skipped: number;
+  /** Ran, cost money, produced no value. Counted apart from `done` — see the `blank_c` migration. */
+  blank: number;
   costUsd: number;
+  /** The part of `costUsd` spent on cells that produced nothing. A subset, never an extra charge. */
+  wasteUsd: number;
   startedAt: string | null;
   finishedAt: string | null;
   pauseReason: string | null;
@@ -428,7 +432,9 @@ export function getRun(id: string): RunSummary | null {
   return {
     id: r.id, sheetId: r.sheet_id, status: r.status,
     total: r.total, done: r.done_c, errors: r.error_c, skipped: r.skipped_c,
-    costUsd: r.cost_usd, startedAt: r.started_at, finishedAt: r.finished_at,
+    blank: Number(r.blank_c ?? 0),
+    costUsd: r.cost_usd, wasteUsd: Number(r.waste_usd ?? 0),
+    startedAt: r.started_at, finishedAt: r.finished_at,
     pauseReason: r.pause_reason, summary, columnIds,
   };
 }
@@ -465,7 +471,7 @@ function setRunStatus(id: string, status: RunStatus, pauseReason?: string): void
   if (run) emitRun(run);
 }
 
-function bump(id: string, field: "done_c" | "error_c" | "skipped_c", n: number): void {
+function bump(id: string, field: "done_c" | "error_c" | "skipped_c" | "blank_c", n: number): void {
   if (n === 0) return;
   // Counters stop when the run does, for the same reason: a total that keeps climbing after the run
   // is over is a number nobody can reconcile with what they watched happen.
@@ -2067,6 +2073,19 @@ function writeCellOutcome(
 
   markColumnDirty(columnId);
   if (o.costUsd) db.prepare("UPDATE runs SET cost_usd = cost_usd + ? WHERE id = ?").run(o.costUsd, runId);
-  bump(runId, o.status === "error" ? "error_c" : o.status === "skipped" ? "skipped_c" : "done_c", 1);
+  // A cell that ran and produced nothing is neither an error nor a success worth counting as one.
+  // `not_found` was landing in `done_c`, so a column that answered 3 of 5 on a free model reported
+  // itself fully done — and the two rows nobody got an answer for had nothing anywhere saying so.
+  const blank = o.status === "not_found";
+  bump(
+    runId,
+    o.status === "error" ? "error_c" : o.status === "skipped" ? "skipped_c" : blank ? "blank_c" : "done_c",
+    1,
+  );
+  // What the empty cells cost. Written from the SAME outcome as `cost_usd` above rather than derived
+  // separately, so the part can never exceed the whole.
+  if (o.costUsd && (blank || o.status === "error")) {
+    db.prepare("UPDATE runs SET waste_usd = waste_usd + ? WHERE id = ?").run(o.costUsd, runId);
+  }
   markCellsDirty([cellId(rowId, columnId)]);
 }

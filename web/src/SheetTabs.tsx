@@ -13,6 +13,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ContextMenu, useContextMenu, type MenuItem } from "./ui/ContextMenu.tsx";
 import { Modal } from "./ui/Modal.tsx";
 import { IconPlus } from "./ui/Icon.tsx";
+import { useClickOrDouble } from "./ui/clickOrDouble.ts";
 import type { Sheet } from "./api.ts";
 import "./SheetTabs.css";
 
@@ -192,20 +193,14 @@ export function SheetTabs({ sheetId, revision, onOpen, onChanged }: Props) {
             );
           }
           return (
-            <button
+            <SheetTab
               key={s.id}
-              aria-current={active ? "page" : undefined}
-              className={`cc-wbtabs__tab${active ? " cc-wbtabs__tab--on" : ""}`}
-              onClick={() => onOpen(s.id)}
-              onDoubleClick={() => { setDraft(s.name); setRenaming(s.id); }}
-              onContextMenu={(e) => ctx.open(e, s.name, menu(s))}
-              title={`${s.name} — ${s.rowCount.toLocaleString()} ${s.rowCount === 1 ? "row" : "rows"}`}
-            >
-              <span className="truncate">{s.name}</span>
-              {/* Reserved width, so a table going from 9 to 10,000 rows cannot resize its own tab
-                  and shuffle every tab to the right of it. */}
-              <span className="cc-wbtabs__count mono">{s.rowCount.toLocaleString()}</span>
-            </button>
+              sheet={s}
+              active={active}
+              onOpen={() => onOpen(s.id)}
+              onRename={() => { setDraft(s.name); setRenaming(s.id); }}
+              onMenu={(e) => ctx.open(e, s.name, menu(s))}
+            />
           );
         })}
       </nav>
@@ -258,5 +253,43 @@ export function SheetTabs({ sheetId, revision, onOpen, onChanged }: Props) {
 
       <ContextMenu menu={ctx.menu} onClose={ctx.close} />
     </div>
+  );
+}
+
+/**
+ * One tab.
+ *
+ * Its own component so the gesture hook has somewhere to live — a hook cannot be called inside the
+ * `map` above.
+ *
+ * Opening waits to see whether a second click is coming. `onClick={open}` beside
+ * `onDoubleClick={rename}` ran both: double-clicking a tab to rename it first OPENED that table, so
+ * the rename box appeared over a grid that was still loading a different table's rows.
+ */
+function SheetTab({
+  sheet, active, onOpen, onRename, onMenu,
+}: {
+  sheet: Sheet;
+  active: boolean;
+  onOpen: () => void;
+  onRename: () => void;
+  onMenu: (e: React.MouseEvent) => void;
+}) {
+  // Already open, so there is nothing to navigate to and nothing to wait for.
+  const gestures = useClickOrDouble(onOpen, onRename);
+  return (
+    <button
+      aria-current={active ? "page" : undefined}
+      className={`cc-wbtabs__tab${active ? " cc-wbtabs__tab--on" : ""}`}
+      onClick={gestures.onClick}
+      onDoubleClick={gestures.onDoubleClick}
+      onContextMenu={onMenu}
+      title={`${sheet.name} — ${sheet.rowCount.toLocaleString()} ${sheet.rowCount === 1 ? "row" : "rows"} · double-click to rename`}
+    >
+      <span className="truncate">{sheet.name}</span>
+      {/* Reserved width, so a table going from 9 to 10,000 rows cannot resize its own tab and
+          shuffle every tab to the right of it. */}
+      <span className="cc-wbtabs__count mono">{sheet.rowCount.toLocaleString()}</span>
+    </button>
   );
 }

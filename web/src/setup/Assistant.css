@@ -191,3 +191,18 @@
 @media (max-width: 560px) {
   .cc-as { width: 100vw; }
 }
+
+/* A proposal that did not survive its checks. Stated in the bubble it belongs to, in a band rather
+   than as another line of prose, because it is about the message rather than part of it. */
+.cc-as__dropped {
+  display: block;
+  margin-top: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-sm);
+  background: var(--band-queued);
+  color: var(--ink-secondary);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.cc-as__confirm { margin: 0; font-size: 12.5px; line-height: 1.55; color: var(--ink-secondary); }

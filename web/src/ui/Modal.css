@@ -19,6 +19,21 @@
 .cc-modal {
   width: 100%;
   max-width: 420px;
+  /*
+   * BOUNDED BY THE VIEWPORT, always.
+   *
+   * Without this a dialog is as tall as its content, and the scrim it sits in is `position: fixed`
+   * with `align-items: center` — so a body taller than the window grows out of BOTH ends and neither
+   * one can be scrolled to. A 40-column CSV measured 2,117px in a 1,154px window: the title sat at
+   * -481 and the Import button at 1,636, and the only way to reach either was the browser's zoom.
+   *
+   * `100dvh`, not `100vh`: on a phone the toolbars retract, and `vh` is measured against the
+   * retracted height, which puts the footer under the address bar exactly when it is showing.
+   * The `--s-4` term is the scrim's own padding, doubled — a dialog must not touch the window edge.
+   */
+  max-height: calc(100dvh - var(--s-4) * 2);
+  display: flex;
+  flex-direction: column;
   background: var(--canvas);
   border: 1px solid var(--hairline);
   border-radius: var(--r-lg);
@@ -47,13 +62,23 @@
   .cc-modal-scrim--leaving, .cc-modal--leaving { animation: none; }
 }
 
+/* Head and foot hold their size; the body is the only part that gives. The footer carries the
+   action, so it is the one thing that must never be what scrolls out of reach. */
 .cc-modal__head {
+  flex: 0 0 auto;
   padding: var(--s-4) var(--s-4) var(--s-3);
   border-bottom: 1px solid var(--hairline);
 }
 .cc-modal__title { font-size: 14px; font-weight: 600; letter-spacing: -0.006em; }
 
 .cc-modal__body {
+  /* `min-height: 0` is what actually lets it shrink — a flex child's automatic minimum is its
+     content, so without this the body refuses to be smaller than its content and pushes the footer
+     out through the bottom of the box it is supposed to be inside. */
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: var(--s-3) var(--s-4) var(--s-4);
   display: flex;
   flex-direction: column;
@@ -151,6 +176,7 @@
 }
 
 .cc-modal__foot {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   gap: var(--s-2);

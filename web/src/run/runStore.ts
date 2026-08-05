@@ -19,7 +19,11 @@ export interface RunState {
   done: number;
   errors: number;
   skipped: number;
+  /** Ran and produced no value. Counted apart from `done`, because it is not what "done" means. */
+  blank: number;
   costUsd: number;
+  /** The part of `costUsd` that bought nothing. A subset of it, never an extra charge. */
+  wasteUsd: number;
   startedAt: string | null;
   finishedAt: string | null;
   pauseReason: string | null;
@@ -122,7 +126,9 @@ class RunStore {
     const perSec = rate / weight;
     if (perSec <= 0) return null;
 
-    const remaining = Math.max(0, run.total - run.done - run.skipped);
+    // A blank cell is finished work. Leaving it out of the completed total made the ETA count rows
+    // that were never coming back as still to do, so it climbed on a column answering mostly blanks.
+    const remaining = Math.max(0, run.total - run.done - run.skipped - run.blank);
     const secs = Math.round(remaining / perSec / 5) * 5;
     this.etaCache.set(runId, secs);
     return secs;

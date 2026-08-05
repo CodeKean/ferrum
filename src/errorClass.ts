@@ -46,12 +46,13 @@ export type ErrClass =
   | "tool"
   | "script"      // generated code threw
   | "agent"
+  | "empty"       // the model returned nothing at all — no answer and no text. Deterministic per input.
   | "cancelled"   // the user stopped the run while this cell was in flight. NOT a failure.
   | "unknown";
 
 export const ERR_CLASSES: readonly ErrClass[] = [
   "auth", "rate_limit", "overloaded", "timeout", "budget",
-  "schema", "tool", "script", "agent", "cancelled", "unknown",
+  "schema", "tool", "script", "agent", "empty", "cancelled", "unknown",
 ] as const;
 
 // ── the constants runs.ts shares ────────────────────────────────────────────
@@ -62,7 +63,7 @@ export const ERR_CLASSES: readonly ErrClass[] = [
  * `auth` stops the whole run; `budget` fails the cell. Both because the fix is a decision only the
  * user can make, and retrying in the meantime spends time or money proving the same thing again.
  */
-export const NEVER_RETRY: ReadonlySet<ErrClass> = new Set<ErrClass>(["auth", "budget"]);
+export const NEVER_RETRY: ReadonlySet<ErrClass> = new Set<ErrClass>(["auth", "budget", "empty"]);
 
 /**
  * The ceiling on free retries.
@@ -263,6 +264,20 @@ export function errorFacts(cls: ErrClass | null | undefined, kind: Lane): ErrFac
         todo: "Give it more turns, or make the instruction more specific so it settles sooner.",
         aiCanHelp: true,
         area: "prompt",
+        fixWhere: "nowhere",
+      };
+
+    case "empty":
+      // False, and it is the measured answer rather than a guess. The same rows of the same column
+      // came back empty on three passes across two different search backends; the split never moved.
+      // The loop has also already asked a second time, in the same conversation, before this class is
+      // reached — so the cheap retry is spent and the expensive one would buy the same nothing.
+      return {
+        rerunHelps: false,
+        cause: "The model returned nothing at all — no answer and no explanation.",
+        todo: "Some models do this on particular rows and do it every time. Pick a different model for this column; the rows that already answered keep their values.",
+        aiCanHelp: false,
+        area: null,
         fixWhere: "nowhere",
       };
 

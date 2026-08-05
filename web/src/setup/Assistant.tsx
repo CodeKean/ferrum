@@ -9,6 +9,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { IconPlay } from "../ui/Icon.tsx";
+import { Modal } from "../ui/Modal.tsx";
 import { RefField } from "../prompt/RefField.tsx";
 import { toDisplay } from "../prompt/refs.ts";
 import type { RefOption } from "../prompt/RefMenu.tsx";
@@ -28,11 +29,21 @@ interface Action {
 }
 
 interface Bubble {
+  /** The engine's id for this turn. Absent only for a question still in flight. */
+  id?: number;
   role: "user" | "assistant";
   text: string;
   actions?: Action[];
   /** Actions already applied, by index, so a done one cannot be applied twice. */
   applied?: Record<number, string>;
+  /**
+   * Changes it proposed that this table could not accept.
+   *
+   * Said out loud rather than dropped. This is the other half of "it says it will do something and
+   * then does not": the sentence describes a change, the change failed its checks on the way back,
+   * and the transcript showed the sentence with no button under it and no explanation.
+   */
+  dropped?: number;
 }
 
 interface Props {
@@ -67,7 +78,36 @@ export function Assistant({ sheetId, columns, onClose, onChanged }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [showContext, setShowContext] = useState(false);
   const [context, setContext] = useState<string | null>(null);
+  /** Until the stored transcript has arrived, an empty panel is not the same as no conversation. */
+  const [loading, setLoading] = useState(true);
+  const [confirmClear, setConfirmClear] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
+
+  /**
+   * The conversation, from the engine.
+   *
+   * It used to live in this component's state alone, so closing the panel destroyed it — as did a
+   * reload, and as did opening another table and coming back. Everything said in a conversation
+   * about a table is context for what is said next, so losing it is not losing one message.
+   */
+  useEffect(() => {
+    let dead = false;
+    setLoading(true);
+    void fetch(`/api/sheets/${sheetId}/assistant/messages`)
+      .then((r) => r.json())
+      .then((res) => {
+        if (dead) return;
+        setBubbles(
+          ((res.messages ?? []) as any[]).map((m) => ({
+            id: m.id, role: m.role, text: m.text,
+            actions: m.actions ?? [], applied: m.applied ?? {},
+          })),
+        );
+      })
+      .catch(() => { /* an unreachable engine is reported by the first send, not by an empty panel */ })
+      .finally(() => { if (!dead) setLoading(false); });
+    return () => { dead = true; };
+  }, [sheetId]);
 
   /**
    * `/` works in here too, the same as it does in every field in the column drawer.
@@ -116,10 +156,14 @@ export function Assistant({ sheetId, columns, onClose, onChanged }: Props) {
     setBusy(true);
     setError(null);
     try {
+      // Only the new question goes up. The engine owns the transcript now and reads the history from
+      // its own store — sending the browser's copy meant the model's memory was whatever this panel
+      // happened to be holding, which after a reload was nothing at all while the user could still
+      // read the whole conversation on screen.
       const res = await fetch(`/api/sheets/${sheetId}/assistant`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: history.map((b) => ({ role: b.role, text: b.text })) }),
+        body: JSON.stringify({ text }),
       }).then((r) => r.json());
       if (res.error) {
         setError(res.error);
@@ -129,7 +173,10 @@ export function Assistant({ sheetId, columns, onClose, onChanged }: Props) {
         setDraft(prevDraft || text);
         return;
       }
-      setBubbles([...history, { role: "assistant", text: res.reply, actions: res.actions ?? [], applied: {} }]);
+      setBubbles([
+        ...history.map((b, i) => (i === history.length - 1 ? { ...b, id: res.userTurnId } : b)),
+        { id: res.turnId, role: "assistant", text: res.reply, actions: res.actions ?? [], applied: {}, dropped: res.dropped ?? 0 },
+      ]);
     } catch {
       setError("Could not reach the engine.");
       setBubbles(prevBubbles);
@@ -146,7 +193,10 @@ export function Assistant({ sheetId, columns, onClose, onChanged }: Props) {
       const res = await fetch(`/api/sheets/${sheetId}/assistant/apply`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action }),
+        // The turn and the index go with it, so the engine can record that this one is done. Without
+        // them a re-opened panel offered an already-applied change again — and applying "add a
+        // column" twice adds two columns.
+        body: JSON.stringify({ action, turnId: bubbles[bubbleIndex]?.id, actionIndex }),
       }).then((r) => r.json());
       if (res.error) { setError(res.error); return; }
       setBubbles((prev) =>
@@ -174,15 +224,43 @@ export function Assistant({ sheetId, columns, onClose, onChanged }: Props) {
       <header className="cc-as__head">
         <div className="cc-as__title">
           <strong>Assistant</strong>
-          <span className="cc-as__sub">Ask about this table, or describe a change</span>
+          <span className="cc-as__sub">
+            {bubbles.length > 0
+              // Says the thing that is now true and was not before: closing this does not lose it.
+              ? `${bubbles.length} ${bubbles.length === 1 ? "message" : "messages"}, kept with this table`
+              : "Ask about this table, or describe a change"}
+          </span>
         </div>
+        {bubbles.length > 0 && (
+          <button
+            className="hk-icon-btn"
+            onClick={() => setConfirmClear(true)}
+            disabled={busy}
+            aria-label="Start a new conversation"
+            title="Start a new conversation — this one is kept until you clear it"
+          >
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M2.5 4.5h11M6 4.5V3h4v1.5M4 4.5l.7 8a1 1 0 0 0 1 .9h4.6a1 1 0 0 0 1-.9l.7-8" />
+            </svg>
+          </button>
+        )}
         <button className="hk-icon-btn" onClick={onClose} aria-label="Close the assistant" title="Close">
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M4 4l8 8M12 4l-8 8" /></svg>
         </button>
       </header>
 
       <div className="cc-as__body">
-        {bubbles.length === 0 && (
+        {/* Fixed-height placeholders while the stored transcript arrives. Without them the panel
+            opened on the starter prompts and then replaced them with a conversation, which reads as
+            the starters having been dismissed by something the user did not do. */}
+        {loading && (
+          <>
+            <div className="cc-as__bubble cc-as__bubble--user"><span className="cc-skel" style={{ width: "55%" }} /></div>
+            <div className="cc-as__bubble cc-as__bubble--assistant"><span className="cc-skel" style={{ width: "80%" }} /></div>
+          </>
+        )}
+
+        {!loading && bubbles.length === 0 && (
           <div className="cc-as__starters">
             <p className="cc-as__empty">
               It can see this table's columns, how full they are, and any errors — not the rows
@@ -197,6 +275,17 @@ export function Assistant({ sheetId, columns, onClose, onChanged }: Props) {
         {bubbles.map((b, i) => (
           <div key={i} className={`cc-as__bubble cc-as__bubble--${b.role}`}>
             <span className="cc-as__text">{b.text}</span>
+
+            {/* The reply described a change, the change failed its checks on the way back, and
+                without this the bubble showed the sentence with nothing under it — which is what
+                "it says it will do something and then doesn't" looks like from the outside. */}
+            {(b.dropped ?? 0) > 0 && (
+              <span className="cc-as__dropped" role="status">
+                {b.dropped === 1
+                  ? "It proposed one change this table cannot take, so there is nothing to apply above. Say what you want in different words and it will try again."
+                  : `It proposed ${b.dropped} changes this table cannot take, so there is nothing to apply above. Say what you want in different words and it will try again.`}
+              </span>
+            )}
 
             {b.actions && b.actions.length > 0 && (
               <ul className="cc-as__actions">
@@ -297,6 +386,38 @@ export function Assistant({ sheetId, columns, onClose, onChanged }: Props) {
           </button>
         </div>
       </footer>
+
+      {/* Asked, not done. The transcript is the only record of what was proposed and what was
+          applied, and there is no undo for throwing it away. */}
+      {confirmClear && (
+        <Modal
+          open
+          onClose={() => setConfirmClear(false)}
+          title="Start a new conversation?"
+          footNote="The columns it already added stay exactly as they are."
+          footer={
+            <>
+              <button className="cc-btn" onClick={() => setConfirmClear(false)}>Keep it</button>
+              <button
+                className="cc-btn cc-btn--danger"
+                onClick={() => {
+                  setConfirmClear(false);
+                  void fetch(`/api/sheets/${sheetId}/assistant/messages`, { method: "DELETE" })
+                    .then(() => setBubbles([]))
+                    .catch(() => setError("Could not clear the conversation."));
+                }}
+              >
+                Clear it
+              </button>
+            </>
+          }
+        >
+          <p className="cc-as__confirm">
+            This throws away {bubbles.length} {bubbles.length === 1 ? "message" : "messages"} about this
+            table, including what it suggested and what you applied. Nothing in the table changes.
+          </p>
+        </Modal>
+      )}
     </aside>
   );
 }

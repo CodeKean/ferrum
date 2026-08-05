@@ -74,7 +74,19 @@
   border-bottom: 1px solid var(--hairline);
   flex: 0 0 auto;
   background: var(--canvas);
+  /*
+   * The row measures ITSELF, not the window.
+   *
+   * The collapse rules below used to be a viewport media query, which answers the wrong question:
+   * this row gets narrow for two different reasons, and only one of them is a small screen. Docking
+   * the assistant takes 420px away from a 1,162px window, and the row then had 742px to lay out
+   * 1,057px of controls — so Run, Assistant and Sources were clipped off its right edge at a
+   * desktop width where every media query said there was plenty of room.
+   */
+  container-type: inline-size;
+  container-name: toolbar;
 }
+
 
 /* There is one row. `.cc-toolbar--2` went with the second one — its only remaining user was the
    loading skeleton, which drew a row the real surface does not have and made the grid jump 36px on
@@ -342,26 +354,66 @@
 
 .cc-empty__actions { display: flex; gap: var(--s-2); }
 
+/* ── a toolbar too narrow for its controls ───────────────────────────────────────────────────────
+   Placed AFTER every base rule above, deliberately: a container query carries the specificity of
+   its own selector and nothing more, so these sat below `.cc-toolbar__left { flex: 0 0 auto }` when
+   they were written next to `.cc-toolbar` and quietly lost. Measured: the group still reported
+   `flex: 0 0 auto` while the `min-width` from the same block had applied. */
+
+/*
+ * Never clip, whatever the width.
+ *
+ * A safety net under the collapse below, not a replacement for it. Measured before this at an 860px
+ * viewport: `document.scrollWidth` 1062 against `clientWidth` 860, so the whole page — header
+ * included — slid sideways. A row that cannot fit has to overflow somewhere, and inside itself is
+ * the only place that does not drag the rest of the app with it.
+ */
+.cc-toolbar--1 {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
+.cc-toolbar--1::-webkit-scrollbar { display: none; }
+
+@container toolbar (max-width: 900px) {
+  /* Labels go first. Every button on this row carries its own `aria-label`, so losing the span
+     costs the sighted name and not the accessible one. */
+  .cc-toolbar .cc-btn span { display: none; }
+  .cc-toolbar .cc-btn { padding: 0 var(--s-2); }
+
+  /*
+   * WHICH controls give way, when something still has to.
+   *
+   * Losing the labels is not always enough — with the assistant docked this row had 742px for 880px
+   * of controls even icon-only. Left to the row's own scroll, the things that went off the edge
+   * were the LAST ones in source order: Run, Assistant and Sources. The primary actions, and the
+   * ones you most want while a panel is open beside the table.
+   *
+   * So the shortfall is pushed onto the left group instead — status, sort, views and filter. They
+   * are the low-frequency controls, they stay reachable by scrolling within their own group, and
+   * none of them is the button somebody is reaching for right now.
+   */
+  .cc-toolbar__left {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+  .cc-toolbar__left::-webkit-scrollbar { display: none; }
+  .cc-toolbar__right { flex: 0 0 auto; }
+  /* Fixed and compact rather than `flex: 1`: there is no leftover space to take at this width, and
+     asking for a share of nothing collapsed it to its own minimum. */
+  .cc-toolbar .cc-search { flex: 0 0 auto; width: 132px; min-width: 0; }
+  .cc-toolbar .cc-search:focus-within { width: 180px; }
+}
+
 /* ── mobile ─────────────────────────────────────────────────────
    A 30-column grid at 375px is a lie. The toolbar collapses here; record mode (a row list plus a
    full-screen record detail) is the honest mobile surface and lands with the drawer work. */
 
 @media (max-width: 768px) {
   .cc-toolbar { padding: 0 var(--s-2); }
-
-  /* The toolbar scrolls ITSELF rather than pushing the document wide.
-
-     Measured at 371px: documentElement.scrollWidth 443 against clientWidth 371 — 72px of controls
-     off the right edge, reachable only by swiping the entire page sideways. Nothing in this row
-     shrinks (two Selects, the views trigger, the filter bar and a split button all size to their
-     content), so the overflow has to go somewhere; the honest place is inside the strip. The
-     scrollbar itself is hidden the same way the breadcrumb hides its own. */
-  .cc-toolbar--1 {
-    overflow-x: auto;
-    overscroll-behavior-x: contain;
-    scrollbar-width: none;
-  }
-  .cc-toolbar--1::-webkit-scrollbar { display: none; }
 
   /* Neither group may be squeezed to nothing by the other, and the right group must sit INSIDE the
      scrollable content rather than being pushed past its end. */
@@ -374,10 +426,8 @@
   .cc-search { width: 150px; flex: 0 0 auto; min-width: 0; }
   .cc-search:focus-within { width: 190px; }
 
-  /* Icon-only buttons. This rule existed already and had never matched anything: the labels were
-     bare text nodes, so there was no <span> to hide, and the toolbar kept its full width at every
-     size. They are wrapped now — and because hiding the span removes the button's accessible name
-     with it, every button on this row carries its own `aria-label` in App.tsx. */
+  /* Icon-only buttons everywhere at this width, not only on the toolbar — the container query above
+     covers the toolbar at any viewport, and this covers the rest of the app at a phone width. */
   .cc-btn span { display: none; }
   .cc-btn { padding: 0 var(--s-2); }
 }
@@ -463,14 +513,25 @@
 /* Where you are. Still hoverable, because double-clicking it renames. */
 .cc-path__crumb--here { color: var(--ink); font-weight: 600; cursor: default; }
 
-/* Said once, here, beside the table it belongs to, rather than repeated on the toolbar. */
-.cc-path__rows {
+/* How big this table is, both ways. Said once, here, beside the table it belongs to, rather than
+   repeated on the toolbar. Reserved width so 9 rows -> 10 rows cannot nudge the crumbs beside it. */
+.cc-path__size {
   flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   margin-left: var(--s-2);
   font-size: 11px;
   color: var(--ink-faint);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+.cc-path__size-sep { color: var(--hairline-strong); }
+
+/* Below this the path itself is the thing worth keeping — the size is a fact you can get from the
+   grid, and the crumbs are the only navigation on screen. */
+@media (max-width: 768px) {
+  .cc-path__size { display: none; }
 }
 
 /* Same box as the crumb, so renaming cannot resize the bar. */

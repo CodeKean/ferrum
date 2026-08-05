@@ -41,3 +41,22 @@
   margin: var(--s-1) 0;
   background: var(--hairline);
 }
+
+/* Whose menu this is. A heading, not an item: it is not clickable and must not read as one. */
+.cc-ctx__scope {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-3) 6px;
+  border-bottom: 1px solid var(--hairline);
+  margin-bottom: 2px;
+}
+.cc-ctx__scope-kind {
+  flex: 0 0 auto;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-mute);
+}
+.cc-ctx__scope-name { flex: 1 1 auto; min-width: 0; font-size: 12px; font-weight: 600; color: var(--ink); }

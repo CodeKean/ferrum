@@ -81,9 +81,10 @@
 }
 /* Painted back-to-front: error is the widest and sits behind, done is narrowest and on top, so the
    segments read as one stacked track rather than three bars. */
-.cc-rs__fill--done { background: var(--status-done-solid); z-index: 2; }
-.cc-rs__fill--skip { background: var(--status-idle-solid); }
-.cc-rs__fill--err  { background: var(--status-error-solid); }
+.cc-rs__fill--done  { background: var(--status-done-solid); z-index: 3; }
+.cc-rs__fill--blank { background: var(--status-blank-solid); }
+.cc-rs__fill--skip  { background: var(--status-idle-solid); }
+.cc-rs__fill--err   { background: var(--status-error-solid); }
 
 @media (prefers-reduced-motion: reduce) {
   .cc-rs__fill { transition: none; }
@@ -97,6 +98,11 @@
 .cc-rs__time   { min-width: 52px;  justify-content: flex-end; color: var(--ink-mute); }
 .cc-rs__eta    { min-width: 62px;  justify-content: flex-end; color: var(--ink-mute); }
 .cc-rs__skip   { min-width: 84px;  color: var(--ink-mute); }
+.cc-rs__blank  { min-width: 76px;  color: var(--ink-mute); }
+/* The wasted share rides inside the cost segment rather than claiming a segment of its own — it only
+   means anything beside the total it is part of. Quieter than the total, because the total is the
+   number the decision turns on. */
+.cc-rs__waste  { color: var(--status-error-solid); font-weight: 500; }
 
 .cc-rs__errors {
   min-width: 72px;
@@ -115,7 +121,10 @@
 
 /* 375px: keep pause, the bar and the count; the rest collapses rather than overflowing. */
 @media (max-width: 768px) {
-  .cc-rs__pct, .cc-rs__eta, .cc-rs__time, .cc-rs__skip, .cc-rs__label { display: none; }
+  .cc-rs__pct, .cc-rs__eta, .cc-rs__time, .cc-rs__skip, .cc-rs__blank, .cc-rs__label { display: none; }
   .cc-rs__seg { padding: 0 var(--s-2); }
   .cc-rs__count { min-width: 88px; }
+  /* The total survives at this width; the breakdown inside it does not fit beside it. */
+  .cc-rs__waste { display: none; }
+  .cc-rs__cost { min-width: 62px; }
 }

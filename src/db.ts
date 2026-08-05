@@ -858,6 +858,34 @@ db.exec(`
   );
 
   CREATE INDEX IF NOT EXISTS ix_grants_user ON workbook_grants(user_id);
+
+  /*
+   * The assistant's conversation, per table.
+   *
+   * It lived in React state, so the panel's own close button destroyed it — and so did a reload, and
+   * so did opening another table and coming back. The conversation is about one table and builds up
+   * context over several turns ("no, use the website column instead"), which is exactly what made
+   * losing it expensive: the value of turn five is everything said in turns one to four.
+   *
+   * Beside the table rather than in the browser, because the engine is where this app's state lives
+   * and because a transcript in localStorage is invisible to the table it describes — a trashed
+   * table would leave its conversation behind forever. ON DELETE CASCADE handles that here.
+   *
+   * applied_json carries which proposals were already applied, so re-opening the panel shows an
+   * applied suggestion as applied rather than offering to do it a second time. (No backticks in
+   * this block: it sits inside a template literal, and one would end the string.)
+   */
+  CREATE TABLE IF NOT EXISTS assistant_messages (
+    id           INTEGER PRIMARY KEY,
+    sheet_id     TEXT NOT NULL REFERENCES sheets(id) ON DELETE CASCADE,
+    role         TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+    text         TEXT NOT NULL,
+    actions_json TEXT,
+    applied_json TEXT,
+    created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS ix_assistant_sheet ON assistant_messages(sheet_id, id);
 `);
 
 // ─────────────────────────────────────────────────────────────── additive migrations
@@ -1012,6 +1040,24 @@ const MIGRATIONS: Migration[] = [
    * cannot start refusing writes to a table that was fine yesterday.
    */
   { table: "columns", column: "validation", ddl: "TEXT" },
+  /**
+   * Cells that RAN, cost money, and produced no value.
+   *
+   * They used to be counted as `done`, because `not_found` is a success and the counter had only
+   * three buckets. It is a success in the sense that the engine looked and the answer genuinely is
+   * "none" — and it is not what anyone means by "42 of 50 done". On a free rate-limited model, where
+   * a third of the rows coming back blank is the normal case, a summary reading all-done was the
+   * only report of a column that had mostly not filled.
+   */
+  { table: "runs", column: "blank_c", ddl: "INTEGER NOT NULL DEFAULT 0" },
+  /**
+   * The part of `cost_usd` spent on cells that produced nothing.
+   *
+   * A failing cell can still bill: an agent that searches (paid) and then returns an empty completion
+   * costs real money for an empty cell. Folded into one total, that spend reads as progress. It is a
+   * subset of `cost_usd`, never a second charge — the two are written from the same outcome.
+   */
+  { table: "runs", column: "waste_usd", ddl: "REAL NOT NULL DEFAULT 0" },
 ];
 
 /**

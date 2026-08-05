@@ -10,7 +10,9 @@ import assert from "node:assert/strict";
 import { db } from "../db.ts";
 import { addColumn, createSheet, insertRows, listColumns } from "../store.ts";
 import { undoState, undo } from "../undo.ts";
-import { applyAction, describeTable, parseReply } from "./assistant.ts";
+import {
+  appendTurn, applyAction, clearConversation, describeTable, loadConversation, markApplied, parseReply,
+} from "./assistant.ts";
 
 function fixture(name: string) {
   const sheet = createSheet(name);
@@ -232,4 +234,65 @@ test("a broken request degrades the column instead of throwing", () => {
   });
   assert.ok(listColumns(f.sheet.id).some((c) => c.name === "Size"));
   assert.ok(said.length > 0);
+});
+
+// ── the conversation, kept ──────────────────────────────────────────────────
+//
+// It lived in React state, so the panel's own close button destroyed it — along with a reload and
+// with opening another table and coming back. A conversation about a table is built up over turns,
+// so losing it costs everything said so far rather than one line.
+
+test("the conversation survives the panel closing, and remembers what was applied", () => {
+  const f = fixture("kept");
+  const q = appendTurn(f.sheet.id, { role: "user", text: "add an industry column" });
+  const a = appendTurn(f.sheet.id, {
+    role: "assistant",
+    text: "A column that asks a model for each company's industry.",
+    actions: [{ kind: "add_column", name: "Industry", columnKind: "ai", valueType: "text", why: "so you can segment" }],
+  });
+  assert.ok(q > 0 && a > q);
+
+  markApplied(f.sheet.id, a, 0, `Added "Industry".`);
+
+  // A fresh read, which is what re-opening the panel does.
+  const back = loadConversation(f.sheet.id);
+  assert.equal(back.length, 2);
+  assert.equal(back[0]!.role, "user");
+  assert.equal(back[1]!.actions.length, 1);
+  assert.equal(back[1]!.applied[0], `Added "Industry".`, "an applied change is not offered a second time");
+});
+
+test("a conversation belongs to its own table and to no other", () => {
+  const a = fixture("mine");
+  const b = fixture("yours");
+  appendTurn(a.sheet.id, { role: "user", text: "about mine" });
+  assert.equal(loadConversation(b.sheet.id).length, 0);
+  assert.equal(loadConversation(a.sheet.id).length, 1);
+  assert.equal(clearConversation(a.sheet.id), 1);
+  assert.equal(loadConversation(a.sheet.id).length, 0);
+});
+
+test("a proposal this table cannot take is COUNTED, not silently dropped", () => {
+  // The other half of "it says it will do something and then does not": the reply describes the
+  // change, the change fails its checks on the way back, and the bubble showed the sentence with
+  // nothing under it and no explanation.
+  const f = fixture("dropped");
+  const out = parseReply(
+    {
+      reply: "Pointing the industry column at the website instead.",
+      actions: [
+        { kind: "set_prompt", columnId: 99999, prompt: "look at /Website", why: "more reliable" },
+        { kind: "add_column", name: "Industry", columnKind: "ai", valueType: "text", why: "so you can segment" },
+      ],
+    },
+    f.sheet.id,
+  );
+  assert.equal(out.actions.length, 1, "only the one that fits is offered");
+  assert.equal(out.dropped, 1, "and the one that does not is reported rather than vanishing");
+});
+
+test("nothing dropped means nothing to report", () => {
+  const f = fixture("clean");
+  const out = parseReply({ reply: "Here is what is in it.", actions: [] }, f.sheet.id);
+  assert.equal(out.dropped, 0);
 });

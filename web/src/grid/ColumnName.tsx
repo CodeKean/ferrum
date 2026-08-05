@@ -10,6 +10,7 @@
 // rather than a dialog with a warning.
 
 import { useEffect, useRef, useState } from "react";
+import { useClickOrDouble } from "../ui/clickOrDouble.ts";
 
 interface Props {
   name: string;
@@ -25,6 +26,11 @@ export function ColumnName({ name, onRename, onSort, editing, onEditingChange }:
   const [draft, setDraft] = useState(name);
   const [error, setError] = useState<string | null>(null);
   const ref = useRef<HTMLInputElement>(null);
+
+  // Sorting waits to see whether a second click is coming. The two gestures share one control, and
+  // without this the FIRST click of every rename sorted the table — so renaming "Company" reordered
+  // every row underneath the name you were still typing.
+  const gestures = useClickOrDouble(onSort, () => onEditingChange(true));
 
   // The draft follows the committed name whenever editing starts, so an abandoned edit does not
   // reappear the next time the header is double-clicked.
@@ -74,8 +80,8 @@ export function ColumnName({ name, onRename, onSort, editing, onEditingChange }:
     return (
       <button
         className="cc-th__label truncate"
-        onClick={onSort}
-        onDoubleClick={(e) => { e.stopPropagation(); onEditingChange(true); }}
+        onClick={gestures.onClick}
+        onDoubleClick={(e) => { e.stopPropagation(); gestures.onDoubleClick(e); }}
         title={`${name} — click to sort, double-click to rename`}
       >
         <span className="truncate">{name}</span>

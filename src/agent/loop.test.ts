@@ -383,3 +383,62 @@ test("no cap configured means no cap applied", async () => {
   for (let i = 0; i < 5; i++) await tool.run({ query: `q${i}` }, {});
   assert.equal(calls, 5);
 });
+
+// ── the empty completion ────────────────────────────────────────────────────
+//
+// Measured on llama-3.3-70b through OpenRouter: the model calls a search tool, is billed for it, and
+// then returns a completion with no tool call and NO text. Deterministic on the input — the same rows
+// of the same column did it on three passes across two different search backends. Folded in with
+// "talked instead of calling finish", it wrote the row off as a schema error and threw away a
+// transcript that had already been paid for.
+
+test("an empty completion is nudged once, in the same conversation", async () => {
+  const provider = fakeProvider([
+    { toolCalls: [{ id: "1", name: "echo", args: { s: "look" } }] },
+    { text: "" },                                                     // nothing at all
+    { toolCalls: [{ id: "2", name: "finish", args: { found: true, value: "Fintech", confidence: "high" } }] },
+  ]);
+
+  const res = await runAgent({
+    provider, model: "m", system: "sys", task: "do it",
+    tools: [echoTool, finishTool("the answer")],
+  });
+
+  assert.equal(res.stoppedBy, "finish_tool", "the nudge recovers the row");
+  assert.deepEqual(res.structured, { found: true, value: "Fintech", confidence: "high" });
+  // The nudge continues the EXISTING transcript. That is what makes it affordable: the search result
+  // is still in context, so recovering costs one completion rather than a second paid search.
+  const asked = provider.seen[2].messages;
+  assert.ok(JSON.stringify(asked).includes("echoed:look"), "the paid tool result is still in context");
+  assert.ok(
+    asked.some((m: any) => m.role === "user" && String(m.content).includes("empty response")),
+    "and the nudge was actually sent",
+  );
+});
+
+test("a second empty completion stops the cell rather than spending the rest of its turns", async () => {
+  const provider = fakeProvider([{ text: "" }]);   // empty forever
+
+  const res = await runAgent({
+    provider, model: "m", system: "sys", task: "do it",
+    tools: [echoTool, finishTool("the answer")],
+    maxTurns: 8,
+  });
+
+  assert.equal(res.stoppedBy, "empty", "its own class — nothing came back, which is not a wrong shape");
+  assert.equal(res.structured, null);
+  // Two calls, not eight. A model that answers nothing twice will not answer the third time, and the
+  // loop must not pay to discover that.
+  assert.equal(provider.seen.length, 2);
+});
+
+test("prose with no tool call is still `answered`, not `empty`", async () => {
+  // The narrower case must stay narrow: text that arrived outside the finish tool is a different
+  // failure with a different message, and widening `empty` to cover it would mislabel both.
+  const provider = fakeProvider([{ text: "I think it is Fintech." }]);
+  const res = await runAgent({
+    provider, model: "m", system: "sys", task: "do it", tools: [finishTool("the answer")],
+  });
+  assert.equal(res.stoppedBy, "answered");
+  assert.equal(res.text, "I think it is Fintech.");
+});

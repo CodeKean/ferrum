@@ -102,6 +102,10 @@
   --status-queued-solid: #a96a00;
   --status-running-solid: #1f6fcc;
   --status-done-solid: #227a45;
+  /* Ran, finished, produced nothing. Deliberately NOT the error red — nothing failed — and not the
+     done green either, or a run that answered half its rows would read as fully answered. A muted
+     slate reads as "accounted for, but empty", which is what it is. */
+  --status-blank-solid: #8a9299;
   --status-error-solid: #bc2f45;
   /* Hover for a solid destructive control. A separate token rather than a filter/opacity trick, so
      the hover state stays a real colour that can be checked for contrast. */

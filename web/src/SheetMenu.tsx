@@ -61,9 +61,11 @@ interface Props {
    * promise a refund that is not coming.
    */
   onRestorePoints?: () => void;
+  /** Open the workspace-wide settings, so the levels read as a hierarchy rather than three places. */
+  onWorkspaceSettings?: () => void;
 }
 
-export function SheetMenu({ sheet, view, visibleRows, onRenamed, onTrashed, onBudgetSet, onSheetChanged, onDedupe, onUsage, onSchedules, onRestorePoints, onLimits }: Props) {
+export function SheetMenu({ sheet, view, visibleRows, onRenamed, onTrashed, onBudgetSet, onSheetChanged, onDedupe, onUsage, onSchedules, onRestorePoints, onLimits, onWorkspaceSettings }: Props) {
   const ref = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
   const [rect, setRect] = useState<DOMRect | null>(null);
@@ -166,8 +168,21 @@ export function SheetMenu({ sheet, view, visibleRows, onRenamed, onTrashed, onBu
 
       <Popover open={open} anchor={rect ? { rect } : null} anchorEl={ref} onClose={() => setOpen(false)} width={220} role="menu" label="Sheet actions" placement="bottom-end">
         <div className="cc-menu2">
+          {/*
+            Whose settings these are, said before the first one.
+
+            There are three scopes in this app — the workspace, a workbook, and a table — and until
+            now nothing on screen distinguished them. This menu, the workbook's menu in the file
+            browser and the Settings page all opened without saying what they governed, so "spending
+            limit" here and "spending limit" there looked like the same control in two places rather
+            than two limits at two levels. Each surface names its own scope now, in the same shape.
+          */}
+          <div className="cc-menu2__scope">
+            <span className="cc-menu2__scope-kind">This table</span>
+            <span className="cc-menu2__scope-name truncate" title={sheet.name}>{sheet.name}</span>
+          </div>
           <button className="cc-menu2__item" onClick={() => { setOpen(false); setName(sheet.name); setRenaming(true); }}>
-            Rename sheet
+            Rename this table
           </button>
           {/* `viewQuery` is the grid's own serialiser, reused rather than rebuilt — the export and
               the grid have to name the same rows, and two builders of the same query string is
@@ -228,8 +243,21 @@ export function SheetMenu({ sheet, view, visibleRows, onRenamed, onTrashed, onBu
             </button>
           )}
           <div className="cc-menu2__sep" />
+          {/* The way UP a level, so the three scopes read as a hierarchy rather than as three
+              unrelated places. Without it, finding the workspace defaults from here meant knowing
+              they existed and knowing the gear opened them. */}
+          {onWorkspaceSettings && (
+            <button
+              className="cc-menu2__item cc-menu2__item--up"
+              onClick={() => { setOpen(false); onWorkspaceSettings(); }}
+              title="Models, keys and limits for every table in this workspace"
+            >
+              Workspace settings…
+            </button>
+          )}
+          <div className="cc-menu2__sep" />
           <button className="cc-menu2__item cc-menu2__item--danger" onClick={() => { setOpen(false); setConfirmTrash(true); }}>
-            Move to trash
+            Move this table to the trash
           </button>
         </div>
       </Popover>

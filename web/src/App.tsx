@@ -37,6 +37,7 @@ import { runStore } from "./run/runStore.ts";
 import type { ColumnStats } from "./grid/ColumnProgress.tsx";
 import { IconInbox, IconMoon, IconPlay, IconPlus, IconSearch, IconSettings, IconSparkle, IconSun } from "./ui/Icon.tsx";
 import { Mark } from "./ui/Mark.tsx";
+import { PathCrumb } from "./PathCrumb.tsx";
 import "./App.css";
 
 type Theme = "light" | "dark";
@@ -1130,6 +1131,29 @@ export function App() {
     try { localStorage.setItem("cc-theme", next); } catch { /* private mode */ }
   };
 
+  /**
+   * Every right-docked panel, so the shell can end where the widest one begins.
+   *
+   * The assistant was missing from this list, and it is `position: fixed; right: 0` like the other
+   * two — so opening it laid a 420px panel over the right-hand end of everything: the last columns
+   * of the grid could not be scrolled to at all, and the toolbar's Run, Sources and Column buttons
+   * were underneath it. Which is the worst place for it to land, since those are the controls you
+   * reach for while talking to the assistant ABOUT the table.
+   *
+   * `max()` rather than a first-match chain because more than one can be open at once — the column
+   * drawer and the assistant stack, and reserving only the first one's width leaves the wider one
+   * overlapping again.
+   */
+  const dockedWidths = [
+    openCell && "420px",
+    editing && "var(--drawer-w)",
+    assistantOpen && "420px",
+  ].filter(Boolean) as string[];
+  const dockWidth =
+    dockedWidths.length === 0 ? "0px"
+    : dockedWidths.length === 1 ? dockedWidths[0]!
+    : `max(${dockedWidths.join(", ")})`;
+
   return (
     /**
      * The width a right-docked panel is taking, so the sheet can end where the panel begins.
@@ -1146,7 +1170,7 @@ export function App() {
      */
     <div
       className="cc-app"
-      style={{ "--dock-w": openCell ? "420px" : editing ? "var(--drawer-w)" : "0px" } as CSSProperties}
+      style={{ "--dock-w": dockWidth } as CSSProperties}
     >
       <header
         className="cc-appbar"
@@ -1180,45 +1204,39 @@ export function App() {
           {(homeOpen ? browserPath : path).map((c, i) => {
             const crumbs = homeOpen ? browserPath : path;
             const last = i === crumbs.length - 1;
-            // Whatever you are standing on can be renamed here — table, workbook or folder alike.
-            if (last && renamingCrumb === c.id) {
-              return (
-                <input
-                  key={c.id}
-                  className="cc-path__input"
-                  defaultValue={c.name}
-                  autoFocus
-                  aria-label={`Rename this ${c.kind}`}
-                  onBlur={(e) => { setRenamingCrumb(null); void renameCrumbTo(c, e.target.value); }}
-                  onKeyDown={(e) => {
-                    e.stopPropagation();
-                    if (e.key === "Enter") { e.preventDefault(); (e.target as HTMLInputElement).blur(); }
-                    if (e.key === "Escape") { e.preventDefault(); setRenamingCrumb(null); }
-                  }}
-                />
-              );
-            }
             return (
-              <span key={c.id} className="cc-path__wrap">
-                <span className="cc-path__sep" aria-hidden>/</span>
-                <button
-                  className={`cc-path__crumb${last ? " cc-path__crumb--here" : ""}`}
-                  title={last ? `${c.name} — double-click to rename` : `Open ${c.name}`}
-                  onClick={() => {
-                    if (last && !homeOpen) return;
-                    if (c.kind === "table") { setHomeOpen(false); void goToSheet(c.id); return; }
-                    setHomeAt(c.kind === "workbook" ? { workbookId: c.id } : { folderId: c.id });
-                    setHomeOpen(true);
-                  }}
-                  onDoubleClick={() => { if (last) setRenamingCrumb(c.id); }}
-                >
-                  <span className="truncate">{c.name}</span>
-                </button>
-              </span>
+              <PathCrumb
+                key={c.id}
+                crumb={c}
+                // The crumb you are standing on is only "here" when the browser is closed; with it
+                // open the path belongs to the browser and its last crumb is still somewhere to go.
+                last={last && !homeOpen}
+                onOpen={() => {
+                  if (c.kind === "table") { setHomeOpen(false); void goToSheet(c.id); return; }
+                  setHomeAt(c.kind === "workbook" ? { workbookId: c.id } : { folderId: c.id });
+                  setHomeOpen(true);
+                }}
+                renaming={renamingCrumb === c.id}
+                onStartRename={() => setRenamingCrumb(c.id)}
+                onCommitRename={(next) => { setRenamingCrumb(null); void renameCrumbTo(c, next); }}
+                onCancelRename={() => setRenamingCrumb(null)}
+              />
             );
           })}
+          {/* What the table HOLDS, both halves of it.
+              Rows alone answered half the question: a table is a grid, and "how wide is it" had no
+              answer anywhere on screen — you counted the headers, and past the edge of the viewport
+              you could not even do that. */}
           {sheet && !homeOpen && (
-            <span className="cc-path__rows mono">{sheet.rowCount.toLocaleString()} rows</span>
+            <span className="cc-path__size mono">
+              <span title={`${sheet.rowCount.toLocaleString()} rows in this table`}>
+                {sheet.rowCount.toLocaleString()} rows
+              </span>
+              <span className="cc-path__size-sep" aria-hidden>·</span>
+              <span title={`${columns.length.toLocaleString()} columns in this table`}>
+                {columns.length.toLocaleString()} {columns.length === 1 ? "column" : "columns"}
+              </span>
+            </span>
           )}
         </nav>
 
@@ -1499,6 +1517,9 @@ export function App() {
                   setSheets((s) => s.map((x) => (x.id === next.id ? next : x)));
                 }}
                 onDedupe={() => setDedupeOpen(true)}
+                // The way up a level. Without it the three scopes were three unrelated places, and
+                // reaching the workspace defaults meant already knowing the gear opened them.
+                onWorkspaceSettings={() => { setSettingsAt("models"); urlToSettings("models"); }}
                 onSchedules={() => setSchedulesOpen(true)}
                 onLimits={() => setLimitsOpen(true)}
                 onRestorePoints={() => setRestoreOpen(true)}

@@ -83,7 +83,26 @@
 
 /* ── the mapping table: one row per CSV column, deciding where it lands ─────── */
 
-.cc-csv__map { display: flex; flex-direction: column; gap: 1px; }
+/* The list scrolls INSIDE itself rather than only inside the dialog.
+   The dialog now caps at the viewport, so nothing is unreachable either way — but with one scroll
+   region a 40-column file pushes the sample table and the Import button hundreds of pixels down, and
+   the decision you are being asked to make ("does this land right?") needs the sample beside it.
+   Bounded here, everything else in the dialog stays where it was on a 3-column file.
+
+   `40vh` rather than a pixel height: the point is to leave room for the rest, and how much room
+   there is depends on the window. */
+.cc-csv__map {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-height: 40vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /* A hairline so the scroll region reads as a region, rather than as the list mysteriously ending. */
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  padding: var(--s-1);
+}
 
 /* CSV column · arrow · destination · new-name. The first cell takes the slack; the name slot is
    RESERVED either way, so flipping a row between "new" and an existing column cannot resize it. */

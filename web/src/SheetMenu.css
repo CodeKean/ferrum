@@ -23,3 +23,26 @@
   margin: var(--s-1) 0;
   background: var(--hairline);
 }
+
+/* Whose menu this is — the same shape the context menus use, so the three scopes read as one
+   system rather than as three unrelated surfaces. */
+.cc-menu2__scope {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-3) 6px;
+  border-bottom: 1px solid var(--hairline);
+  margin-bottom: 2px;
+}
+.cc-menu2__scope-kind {
+  flex: 0 0 auto;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-mute);
+}
+.cc-menu2__scope-name { flex: 1 1 auto; min-width: 0; font-size: 12px; font-weight: 600; color: var(--ink); }
+
+/* The way up a level. Quieter than the table's own actions — it leaves this table behind. */
+.cc-menu2__item--up { color: var(--ink-mute); }

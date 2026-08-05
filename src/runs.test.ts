@@ -1164,3 +1164,57 @@ test("a run started by nobody in particular says so, rather than pretending", as
   assert.equal(row.schedule_id, null);
   assert.equal(row.started_by, null);
 });
+
+// ─────────────────────────────────────────────────────── ran, and produced nothing
+
+test("a cell that ran and answered nothing is counted apart from the ones that answered", async () => {
+  // `not_found` is a success — the engine looked and the answer genuinely is "none" — and it is not
+  // what anyone means by "done". Folded into `done_c`, a column that filled three of five rows on a
+  // free model reported itself fully complete, and the two blanks had nothing anywhere saying so.
+  const f = fixture("blanks", [
+    { Company: "A" }, { Company: "B" }, { Company: "C" }, { Company: "D" }, { Company: "E" },
+  ]);
+  const paid = addColumn(f.sheet.id, { name: "Segment", kind: "ai" });
+
+  const answered = new Set(["A", "B", "C"]);
+  const names = new Map(rowsOf(f.sheet.id).map((id, i) => [id, "ABCDE"[i]!]));
+  registerCellExecutor(async (job) => (
+    answered.has(names.get(job.rowId)!)
+      ? { status: "done", valueText: "Fintech", costUsd: 0.01 }
+      // A blank that still billed. An agent that searches and comes back with nothing has spent real
+      // money on an empty cell, which is the spend most worth seeing.
+      : { status: "not_found", valueText: null, costUsd: 0.005 }
+  ) as CellOutcome);
+
+  const { run, resolved } = createRun({ sheetId: f.sheet.id, scope: { columnIds: [Number(paid.id)] } });
+  await executeRun(run.id, resolved);
+
+  const final = getRun(run.id)!;
+  assert.equal(final.done, 3, "only the rows that produced a value");
+  assert.equal(final.blank, 2, "the rest ran and came back with nothing");
+  assert.equal(final.errors, 0, "and none of it failed");
+  // The whole and the part come from the same outcome, so the part can never exceed the whole.
+  assert.ok(Math.abs(final.costUsd - 0.04) < 1e-9, "3 × $0.01 + 2 × $0.005");
+  assert.ok(Math.abs(final.wasteUsd - 0.01) < 1e-9, "the two blanks are what bought nothing");
+  assert.ok(final.wasteUsd <= final.costUsd);
+});
+
+test("money spent on a failed cell is reported as waste, not folded into progress", async () => {
+  const f = fixture("waste", [{ Company: "A" }, { Company: "B" }]);
+  const paid = addColumn(f.sheet.id, { name: "Segment", kind: "ai" });
+
+  // A search that billed, then an empty completion. Deterministic per input on the model this class
+  // was found on, so the retry policy never runs it again — the cost is charged exactly once.
+  registerCellExecutor(async () => (
+    { status: "error", errorType: "empty", errorMsg: "returned nothing at all", costUsd: 0.005 }
+  ) as CellOutcome);
+
+  const { run, resolved } = createRun({ sheetId: f.sheet.id, scope: { columnIds: [Number(paid.id)] } });
+  await executeRun(run.id, resolved);
+
+  const final = getRun(run.id)!;
+  assert.equal(final.done, 0);
+  assert.equal(final.errors, 2);
+  assert.ok(final.costUsd > 0, "a failure that used a paid tool still costs");
+  assert.ok(Math.abs(final.wasteUsd - final.costUsd) < 1e-9, "and every cent of it bought nothing");
+});

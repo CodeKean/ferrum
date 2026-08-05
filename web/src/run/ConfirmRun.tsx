@@ -278,12 +278,18 @@ export function ConfirmRun({ sheetId, scope, title, onCancel, onStarted }: Props
             className="cc-btn cc-btn--primary"
             onClick={start}
             disabled={starting || !resolved || resolved.rowCount === 0 || !!error || unpriced || !phraseOk}
+            /* Every reason this button can be dead is named on it.
+               Two of them were not: an empty selection and a run already starting both left the
+               primary action greyed with nothing to say, which is the same "am I stuck or is it
+               working?" question the column drawer's footer used to raise. */
             title={
-              unpriced
-                ? "One of these columns uses a model with no published price, so this run cannot be estimated."
-                : !phraseOk
-                  ? `Type ${requiredPhrase} to confirm ${expensive ? "this amount" : "this many billed requests"}.`
-                  : undefined
+              starting ? "Starting the run…"
+              : !resolved ? "Working out how many rows this covers…"
+              : resolved.rowCount === 0 ? "Nothing matches this selection, so there is nothing to run."
+              : error ? "This cannot start until the problem above is fixed."
+              : unpriced ? "One of these columns uses a model with no published price, so this run cannot be estimated."
+              : !phraseOk ? `Type ${requiredPhrase} to confirm ${expensive ? "this amount" : "this many billed requests"}.`
+              : "Start the run. You can pause or cancel it from the strip at the top."
             }
           >
             <IconPlay />

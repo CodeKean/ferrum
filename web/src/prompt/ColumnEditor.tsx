@@ -238,6 +238,8 @@ export function ColumnEditor({ sheetId, column, columns, sheets, rowCount, onClo
    * and get out of the way.
    */
   const [gone, setGone] = useState(false);
+  /** Whether the heading is currently an editor. Opened by double-clicking it. */
+  const [renamingTitle, setRenamingTitle] = useState(false);
   const [autoRun, setAutoRun] = useState(!!column.autoRun);
 
   const savePrompt = useCallback(async (next: string) => {
@@ -501,6 +503,30 @@ export function ColumnEditor({ sheetId, column, columns, sheets, rowCount, onClo
     loaded &&
     (code.trim() !== (saved?.code ?? "").trim() ||
       (intent.trim() !== "" && !saved));
+
+  /**
+   * Whether this lane has a rule at all.
+   *
+   * The footer is the rule's workflow — write it, save it, approve it, try it — and it used to be
+   * rendered whatever the column was. On an AI column there is no rule, so Save had nothing to save
+   * and Try had nothing approved to try: both were permanently disabled, neither said why, and the
+   * prompt beside them was already autosaving.
+   */
+  const hasRule = tabsFor(kind).includes("rule");
+
+  /** Renaming the column from its own heading — the one title in the app that could not be. */
+  const renameTitle = useCallback(async (next: string) => {
+    const name = next.trim();
+    if (!name || name === column.name) return;
+    try {
+      await api.renameColumn(String(column.id), name);
+      onSaved();
+    } catch (e) {
+      setErrors([e instanceof Error ? e.message : "Could not rename this column."]);
+    }
+  }, [column.id, column.name, onSaved]);
+  /** The one autosaved field the footer can see the state of. */
+  const settingsSaving = prompt !== promptSaved && !promptError;
 
   // A drawer that cannot be dismissed the way every other drawer can is the defect; a drawer that
   // discards a script on a stray click is a worse one. So: dismiss freely when clean, ask when not.
@@ -933,12 +959,45 @@ export function ColumnEditor({ sheetId, column, columns, sheets, rowCount, onClo
           const b = columnBadge(column, sourceNameOf(column, columns));
           return <ColumnKindIcon kind={b.kind} title={b.title} />;
         })()}
-        <h2 className="cc-drawer__title truncate">{column.name}</h2>
-        {/* "Not saved" while the existing rule is still in flight would be a false statement about
-            the column, so the loading case gets its own label rather than borrowing one. */}
-        <span className={`cc-pill ${!loaded ? "cc-pill--idle" : saved?.approvedAt ? "cc-pill--done" : saved ? "cc-pill--queued" : "cc-pill--idle"}`}>
-          {!loaded ? "Loading…" : saved?.approvedAt ? "Approved" : saved ? "Needs review" : "Not saved"}
-        </span>
+        {/* Renamable here, like every other name in the app.
+            The sheet name two inches away renames on double-click and so does the workbook, and this
+            one — attached to the thing you are currently editing — was the only title that did not.
+            Renaming is safe by construction: prompts and rules store column ids, never names. */}
+        {renamingTitle ? (
+          <input
+            className="cc-drawer__titleinput"
+            defaultValue={column.name}
+            autoFocus
+            aria-label={`Rename ${column.name}`}
+            onFocus={(e) => e.target.select()}
+            onBlur={(e) => { setRenamingTitle(false); void renameTitle(e.target.value); }}
+            onKeyDown={(e) => {
+              e.stopPropagation();
+              if (e.key === "Enter") { e.preventDefault(); (e.target as HTMLInputElement).blur(); }
+              if (e.key === "Escape") { e.preventDefault(); setRenamingTitle(false); }
+            }}
+          />
+        ) : (
+          <h2
+            className="cc-drawer__title truncate"
+            title={`${column.name} — double-click to rename`}
+            onDoubleClick={() => setRenamingTitle(true)}
+          >
+            {column.name}
+          </h2>
+        )}
+        {/*
+          The pill describes the RULE, so it only belongs on a lane that has one.
+
+          On an AI column it read "Not saved" forever — there was no rule to save — directly above a
+          prompt that was saving itself. Two statements about the same column, in view at once,
+          saying opposite things.
+        */}
+        {hasRule && (
+          <span className={`cc-pill ${!loaded ? "cc-pill--idle" : saved?.approvedAt ? "cc-pill--done" : saved ? "cc-pill--queued" : "cc-pill--idle"}`}>
+            {!loaded ? "Loading…" : saved?.approvedAt ? "Approved" : saved ? "Needs review" : "Not saved"}
+          </span>
+        )}
         <button className="hk-icon-btn" onClick={requestClose} aria-label="Close">
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
             <path d="M4 4l8 8M12 4l-8 8" />
@@ -1206,13 +1265,29 @@ export function ColumnEditor({ sheetId, column, columns, sheets, rowCount, onClo
 
         {tab === "prompt" && (
           <>
-            <label className="cc-field">
-              <span className="cc-field__label">
+            {/*
+              A DIV, and it has to be.
+
+              This was a `<label>`, and a `<label>` with no `for` forwards every click inside it to
+              its first LABELABLE descendant — and `<button>` is labelable. Once the prompt held a
+              reference chip, the first button in here was that chip's required/optional switch. So
+              clicking anywhere in the prompt — to put the caret in it, to select a word — pressed
+              that switch and moved focus onto it, which meant the next keystroke went to a button
+              instead of into the text. The field could not be typed in at all, and the switch it was
+              flipping is the one that decides whether a row is paid for.
+
+              Measured: `label.control` resolved to `.cc-ref__toggle`. It also means the label was
+              never labelling the prompt — a `<label>` cannot label a contenteditable, so the element
+              bought nothing even before the chips existed. The field carries its own `aria-label`.
+            */}
+            <div className="cc-field">
+              <span className="cc-field__label" id="cc-prompt-label">
                 What should the model put in this cell?
                 <span className="cc-field__sub">runs once per row</span>
               </span>
               <RefField
                 className="cc-textarea"
+                ariaLabel="What should the model put in this cell?"
                 rows={6}
                 placeholder={
                   kind === "agent"
@@ -1233,7 +1308,7 @@ export function ColumnEditor({ sheetId, column, columns, sheets, rowCount, onClo
                 Type <kbd>/</kbd> to put another column's value in.{" "}
                 {gone ? "Not saved." : prompt !== promptSaved ? (promptError ? "Not saved." : "Saving…") : "Saved."}
               </span>
-            </label>
+            </div>
 
             {/* Priced against the DRAFT and the model currently picked, not what was last saved.
                 The prompt is the cost — it is re-sent on every row, and on the agent lane on every
@@ -1544,50 +1619,89 @@ export function ColumnEditor({ sheetId, column, columns, sheets, rowCount, onClo
         {tab === "runs" && <ColumnHistory columnId={String(column.id)} />}
       </div>
 
+      {/*
+        The footer belongs to the RULE workflow — write it, save it, approve it, try it — and it was
+        rendered for every lane.
+
+        On an AI column there is no rule, so `code` is empty and `saved` is null: Save was disabled
+        because there was nothing to save, and Try was disabled because nothing had been approved.
+        Neither could ever become enabled, neither said why, and meanwhile the prompt beside them was
+        saving itself and reporting "Saved." in its own hint. Three controls that look like the way
+        to commit your work, permanently dead, above a field that had already committed it.
+      */}
       <footer className="cc-drawer__foot">
-        <span className="cc-foot__meta">
-          {saved ? `v${saved.version} · ${saved.hash.slice(0, 8)}` : "unsaved"}
-        </span>
-        <div className="cc-foot__actions">
-          {/* Both are blocked while a reference is broken. Saving would store a rule that reads a
-              column that is not there; trying it would run it against a literal on real rows. */}
-          <button
-            className="cc-btn"
-            onClick={save}
-            disabled={busy || !loaded || !code.trim() || refProblems.length > 0}
-            title={refProblems.length > 0 ? "Fix the reference above first." : undefined}
-          >
-            Save
-          </button>
-          {saved && !saved.approvedAt && (
-            <button className="cc-btn" onClick={approve} disabled={busy}>Approve</button>
-          )}
-          {/* The count sits inside the button's own group so the label reads as one sentence:
-              "Try [ 50 ] rows". A separate field elsewhere in the drawer would make the number and
-              the action look unrelated. */}
-          <span className="cc-try">
-            <label className="cc-try__label" htmlFor="cc-try-rows">Try</label>
-            <input
-              id="cc-try-rows"
-              className="cc-input cc-input--num cc-try__n"
-              type="number"
-              min={1}
-              max={TRY_MAX}
-              size={6}
-              value={tryRows}
-              disabled={busy}
-              onChange={(e) => setTryRows(clampTry(Number(e.target.value)))}
-            />
-            <button
-              className="cc-btn"
-              onClick={runDry}
-              disabled={busy || !saved?.approvedAt || refProblems.length > 0}
-              title={refProblems.length > 0 ? "Fix the reference above first." : undefined}
-            >
-              <IconPlay /> <span>{tryRows === 1 ? "row" : "rows"}</span>
-            </button>
+        {hasRule ? (
+          <>
+            <span className="cc-foot__meta">
+              {saved ? `v${saved.version} · ${saved.hash.slice(0, 8)}` : "unsaved"}
+            </span>
+            <div className="cc-foot__actions">
+              {/* Every disabled state now names its own reason. "Blocked and silent" is the thing
+                  that made this footer unreadable — a control the user cannot use and cannot find
+                  out why reads as a broken app rather than as a step not reached yet. */}
+              <button
+                className="cc-btn"
+                onClick={save}
+                disabled={busy || !loaded || !code.trim() || refProblems.length > 0}
+                title={
+                  refProblems.length > 0 ? "Fix the reference above first."
+                  : !code.trim() ? "Write the rule above first — there is nothing to save yet."
+                  : "Save this rule. It still needs approving before it can run."
+                }
+              >
+                Save
+              </button>
+              {saved && !saved.approvedAt && (
+                <button
+                  className="cc-btn cc-btn--primary"
+                  onClick={approve}
+                  disabled={busy}
+                  title="Approve it to run — generated code runs on your rows only after you have read it."
+                >
+                  Approve
+                </button>
+              )}
+              <span className="cc-try">
+                <label className="cc-try__label" htmlFor="cc-try-rows">Try</label>
+                <input
+                  id="cc-try-rows"
+                  className="cc-input cc-input--num cc-try__n"
+                  type="number"
+                  min={1}
+                  max={TRY_MAX}
+                  size={6}
+                  value={tryRows}
+                  disabled={busy}
+                  onChange={(e) => setTryRows(clampTry(Number(e.target.value)))}
+                />
+                <button
+                  className="cc-btn"
+                  onClick={runDry}
+                  disabled={busy || !saved?.approvedAt || refProblems.length > 0}
+                  title={
+                    refProblems.length > 0 ? "Fix the reference above first."
+                    : !saved ? "Save the rule first."
+                    : !saved.approvedAt ? "Approve the rule first — it has not been allowed to run yet."
+                    : `Run it on ${tryRows} ${tryRows === 1 ? "row" : "rows"} without changing anything.`
+                  }
+                >
+                  <IconPlay /> <span>{tryRows === 1 ? "row" : "rows"}</span>
+                </button>
+              </span>
+            </div>
+          </>
+        ) : (
+          /*
+           * Every other lane autosaves. Saying so is the whole job of this bar: without it the
+           * question "have my changes been kept?" had no answer anywhere except a hint under one
+           * field, and the dead Save button beside it answered "no".
+           */
+          <span className="cc-foot__meta cc-foot__autosave">
+            {gone ? "This column is gone — nothing is being saved."
+              : settingsSaving ? "Saving…"
+              : "Saved. Changes here are kept as you make them."}
           </span>
-        </div>
+        )}
       </footer>
 
       <Modal

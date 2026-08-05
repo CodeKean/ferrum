@@ -96,6 +96,18 @@
 .cc-ref--opt .cc-ref__toggle::after { left: 2px; background: var(--ink-mute); }
 .cc-ref__toggle:focus-visible { outline: 2px solid var(--canvas); outline-offset: 1px; }
 
+/* Both chip controls are SPANS, not buttons — see the reasoning in RefField.tsx. A span brings none
+   of a button's box model with it, so the layout it used to inherit is stated here. */
+.cc-ref__toggle, .cc-ref__x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  font: inherit;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
 .cc-ref__x {
   flex: 0 0 auto;
   width: 14px;

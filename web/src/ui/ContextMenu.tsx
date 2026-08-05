@@ -30,6 +30,13 @@ export interface MenuState {
   y: number;
   items: MenuItem[];
   label: string;
+  /**
+   * What KIND of thing this menu is about — "Table", "Workbook", "Folder", "Column".
+   *
+   * Optional, and only where the same-looking menu can be opened on more than one kind of thing.
+   * With it the heading reads "Workbook · Growth Ops"; without it the menu is unchanged.
+   */
+  scope?: string;
 }
 
 /**
@@ -46,14 +53,14 @@ export function useContextMenu() {
   // cell again; landing at the top of the document means starting the whole traversal over.
   const restoreTo = useRef<HTMLElement | null>(null);
 
-  const open = useCallback((e: React.MouseEvent, label: string, items: MenuItem[]) => {
+  const open = useCallback((e: React.MouseEvent, label: string, items: MenuItem[], scope?: string) => {
     // No items means nothing to offer, so the browser's own menu is left alone rather than replaced
     // with an empty box.
     if (items.length === 0) return;
     e.preventDefault();
     e.stopPropagation();
     restoreTo.current = document.activeElement as HTMLElement | null;
-    setMenu({ x: e.clientX, y: e.clientY, items, label });
+    setMenu({ x: e.clientX, y: e.clientY, items, label, scope });
   }, []);
 
   /**
@@ -63,10 +70,10 @@ export function useContextMenu() {
    * so the caller aims the menu at the focused element's own rect. Without this the entire per-cell
    * and per-row action set was mouse-only.
    */
-  const openAt = useCallback((x: number, y: number, label: string, items: MenuItem[]) => {
+  const openAt = useCallback((x: number, y: number, label: string, items: MenuItem[], scope?: string) => {
     if (items.length === 0) return;
     restoreTo.current = document.activeElement as HTMLElement | null;
-    setMenu({ x, y, items, label });
+    setMenu({ x, y, items, label, scope });
   }, []);
 
   const close = useCallback(() => {
@@ -142,6 +149,20 @@ export function ContextMenu({ menu, onClose, scrollContainer }: {
       scrollContainer={scrollContainer}
     >
       <div className="cc-ctx" ref={listRef} onKeyDown={onKeyDown}>
+        {/*
+          What this menu is about, shown rather than only announced.
+
+          `label` was already being passed on every call and was reaching nothing but `aria-label`, so
+          a sighted user opened an identical-looking list of verbs on a folder, a workbook and a table
+          with nothing saying which they had right-clicked. The scope of a menu is the first thing you
+          need from it and the one thing it was not saying.
+        */}
+        {shown?.scope && (
+          <div className="cc-ctx__scope">
+            <span className="cc-ctx__scope-kind">{shown.scope}</span>
+            <span className="cc-ctx__scope-name truncate" title={shown.label}>{shown.label}</span>
+          </div>
+        )}
         {shown?.items.map((item, i) =>
           item.separator ? (
             <div key={i} className="cc-ctx__sep" role="separator" />

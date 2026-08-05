@@ -71,6 +71,15 @@ export interface AssistantReply {
   /** What it says. Plain English, no markdown headings — this renders in a chat bubble. */
   reply: string;
   actions: Action[];
+  /**
+   * Changes it proposed that this table cannot accept, and which were therefore not offered.
+   *
+   * Counted rather than dropped in silence. A dropped action is invisible in the transcript while
+   * the sentence above it still describes the change — so the panel read as an assistant that says
+   * what it is about to do and then does nothing, which is exactly what it looked like from outside.
+   * The number gives the panel something true to say: it tried, and the change did not fit.
+   */
+  dropped: number;
 }
 
 const SYSTEM = `You are the assistant inside a spreadsheet tool where every column is either typed in, a rule, an HTTP request, or an AI prompt.
@@ -88,7 +97,17 @@ How to answer:
   an AI prompt, and an AI prompt with no need to look anything up on the web should not be an agent.
   In a prompt, refer to another column as /Column name.
   Never claim to have run, changed or deleted anything. You propose; the user applies.
-  If you do not have enough information, say what you would need and ask for it.`;
+  If you do not have enough information, say what you would need and ask for it.
+
+A change you describe in words is a change that does not happen. The words are not wired to anything
+— only the actions array is — so:
+  If you are proposing a change, it MUST be in the actions array. Describing it in the reply and
+  leaving actions empty produces a message that promises something and a screen where nothing can be
+  clicked.
+  Never write in the future tense about a change: not "I'll add a column", not "let me set that up",
+  not "I'm going to change". Say what the action does, in the present, and let the action carry it.
+  If you cannot express what you want as one of the four kinds above, say plainly that this is not
+  something you can set up here, and what the user would do by hand instead.`;
 
 const TOOL_SCHEMA = {
   type: "object",
@@ -237,6 +256,10 @@ export function parseReply(raw: unknown, sheetId: string): AssistantReply {
   // canonical spelling, so what is reported afterwards is what was actually matched.
   const byName = new Map(columns.map((c) => [c.name.trim().toLowerCase(), c.name]));
   const actions: Action[] = [];
+  // Every proposal that arrives, so what did not survive the checks below can be counted rather than
+  // vanishing. Each `continue` and each unmatched branch is a change the reply may already have
+  // described in words.
+  const offered = (Array.isArray(a.actions) ? a.actions : []).length;
 
   for (const r of Array.isArray(a.actions) ? a.actions : []) {
     const why = String(r?.why ?? "").trim();
@@ -278,7 +301,7 @@ export function parseReply(raw: unknown, sheetId: string): AssistantReply {
     }
   }
 
-  return { reply, actions };
+  return { reply, actions, dropped: Math.max(0, offered - actions.length) };
 }
 
 /**
@@ -377,4 +400,76 @@ export function applyAction(sheetId: string, action: Action): string {
 /** SQLite's own clock, so an undone creation carries the same shape of timestamp as a real delete. */
 function nowStamp(): string {
   return String((db.prepare("SELECT datetime('now') AS t").get() as any).t);
+}
+
+// ─────────────────────────────────────────────────────────── the stored conversation
+
+/**
+ * One turn, as it is kept.
+ *
+ * The transcript is stored rather than held in the panel because the panel's own close button used
+ * to destroy it — as did a reload, and as did opening another table and coming back. A conversation
+ * about a table is built up over turns, so losing it costs everything said so far, not just the
+ * last line.
+ */
+export interface StoredTurn {
+  id: number;
+  role: "user" | "assistant";
+  text: string;
+  actions: Action[];
+  /** Which of those actions were applied, by index, and what each one reported. */
+  applied: Record<number, string>;
+}
+
+const MAX_KEPT = 200;
+
+export function loadConversation(sheetId: string): StoredTurn[] {
+  return (db
+    .prepare("SELECT id, role, text, actions_json, applied_json FROM assistant_messages WHERE sheet_id = ? ORDER BY id")
+    .all(sheetId) as any[]).map((r) => ({
+      id: Number(r.id),
+      role: r.role,
+      text: String(r.text),
+      // A malformed blob degrades to "no actions" rather than throwing. A transcript that will not
+      // load is worse than one turn that lost its buttons.
+      actions: safeParse(r.actions_json, []),
+      applied: safeParse(r.applied_json, {}),
+    }));
+}
+
+export function appendTurn(
+  sheetId: string,
+  turn: { role: "user" | "assistant"; text: string; actions?: Action[] },
+): number {
+  const res = db
+    .prepare("INSERT INTO assistant_messages (sheet_id, role, text, actions_json) VALUES (?, ?, ?, ?)")
+    .run(sheetId, turn.role, turn.text, turn.actions?.length ? JSON.stringify(turn.actions) : null);
+  // Trimmed from the front, so a table talked to all week does not grow without limit. The model
+  // only ever reads the last twelve turns anyway, and the rest is there to be read by a person.
+  db.prepare(
+    `DELETE FROM assistant_messages
+      WHERE sheet_id = ?
+        AND id NOT IN (SELECT id FROM assistant_messages WHERE sheet_id = ? ORDER BY id DESC LIMIT ?)`,
+  ).run(sheetId, sheetId, MAX_KEPT);
+  return Number(res.lastInsertRowid);
+}
+
+/** Record that one proposal on one turn was applied, and what it reported. */
+export function markApplied(sheetId: string, turnId: number, actionIndex: number, said: string): void {
+  const row = db
+    .prepare("SELECT applied_json FROM assistant_messages WHERE id = ? AND sheet_id = ?")
+    .get(turnId, sheetId) as any;
+  if (!row) return;
+  const applied = safeParse<Record<number, string>>(row.applied_json, {});
+  applied[actionIndex] = said;
+  db.prepare("UPDATE assistant_messages SET applied_json = ? WHERE id = ?").run(JSON.stringify(applied), turnId);
+}
+
+export function clearConversation(sheetId: string): number {
+  return Number(db.prepare("DELETE FROM assistant_messages WHERE sheet_id = ?").run(sheetId).changes ?? 0);
+}
+
+function safeParse<T>(raw: unknown, fallback: T): T {
+  if (typeof raw !== "string" || !raw) return fallback;
+  try { return JSON.parse(raw) as T; } catch { return fallback; }
 }

@@ -32,6 +32,13 @@ export interface Entry {
   starred: boolean;
   /** Tables inside, for a workbook or folder. Rows, for a table. */
   count: number;
+  /**
+   * How wide a table is. Null for a folder or a workbook, which have no columns of their own.
+   *
+   * A table has two dimensions and the browser reported one, so a list of tables said nothing about
+   * which of them held any structure — a 40-column table and a bare one both read as a row count.
+   */
+  columns: number | null;
   createdAt: string;
   updatedAt: string;
   /** Last time it was actually opened, which is a different question from last changed. */
@@ -164,7 +171,7 @@ export function listFolder(folderId: string | null): Entry[] {
         ORDER BY f.name COLLATE NOCASE`,
     )
     .all(...args) as any[]).map((r): Entry => ({
-      kind: "folder", id: r.id, name: r.name, starred: !!r.starred, count: Number(r.n),
+      kind: "folder", id: r.id, name: r.name, starred: !!r.starred, count: Number(r.n), columns: null,
       createdAt: r.created_at, updatedAt: r.updated_at, openedAt: null,
     }));
 
@@ -176,7 +183,7 @@ export function listFolder(folderId: string | null): Entry[] {
         ORDER BY w.name COLLATE NOCASE`,
     )
     .all(...args) as any[]).map((r): Entry => ({
-      kind: "workbook", id: r.id, name: r.name, starred: !!r.starred, count: Number(r.n),
+      kind: "workbook", id: r.id, name: r.name, starred: !!r.starred, count: Number(r.n), columns: null,
       createdAt: r.created_at, updatedAt: r.updated_at, openedAt: r.opened_at ?? null,
     }));
 
@@ -194,13 +201,14 @@ export function listFolder(folderId: string | null): Entry[] {
 export function listWorkbook(workbookId: string): Entry[] {
   return (db
     .prepare(
-      `SELECT s.*, (SELECT COUNT(*) FROM rows r WHERE r.sheet_id = s.id) AS n
+      `SELECT s.*, (SELECT COUNT(*) FROM rows r WHERE r.sheet_id = s.id) AS n,
+                     (SELECT COUNT(*) FROM columns c WHERE c.sheet_id = s.id) AS c
          FROM sheets s
         WHERE s.workbook_id = ? AND s.archived = 0 AND s.deleted_at IS NULL
         ORDER BY s.position, s.created_at`,
     )
     .all(workbookId) as any[]).map((r): Entry => ({
-      kind: "table", id: r.id, name: r.name, starred: !!r.starred, count: Number(r.n),
+      kind: "table", id: r.id, name: r.name, starred: !!r.starred, count: Number(r.n), columns: Number(r.c ?? 0),
       createdAt: r.created_at, updatedAt: r.updated_at, openedAt: r.opened_at ?? null,
     }));
 }
@@ -244,21 +252,22 @@ export function listRecent(limit = 20): Entry[] {
 
 function everything(): Entry[] {
   const folders = (db.prepare("SELECT * FROM folders WHERE deleted_at IS NULL").all() as any[]).map((r): Entry => ({
-    kind: "folder", id: r.id, name: r.name, starred: !!r.starred, count: 0,
+    kind: "folder", id: r.id, name: r.name, starred: !!r.starred, count: 0, columns: null,
     createdAt: r.created_at, updatedAt: r.updated_at, openedAt: null,
   }));
   const workbooks = (db
     .prepare(`SELECT w.*, (SELECT COUNT(*) FROM sheets s WHERE s.workbook_id = w.id AND s.deleted_at IS NULL) AS n
                 FROM workbooks w WHERE w.archived = 0 AND w.is_template = 0`)
     .all() as any[]).map((r): Entry => ({
-      kind: "workbook", id: r.id, name: r.name, starred: !!r.starred, count: Number(r.n),
+      kind: "workbook", id: r.id, name: r.name, starred: !!r.starred, count: Number(r.n), columns: null,
       createdAt: r.created_at, updatedAt: r.updated_at, openedAt: r.opened_at ?? null,
     }));
   const tables = (db
-    .prepare(`SELECT s.*, (SELECT COUNT(*) FROM rows r WHERE r.sheet_id = s.id) AS n
+    .prepare(`SELECT s.*, (SELECT COUNT(*) FROM rows r WHERE r.sheet_id = s.id) AS n,
+                     (SELECT COUNT(*) FROM columns c WHERE c.sheet_id = s.id) AS c
                 FROM sheets s WHERE s.archived = 0 AND s.deleted_at IS NULL`)
     .all() as any[]).map((r): Entry => ({
-      kind: "table", id: r.id, name: r.name, starred: !!r.starred, count: Number(r.n),
+      kind: "table", id: r.id, name: r.name, starred: !!r.starred, count: Number(r.n), columns: Number(r.c ?? 0),
       createdAt: r.created_at, updatedAt: r.updated_at, openedAt: r.opened_at ?? null,
     }));
   return [...folders, ...workbooks, ...tables];

@@ -382,3 +382,24 @@
   color: var(--text-dim);
   white-space: nowrap;
 }
+
+/* The autosave line, on a lane with no rule to save by hand. Left-aligned and alone: there is no
+   action beside it, so pinning it to one end would leave a void across the rest of the bar. */
+.cc-foot__autosave { flex: 1 1 auto; min-width: 0; }
+
+/* The heading as an editor. Same box as the title so renaming cannot resize the header. */
+.cc-drawer__titleinput {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 24px;
+  padding: 0 var(--s-1);
+  border: 1px solid var(--primary);
+  border-radius: var(--r-xs);
+  background: var(--canvas);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+}
+.cc-drawer__titleinput:focus { outline: none; box-shadow: 0 0 0 3px var(--focus-ring); }
+.cc-drawer__title { cursor: default; }

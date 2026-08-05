@@ -918,16 +918,25 @@ export function backfillCells(sheetId: string, columnId: number): number {
  * own, but the "add rows" route called this bare — so a hundred rows times thirty columns was 3,100
  * separate commits, and a failure part way through left a partial batch behind. `tx` nests, so the
  * import's outer transaction is unaffected: the inner block simply becomes a savepoint.
+ *
+ * `pin` is EXPLICIT rather than a default, because the two callers want opposite answers and the
+ * cost of guessing is silent either way. A paste is a person typing: `setCellValue` pins every
+ * manual edit so a later run cannot overwrite the correction, and a paste that happens to create
+ * rows is the same action as a paste that lands in rows already there — without this flag the first
+ * row of a pasted block was protected and the rest of it was not. An IMPORT is the opposite: pinning
+ * there would make every imported cell permanently immune to the column meant to fill it, which
+ * breaks import-then-run, the app's main flow.
  */
 export function insertRows(
   sheetId: string,
   batch: Array<{ values: Record<string, string>; dedupeKey?: string }>,
   startPosition: number,
   columnIds: number[],
+  pin = false,
 ): number {
   const insRow = db.prepare("INSERT INTO rows (sheet_id, position, dedupe_key) VALUES (?, ?, ?)");
   const insCell = db.prepare(
-    "INSERT INTO cells (row_id, column_id, status, value_text, value_json) VALUES (?, ?, ?, ?, ?)",
+    "INSERT INTO cells (row_id, column_id, status, value_text, value_json, pinned) VALUES (?, ?, ?, ?, ?, ?)",
   );
 
   tx(() => {
@@ -950,7 +959,10 @@ export function insertRows(
         // now yields its object on the FIRST parse instead of the double-encoded string the old
         // write produced. The blob is for values whose parsed form genuinely differs from their
         // text, which is what a run, a derivation or a fan-out produces; those writers set it.
-        insCell.run(rowId, colId, has ? "done" : "empty", has ? raw : null, null);
+        // An EMPTY cell is never pinned, whatever the caller asked for. A pin on a blank protects
+        // nothing and only stops the column that was going to fill it — so a paste of a ragged
+        // block would silently freeze the gaps it left behind.
+        insCell.run(rowId, colId, has ? "done" : "empty", has ? raw : null, null, pin && has ? 1 : 0);
       }
     }
   });

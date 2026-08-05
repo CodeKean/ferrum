@@ -43,7 +43,10 @@ import { errorFacts } from "./errorClass.ts";
 import { redactSecrets } from "./redact.ts";
 import { estimateSetupCost, getSetupSettings, setSetupSettings } from "./setup/setupModel.ts";
 import { applyPlan, nextStep, type TablePlan, type Turn } from "./setup/tableWizard.ts";
-import { applyAction, ask as askAssistant, describeTable, parseReply, type Action, type Message } from "./setup/assistant.ts";
+import {
+  applyAction, appendTurn, ask as askAssistant, clearConversation, describeTable, loadConversation,
+  markApplied, parseReply, type Action, type Message,
+} from "./setup/assistant.ts";
 import {
   createSource, deleteSource, deliver, findByToken, listDeliveries, listSources, rotateToken,
   updateSource, MAX_BODY_BYTES,
@@ -1780,14 +1783,47 @@ export function createServer(bootId: string) {
 
   // ───────────────────────────────────────────────────── the assistant
 
+  /**
+   * The conversation so far. Read from the engine rather than rebuilt by the client, because the
+   * client no longer holds it — the panel used to lose the whole transcript on close.
+   */
+  app.get("/api/sheets/:id/assistant/messages", wrap((req, res) => {
+    const sheetId = param(req, "id");
+    if (!getSheet(sheetId)) return res.status(404).json({ error: "Sheet not found" });
+    res.json({ messages: loadConversation(sheetId) });
+  }));
+
+  /** Start over. Explicit, because the only other way to lose a transcript should be trashing its table. */
+  app.delete("/api/sheets/:id/assistant/messages", wrap((req, res) => {
+    const sheetId = param(req, "id");
+    if (!getSheet(sheetId)) return res.status(404).json({ error: "Sheet not found" });
+    res.json({ removed: clearConversation(sheetId) });
+  }));
+
   app.post("/api/sheets/:id/assistant", wrap(async (req, res) => {
     const sheetId = param(req, "id");
     if (!getSheet(sheetId)) return res.status(404).json({ error: "Sheet not found" });
-    const history: Message[] = (Array.isArray(req.body?.messages) ? req.body.messages : [])
-      .filter((m: any) => m && (m.role === "user" || m.role === "assistant") && typeof m.text === "string")
-      .slice(-20);
-    if (history.length === 0) return res.status(400).json({ error: "Ask something first." });
-    res.json(await askAssistant(sheetId, history));
+    const text = typeof req.body?.text === "string" ? req.body.text.trim() : "";
+    if (!text) return res.status(400).json({ error: "Ask something first." });
+
+    // The history comes from the STORE, not from the request. The client used to send the whole
+    // transcript back on every turn, which meant the model's context was whatever the browser
+    // happened to be holding — and after a reload that was nothing at all, so turn six arrived with
+    // no memory of turns one to five while the user could still read them on screen.
+    const prior: Message[] = loadConversation(sheetId).map((t) => ({ role: t.role, text: t.text }));
+    const userTurn = appendTurn(sheetId, { role: "user", text });
+
+    let reply;
+    try {
+      reply = await askAssistant(sheetId, [...prior, { role: "user" as const, text }].slice(-20));
+    } catch (e) {
+      // The question does not stay in the transcript if it was never answered. Left there it reads
+      // as asked-and-ignored, and asking again would send the failed turn to the model as context.
+      db.prepare("DELETE FROM assistant_messages WHERE id = ?").run(userTurn);
+      throw e;
+    }
+    const assistantTurn = appendTurn(sheetId, { role: "assistant", text: reply.reply, actions: reply.actions });
+    res.json({ ...reply, userTurnId: userTurn, turnId: assistantTurn });
   }));
 
   /** Apply ONE approved action. One at a time, so a good suggestion and a wrong one stay separable. */
@@ -1808,7 +1844,16 @@ export function createServer(bootId: string) {
     if (!checked) {
       return res.status(400).json({ error: "That change does not fit this table any more — ask again." });
     }
-    res.json({ said: applyAction(sheetId, checked) });
+    const said = applyAction(sheetId, checked);
+    // Recorded against the turn it belongs to, so re-opening the panel shows it as applied instead
+    // of offering to do it a second time. Optional in the body: an older client that does not send
+    // the ids still applies the change, it just does not remember afterwards.
+    const turnId = Number(req.body?.turnId);
+    const actionIndex = Number(req.body?.actionIndex);
+    if (Number.isInteger(turnId) && Number.isInteger(actionIndex)) {
+      markApplied(sheetId, turnId, actionIndex, said);
+    }
+    res.json({ said });
   }));
 
   /** What the assistant can see. Exposed so the UI can show it — no hidden context. */
@@ -4429,6 +4474,10 @@ export function createServer(bootId: string) {
           newRows.map((r: any) => ({ values: Object.fromEntries(Object.entries(r ?? {}).map(([k, v]) => [String(k), String(v ?? "")])) })),
           nextRowPosition(sheetId),
           allIds,
+          // Pinned, because these came from a person. The rows this paste LANDS in go through
+          // `setCellValue` below, which pins; without the same answer here one paste produced two
+          // pin states and the first row of a pasted block behaved differently from the rest.
+          true,
         );
         addedRowIds = (
           db.prepare("SELECT id FROM rows WHERE sheet_id = ? AND id > ? ORDER BY id").all(sheetId, startId) as any[]

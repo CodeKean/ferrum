@@ -19,6 +19,7 @@ import { Modal } from "../ui/Modal.tsx";
 import { ShareWorkbook } from "../people/ShareWorkbook.tsx";
 import { useSession } from "../people/SessionGate.tsx";
 import { IconCaretDown, IconCaretUp, IconPlus, IconSearch, IconTable, IconUpload } from "../ui/Icon.tsx";
+import { clickOrDouble } from "../ui/clickOrDouble.ts";
 import {
   CopyDone, DuplicateWorkbook, ImportWorkbook, TemplatizeWorkbook, UseTemplate, type CopyResult,
 } from "./CopyDialogs.tsx";
@@ -30,6 +31,8 @@ export interface Entry {
   name: string;
   starred: boolean;
   count: number;
+  /** How wide a table is. Null for a folder or a workbook, which have no columns of their own. */
+  columns: number | null;
   createdAt: string;
   updatedAt: string;
   openedAt: string | null;
@@ -69,7 +72,7 @@ interface Props {
 }
 
 /** What a column sorts by. Every header offers one — the same rule the sheet grid follows. */
-type SortKey = "name" | "count" | "openedAt" | "createdAt" | "starred";
+type SortKey = "name" | "count" | "columns" | "openedAt" | "createdAt" | "starred";
 
 /** Dates read as "how long ago", which is the only thing anyone wants from this column. */
 function ago(iso: string | null): string {
@@ -144,6 +147,14 @@ export function Home({ startAt, onOpenTable, onBuildTable, onClose, onPathChange
    * copy exists only to drive the highlight, where being one frame late is invisible.
    */
   const draggingRef = useRef<Entry | null>(null);
+  /**
+   * The pending single-click, shared by every row.
+   *
+   * One is enough: only one gesture can be in flight, and clicking a second row while the first is
+   * still deciding is a new gesture that replaces it.
+   */
+  const gestureTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (gestureTimer.current) clearTimeout(gestureTimer.current); }, []);
   const [dragging, setDragging] = useState<Entry | null>(null);
   const [dropInto, setDropInto] = useState<Entry | null>(null);
   /** What is about to be thrown away, waiting to be confirmed. */
@@ -215,6 +226,8 @@ export function Home({ startAt, onOpenTable, onBuildTable, onClose, onPathChange
           kind: "workbook" as const,
           id: t.id, name: t.name, starred: false,
           count: Number(t.tableCount ?? 0),
+          // A template is a workbook, and a workbook has no columns of its own.
+          columns: null,
           createdAt: t.createdAt, updatedAt: t.updatedAt, openedAt: null,
         })));
         setPath([]);
@@ -474,6 +487,9 @@ export function Home({ startAt, onOpenTable, onBuildTable, onClose, onPathChange
       switch (sort.key) {
         case "name": return byName(a, b);
         case "count": return a.count - b.count;
+        // A folder or workbook has no columns of its own; null sorts below every real width rather
+        // than as a zero-column table, which would read as an empty table.
+        case "columns": return (a.columns ?? -1) - (b.columns ?? -1);
         case "starred": return Number(a.starred) - Number(b.starred);
         // Never opened sorts as the earliest, which is what the "—" in that cell means.
         case "openedAt": return String(a.openedAt ?? "").localeCompare(String(b.openedAt ?? ""));
@@ -619,6 +635,9 @@ export function Home({ startAt, onOpenTable, onBuildTable, onClose, onPathChange
             <tr>
               {th("name", "Name", "name")}
               {th("count", inWorkbook ? "Rows" : "Holds", inWorkbook ? "rows" : "what it holds", "cc-fx__num")}
+              {/* Only inside a workbook, where every row IS a table. At the root the list is folders
+                  and workbooks, and a width column would be a column of dashes. */}
+              {inWorkbook && th("columns", "Columns", "columns", "cc-fx__num")}
               {th("openedAt", "Last opened", "last opened")}
               {th("createdAt", "Created", "created")}
               {th("starred", <IconStar filled={false} />, "starred", "cc-fx__starhead")}
@@ -630,12 +649,12 @@ export function Home({ startAt, onOpenTable, onBuildTable, onClose, onPathChange
               // loaded, so arriving data cannot shift what is under the pointer.
               Array.from({ length: 8 }, (_, i) => (
                 <tr key={i} className="cc-fx__row">
-                  <td colSpan={5}><span className="cc-skel" style={{ width: `${35 + ((i * 13) % 40)}%` }} /></td>
+                  <td colSpan={inWorkbook ? 6 : 5}><span className="cc-skel" style={{ width: `${35 + ((i * 13) % 40)}%` }} /></td>
                 </tr>
               ))
             ) : shown.length === 0 ? (
               <tr className="cc-fx__row cc-fx__row--empty">
-                <td colSpan={5}>
+                <td colSpan={inWorkbook ? 6 : 5}>
                   <span className="cc-fx__empty">
                     {query.trim() ? "Nothing matches that."
                       : at.view === "recent" ? "Nothing opened yet. Tables you open show up here."
@@ -651,8 +670,19 @@ export function Home({ startAt, onOpenTable, onBuildTable, onClose, onPathChange
                 <tr
                   key={`${e.kind}:${e.id}`}
                   className={`cc-fx__row${dropInto?.id === e.id ? " cc-fx__row--drop" : ""}${dragging?.id === e.id ? " cc-fx__row--dragging" : ""}`}
-                  onDoubleClick={() => { setDraft(e.name); setRenaming(e.id); }}
-                  onContextMenu={(ev) => ctx.open(ev, e.name, menu(e))}
+                  /* The whole row opens it, and a double-click anywhere on the row renames it.
+                     The two used to be split: only the name button opened, and double-clicking that
+                     name ran BOTH — it navigated into the workbook and then opened a rename box on
+                     the screen it had just left. */
+                  {...clickOrDouble(
+                    gestureTimer,
+                    () => open(e),
+                    () => { setDraft(e.name); setRenaming(e.id); },
+                  )}
+                  // The kind goes with the name, so the same-shaped list of verbs says which of the
+                  // three things it is about. A folder, a workbook and a table opened menus that
+                  // looked identical.
+                  onContextMenu={(ev) => ctx.open(ev, e.name, menu(e), e.kind === "workbook" ? "Workbook" : e.kind === "folder" ? "Folder" : "Table")}
                   /* Filing by hand, the way a file manager does it. The right-click route stays —
                      it is the only one that works from a search result, where the destination is
                      not on screen to drop onto. */
@@ -699,7 +729,10 @@ export function Home({ startAt, onOpenTable, onBuildTable, onClose, onPathChange
                         }}
                       />
                     ) : (
-                      <button className="cc-fx__name" onClick={() => open(e)}>
+                      /* Still a button, for the keyboard and for the accessible name — the row it
+                         sits in is not focusable. Its click is left to bubble to the row rather
+                         than handled here, so one gesture cannot be counted twice. */
+                      <button className="cc-fx__name">
                         <span className={`cc-fx__glyph cc-fx__glyph--${e.kind}`} aria-hidden>
                           {e.kind === "folder" ? <IconFolder /> : e.kind === "workbook" ? <IconBook /> : <IconTable size={15} />}
                         </span>
@@ -714,6 +747,13 @@ export function Home({ startAt, onOpenTable, onBuildTable, onClose, onPathChange
                       ? `${e.count.toLocaleString()} ${e.count === 1 ? "row" : "rows"}`
                       : `${e.count.toLocaleString()} ${e.count === 1 ? "item" : "items"}`}
                   </td>
+                  {inWorkbook && (
+                    <td className="cc-fx__num mono">
+                      {e.columns == null
+                        ? "—"
+                        : `${e.columns.toLocaleString()} ${e.columns === 1 ? "column" : "columns"}`}
+                    </td>
+                  )}
                   <td className="cc-fx__when">{e.kind === "folder" ? "—" : ago(e.openedAt)}</td>
                   <td className="cc-fx__when">{ago(e.createdAt)}</td>
                   <td>

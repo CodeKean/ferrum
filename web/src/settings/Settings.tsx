@@ -345,7 +345,19 @@ export function Settings({ section, onSection, onClose, usageScope, usageScopeId
     <div className="cc-setpage">
       <header className="cc-setpage__top">
         <button className="cc-btn cc-setpage__back" onClick={onClose}>← Back to the table</button>
-        <h1 className="cc-setpage__h1">Settings</h1>
+        {/* "Settings" alone did not say WHOSE. A table has its own settings and so does a workbook,
+            and with all three titled the same word, a spending limit here and a spending limit on the
+            table menu read as the same control in two places rather than as two limits at two
+            levels. The scope is stated, and so is what it reaches. */}
+        <div className="cc-setpage__heading">
+          <h1 className="cc-setpage__h1">
+            <span className="cc-setpage__scope">Workspace</span> settings
+          </h1>
+          <p className="cc-setpage__lede">
+            These apply to every table on this machine. A single table's own limits, schedules and
+            duplicate rule live on that table's <strong>⋯</strong> menu.
+          </p>
+        </div>
       </header>
 
       <div className="cc-setpage__body">

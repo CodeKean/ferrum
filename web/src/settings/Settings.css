@@ -250,3 +250,14 @@
   line-height: 1.45;
   color: var(--ink-mute-2);
 }
+
+/* The page says whose settings these are. The scope word carries the weight; "settings" is the
+   noun everything here shares and is the part that was never in question. */
+.cc-setpage__heading { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.cc-setpage__scope { color: var(--primary); }
+.cc-setpage__lede {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-mute);
+}

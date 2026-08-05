@@ -1074,15 +1074,28 @@ async function runCell(
       // for one row. `schema` is the only class the engine caps at a single retry, which is the
       // closest thing to terminal available from here — and it is honest, because what came back was
       // the wrong shape.
+      //
+      // `empty` is carved out of the `schema` bucket it used to fall into. What came back was not the
+      // wrong shape — nothing came back at all, twice, the second time after the loop asked directly
+      // for the answer tool. Calling that a schema failure sent the user to look at their data type
+      // and their instruction, neither of which had anything to do with it.
       const errorType: ErrClass =
-        res.stoppedBy === "timeout" ? "timeout" : res.stoppedBy === "budget" ? "budget" : "schema";
+        res.stoppedBy === "timeout" ? "timeout"
+        : res.stoppedBy === "budget" ? "budget"
+        : res.stoppedBy === "empty" ? "empty"
+        : "schema";
       return {
         status: "error",
         errorType,
         errorMsg:
           res.stoppedBy === "budget"
             ? `This cell hit its $${cap.toFixed(2)} limit before answering. Raise it on the column, or use a cheaper model.`
-            : `The model stopped without answering (${res.stoppedBy}).`,
+            : res.stoppedBy === "empty"
+              // Says what happened and what to do. "Stopped without answering" was accurate and
+              // actionless — it reads as Ferrum losing the answer rather than as the model returning
+              // none, and it named no next step.
+              ? `${res.model || model} returned nothing at all, twice — no answer and no explanation. Some models do this on particular rows every time. Try a different model for this column.`
+              : `The model stopped without answering (${res.stoppedBy}).`,
         costUsd,
         durationMs,
         ...spent,
