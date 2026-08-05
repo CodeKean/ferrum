@@ -112,6 +112,11 @@ function urlToBrowser(at: BrowserAt): void {
   else url.searchParams.delete("workbook");
   if (at.folderId) url.searchParams.set("folder", at.folderId);
   else url.searchParams.delete("folder");
+  // The settings keys go, for the same reason `urlToSheet` drops them: this address is now the file
+  // browser, and an address that still says `settings=models` reopens Settings over it on the next
+  // reload. `urlToSheet` had this and its twin did not, so the leak only appeared when Settings was
+  // closed with NO table open — the one path that lands here instead of there.
+  for (const k of ["settings", "uscope", "uid"]) url.searchParams.delete(k);
   history.replaceState(null, "", url);
 }
 
