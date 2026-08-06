@@ -419,7 +419,12 @@ export function SendSettings({ column, columns, refOptions, sheets, value, onCha
               onChange={(e) => setNewName(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter" && newName.trim()) void createTable(); }}
             />
-            <button className="cc-btn cc-btn--primary" disabled={creating || !newName.trim()} onClick={() => void createTable()}>
+            <button
+              className="cc-btn cc-btn--primary"
+              disabled={creating || !newName.trim()}
+              title={newName.trim() ? "Create the table and send into it." : "Give the new table a name first."}
+              onClick={() => void createTable()}
+            >
               {creating ? "Creating…" : "Create it"}
             </button>
           </div>
@@ -716,6 +721,14 @@ export function SendSettings({ column, columns, refOptions, sheets, value, onCha
           className="cc-btn cc-btn--xs"
           onClick={() => void runPreview()}
           disabled={busy || working || !cfg.targetSheetId || matched.length === 0}
+          /* A preview button that cannot be pressed and will not say why is worse than none: this is
+             the control that exists to show what a write will do BEFORE it does it. */
+          title={
+            !cfg.targetSheetId ? "Pick a destination table first."
+            : matched.length === 0 ? "Nothing is mapped yet, so there is nothing to preview."
+            : working ? "Working out what this would write…"
+            : "See exactly what this would write, without writing it."
+          }
         >
           <IconPlay /> <span>Preview</span>
         </button>

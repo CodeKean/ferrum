@@ -80,7 +80,12 @@ export function SaveTemplate(
       footNote="What the column DOES is kept — the instruction, the model, the request. Its values, its history and what it cost are not."
       footer={
         <>
-          <button className="cc-btn cc-btn--primary" onClick={() => void save()} disabled={busy || !name.trim()}>
+          <button
+            className="cc-btn cc-btn--primary"
+            onClick={() => void save()}
+            disabled={busy || !name.trim()}
+            title={name.trim() ? "Keep this column’s setup so another table can start from it." : "Give the template a name first."}
+          >
             {busy ? "Keeping…" : "Keep it"}
           </button>
           <button className="cc-btn" onClick={onClose} disabled={busy}>Cancel</button>

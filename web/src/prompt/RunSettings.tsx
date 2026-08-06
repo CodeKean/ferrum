@@ -300,7 +300,14 @@ export function RunSettings({ column, columns, refOptions, paid, onSaved }: Prop
           {condition && (
             <button className="cc-btn cc-btn--xs" onClick={() => void remove()} disabled={busy}>Turn off</button>
           )}
-          <button className="cc-btn cc-btn--xs" onClick={() => void saveCondition()} disabled={busy || !code.trim()}>
+          <button
+            className="cc-btn cc-btn--xs"
+            onClick={() => void saveCondition()}
+            disabled={busy || !code.trim()}
+            title={code.trim()
+              ? "Save this condition. It still needs approving before it can run."
+              : "Write the condition above first — there is nothing to save yet."}
+          >
             Save
           </button>
           {condition && !condition.approvedAt && (
@@ -392,6 +399,13 @@ export function RunSettings({ column, columns, refOptions, paid, onSaved }: Prop
                 className="cc-btn cc-btn--primary"
                 onClick={() => void saveAutoRun(true, cap.trim() ? Number(cap) : null)}
                 disabled={busy || (!!cap.trim() && !(Number(cap) > 0))}
+                /* The one thing that can hold this button is an unusable ceiling, and it used to
+                   grey out without naming which field was wrong. */
+                title={
+                  !!cap.trim() && !(Number(cap) > 0)
+                    ? "The ceiling has to be an amount above zero, or left blank for no limit."
+                    : "Run this column by itself whenever the columns it reads change."
+                }
               >
                 Turn it on
               </button>

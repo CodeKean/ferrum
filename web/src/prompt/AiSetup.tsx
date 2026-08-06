@@ -317,7 +317,12 @@ export function AiSetup({
           )}
 
           <div className="cc-ai__actions">
-            <button className="cc-btn cc-btn--primary" onClick={() => void propose()} disabled={busy || !intent.trim()}>
+            <button
+              className="cc-btn cc-btn--primary"
+              onClick={() => void propose()}
+              disabled={busy || !intent.trim()}
+              title={intent.trim() ? "Work out how this column should be set up." : "Say what this column should do first."}
+            >
               <IconPlay /> <span>{busy ? "Working…" : "Set it up"}</span>
             </button>
 
@@ -460,6 +465,9 @@ export function AiSetup({
                     className="cc-btn cc-btn--primary cc-btn--xs"
                     onClick={() => void apply()}
                     disabled={busy || proposal.changes.length === 0}
+                    title={proposal.changes.length === 0
+                      ? "There is nothing here to apply — it proposed no changes."
+                      : "Apply these to the column."}
                   >
                     Apply {proposal.changes.length} change{proposal.changes.length === 1 ? "" : "s"}
                   </button>

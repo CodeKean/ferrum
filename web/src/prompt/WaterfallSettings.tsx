@@ -169,6 +169,7 @@ export function WaterfallSettings({ value, onChange, busy, error }: Props) {
                   className="hk-icon-btn"
                   aria-label={`Move ${step.name} up`}
                   disabled={i === 0 || busy}
+                  title={i === 0 ? "This is already the first step it tries." : "Try this step earlier."}
                   onClick={() => move(i, -1)}
                 >
                   <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="m4 10 4-4 4 4" /></svg>
@@ -177,6 +178,7 @@ export function WaterfallSettings({ value, onChange, busy, error }: Props) {
                   className="hk-icon-btn"
                   aria-label={`Move ${step.name} down`}
                   disabled={i === waterfall.steps.length - 1 || busy}
+                  title={i === waterfall.steps.length - 1 ? "This is already the last step it tries." : "Try this step later."}
                   onClick={() => move(i, 1)}
                 >
                   <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="m4 6 4 4 4-4" /></svg>

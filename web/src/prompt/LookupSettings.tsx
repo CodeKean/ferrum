@@ -442,6 +442,14 @@ export function LookupSettings({ column, columns, sheetId, sheets: allSheets, on
             <button
               className="cc-btn cc-btn--primary"
               disabled={busy || !newTarget || !newHere || !newThere}
+              /* Named, rather than greyed in silence. Three pickers above it and no indication of
+                 which one is still empty reads as a broken button. */
+              title={
+                !newTarget ? "Pick the table to read from first."
+                : !newHere ? "Pick the column on this table that identifies a row."
+                : !newThere ? "Pick the column on the other table it should match against."
+                : "Check the two columns against each other and save the link."
+              }
               onClick={() => void createLink()}
             >
               {busy ? "Checking…" : "Link them"}
