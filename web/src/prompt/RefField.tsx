@@ -27,6 +27,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { RefMenu, type RefOption } from "./RefMenu.tsx";
+import { findTrigger } from "./trigger.ts";
 import { parseRefNodes, serializeRefNodes, type RefNode } from "../../../src/refNodes.ts";
 import { RefPreview } from "./RefPreview.tsx";
 import type { Column } from "../api.ts";
@@ -278,46 +279,51 @@ export function RefField({
   const refreshTrigger = useCallback(() => {
     const at = beforeCaret();
     if (!at) { setTrigger(null); return; }
-    const upto = at.node.textContent?.slice(0, at.offset) ?? "";
-    // A slash opens the menu only at a word boundary. Mid-word — and in `https://` — it is just a
-    // slash. There is no escape syntax any more, precisely because a slash is never consumed.
-    const m = /(^|\s)\/([^/\s]*)$/.exec(upto);
-    if (!m) { setTrigger(null); return; }
-    setTrigger({ query: m[2] ?? "" });
+    const t = findTrigger(at.node.textContent?.slice(0, at.offset) ?? "");
+    if (!t) { setTrigger(null); return; }
+    setTrigger({ query: t.query });
     setCaret(selectionRect(box.current));
   }, []);
 
-  /** Replace the `/query` before the caret with a chip, and put the caret after it. */
+  /**
+   * Replace the `/query` before the caret with a chip, and put the caret after it.
+   *
+   * It ALWAYS inserts. It used to give up silently when the trigger could not be located — the menu
+   * closed, nothing appeared, and nothing said why — which made a real bug indistinguishable from a
+   * misfire. If the trigger has gone (the caret moved, the text node was replaced), the chip goes at
+   * the end of the field instead: a chip in a slightly wrong place can be dragged or deleted, where
+   * a pick that does nothing at all can only be repeated in the hope it works.
+   */
   const insert = useCallback((column: Column) => {
     const el = box.current;
     if (!el) return;
     const at = beforeCaret();
+    const chip = chipEl({ type: "ref", columnId: String(column.id), name: column.name, path: "", optional: false });
+    const range = document.createRange();
 
-    if (at) {
-      const upto = at.node.textContent?.slice(0, at.offset) ?? "";
-      const m = /(^|\s)\/([^/\s]*)$/.exec(upto);
-      if (m) {
-        const start = at.offset - (m[0].length - m[1]!.length);
-        const range = document.createRange();
-        range.setStart(at.node, start);
-        range.setEnd(at.node, at.offset);
-        range.deleteContents();
-
-        const chip = chipEl({ type: "ref", columnId: String(column.id), name: column.name, path: "", optional: false });
-        range.insertNode(chip);
-        // A trailing space, so the next thing typed is not glued to the chip and the caret lands in
-        // real text rather than in the gap between two inert elements — where some engines refuse to
-        // place it at all.
-        const after = document.createTextNode(" ");
-        chip.after(after);
-        const sel = window.getSelection();
-        const put = document.createRange();
-        put.setStart(after, 1);
-        put.collapse(true);
-        sel?.removeAllRanges();
-        sel?.addRange(put);
-      }
+    const t = at ? findTrigger(at.node.textContent?.slice(0, at.offset) ?? "") : null;
+    if (at && t) {
+      range.setStart(at.node, t.start);
+      range.setEnd(at.node, at.offset);
+      range.deleteContents();
+    } else {
+      range.selectNodeContents(el);
+      range.collapse(false);
     }
+    range.insertNode(chip);
+
+    // A trailing space, so the next thing typed is not glued to the chip and the caret lands in
+    // real text rather than in the gap between two inert elements — where some engines refuse to
+    // place it at all.
+    const after = document.createTextNode(" ");
+    chip.after(after);
+    const sel = window.getSelection();
+    const put = document.createRange();
+    put.setStart(after, 1);
+    put.collapse(true);
+    sel?.removeAllRanges();
+    sel?.addRange(put);
+
     setTrigger(null);
     emit();
     el.focus();

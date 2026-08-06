@@ -11,7 +11,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, type Column, type MatchMode, type Relation, type RollupFn, type Sheet } from "../api.ts";
-import { Select } from "../ui/Select.tsx";
+import { Select, SAVING_REASON } from "../ui/Select.tsx";
 import { IconAlert, IconCheck } from "../ui/Icon.tsx";
 import "./LookupSettings.css";
 
@@ -265,6 +265,8 @@ export function LookupSettings({ column, columns, sheetId, sheets: allSheets, on
                           { value: "normalized", label: "Ignoring case and formatting", hint: "usual" },
                           { value: "fuzzy", label: "Ignoring Ltd, Inc and word order", hint: "loose" },
                         ]}
+                        disabled={busy}
+                        disabledReason={SAVING_REASON}
                         onChange={(v) => void changeMode(r.id, v as MatchMode)}
                       />
                     </div>
@@ -304,6 +306,8 @@ export function LookupSettings({ column, columns, sheetId, sheets: allSheets, on
                   { value: "max", label: "Largest" },
                   { value: "list", label: "All the values, joined" },
                 ]}
+                disabled={busy}
+                disabledReason={SAVING_REASON}
                 onChange={(v) => {
                   const next = v as RollupFn;
                   setPendingFn(next);
@@ -335,6 +339,8 @@ export function LookupSettings({ column, columns, sheetId, sheets: allSheets, on
                       .filter((c) => Number(c.id) !== chosen.toColumnId)
                       .map((c) => ({ value: String(c.id), label: c.name, hint: c.valueType })),
                   ]}
+                  disabled={busy}
+                  disabledReason={SAVING_REASON}
                   onChange={(v) => { if (v) void saveRollup(chosen.id, fn, Number(v)); }}
                 />
               </div>
@@ -372,6 +378,8 @@ export function LookupSettings({ column, columns, sheetId, sheets: allSheets, on
                   .filter((c) => Number(c.id) !== chosen.toColumnId)
                   .map((c) => ({ value: String(c.id), label: c.name, hint: c.valueType })),
               ]}
+              disabled={busy}
+              disabledReason={SAVING_REASON}
               onChange={(v) => { if (v) void useRelation(chosen.id, Number(v)); }}
             />
           </div>
@@ -404,6 +412,8 @@ export function LookupSettings({ column, columns, sheetId, sheets: allSheets, on
                   showLabel={false}
                   size="md"
                   options={[{ value: "", label: "Pick a table…" }, ...sheets.map((s) => ({ value: s.id, label: s.name }))]}
+                  disabled={busy}
+                  disabledReason={SAVING_REASON}
                   onChange={(v) => { setNewTarget(v); setNewThere(""); }}
                 />
               </div>
@@ -415,12 +425,14 @@ export function LookupSettings({ column, columns, sheetId, sheets: allSheets, on
                   showLabel={false}
                   size="md"
                   options={[{ value: "", label: "Pick a column…" }, ...keyColumns.map((c) => ({ value: String(c.id), label: c.name, hint: c.valueType }))]}
+                  disabled={busy}
+                  disabledReason={SAVING_REASON}
                   onChange={setNewHere}
                 />
               </div>
               <div className="cc-lk__field">
                 <span className="cc-lk__label">…against their</span>
-                <TargetColumnPicker sheetId={newTarget} value={newThere} onChange={setNewThere} />
+                <TargetColumnPicker sheetId={newTarget} value={newThere} onChange={setNewThere} busy={busy} />
               </div>
             </div>
             <p className="cc-lk__hint">
@@ -453,7 +465,7 @@ export function LookupSettings({ column, columns, sheetId, sheets: allSheets, on
  * Its own component so picking a table does not re-render the whole panel while its columns arrive,
  * and so the empty state — a table with no columns yet — is a real state rather than a silent gap.
  */
-function TargetColumnPicker({ sheetId, value, onChange }: { sheetId: string; value: string; onChange: (v: string) => void }) {
+function TargetColumnPicker({ sheetId, value, onChange, busy }: { sheetId: string; value: string; onChange: (v: string) => void; busy?: boolean }) {
   const [cols, setCols] = useState<Column[] | null>(null);
 
   useEffect(() => {
@@ -475,6 +487,8 @@ function TargetColumnPicker({ sheetId, value, onChange }: { sheetId: string; val
         { value: "", label: !sheetId ? "Pick a table first" : cols == null ? "Loading…" : cols.length === 0 ? "That table has no columns" : "Pick a column…" },
         ...(cols ?? []).map((c) => ({ value: String(c.id), label: c.name, hint: c.valueType })),
       ]}
+      disabled={busy}
+      disabledReason={SAVING_REASON}
       onChange={onChange}
     />
   );

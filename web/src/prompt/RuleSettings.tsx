@@ -11,7 +11,7 @@
 
 import { useState } from "react";
 import { patternRisk, RULE_KINDS, ruleIsComplete, type Rule, type RuleKind, type RuleSet } from "@shared/validate.ts";
-import { Select } from "../ui/Select.tsx";
+import { Select, SAVING_REASON } from "../ui/Select.tsx";
 import { IconPlus, IconTrash } from "../ui/Icon.tsx";
 import "./RuleSettings.css";
 
@@ -151,6 +151,8 @@ export function RuleSettings({ value, onChange, busy, error }: Props) {
           options={RULE_KINDS.map((k) => ({ value: k, label: LABEL[k] }))}
           onChange={setAdding}
           size="sm"
+          disabled={busy}
+          disabledReason={SAVING_REASON}
         />
         <button
           className="cc-btn cc-btn--ghost cc-btn--sm"
@@ -172,6 +174,8 @@ export function RuleSettings({ value, onChange, busy, error }: Props) {
           ]}
           onChange={(v) => commit(rules, v)}
           size="sm"
+          disabled={busy}
+          disabledReason={SAVING_REASON}
         />
         <span className="cc-field__hint">
           {/* Said plainly, because this is the choice people get wrong. Switching a populated column

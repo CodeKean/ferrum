@@ -12,7 +12,7 @@
 
 import { useEffect, useState } from "react";
 import { api, type ModelPrice, type ProviderPrices } from "../api.ts";
-import { Select } from "../ui/Select.tsx";
+import { Select, SAVING_REASON } from "../ui/Select.tsx";
 import { IconAlert, IconCheck, IconTrash } from "../ui/Icon.tsx";
 import "./PriceForm.css";
 
@@ -177,6 +177,8 @@ export function PriceForm({ providerId, providerLabel }: Props) {
             label="Quoted"
             value={String(scale)}
             options={SCALES}
+            disabled={busy}
+            disabledReason={SAVING_REASON}
             onChange={(v) => setScale(Number(v))}
             size="sm"
             // The field already carries the "Quoted" heading above it; repeating it on the trigger

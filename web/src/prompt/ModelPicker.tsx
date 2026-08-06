@@ -128,6 +128,12 @@ export function ModelPicker({ value, toolsRequired, onChange, busy, offLabel, la
         size="md"
         showLabel={false}
         onChange={onChange}
+        /* Inert while the last choice is still being saved. `busy` was already passed in and was
+           only ever used to print "Saving…" underneath, so the control it describes stayed live —
+           picking a second model mid-save races two writes for the field that decides what a run
+           costs, and whichever answer arrives last wins. */
+        disabled={busy}
+        disabledReason="Saving the model you just picked. This unlocks in a moment."
       />
 
       {/* Loading, empty and failed are three different things, and collapsing them into one leaves a

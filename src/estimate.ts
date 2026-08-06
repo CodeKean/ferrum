@@ -106,6 +106,20 @@ export interface RunCost {
    * because then nothing is known to be missing — only unknown.
    */
   missingModels: string[];
+  /**
+   * Whether the published price list could be read at all.
+   *
+   * The one fact that separates the two very different reasons a column ends up unpriced, and it was
+   * computed here and then thrown away — never returned, so the screen that blocks the run could not
+   * tell them apart. With no key configured, or the provider briefly down, EVERY paid column was
+   * greyed out under the message "pick a model with a price", when no model had one and picking a
+   * different one could not possibly help.
+   *
+   * See `missingModels` above: a model the list does not contain is gone and that run should be
+   * refused. A list that could not be fetched means we cannot tell, and refusing every paid run
+   * because a price sheet timed out is the worse failure of the two.
+   */
+  catalogueReachable: boolean;
   /** True when nothing in this run bills at all — a script-only run really is free. */
   free: boolean;
   /**
@@ -469,6 +483,7 @@ export async function estimateRun(
     columns: out,
     incomplete,
     missingModels: [...new Set(missingModels)],
+    catalogueReachable,
     external,
     // "Free" means NOTHING bills — not that the total rounded to zero, and not that we simply could
     // not price it. A million rows of a fraction-of-a-cent model rounds to nothing per row and is not

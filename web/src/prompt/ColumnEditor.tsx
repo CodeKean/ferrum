@@ -228,7 +228,6 @@ export function ColumnEditor({ sheetId, column, columns, sheets, rowCount, onClo
   // in the app could fill it — so every model column reported "this column has no prompt yet"
   // forever, and the Rule tab it was sent to compiles what you type as JavaScript.
   const [prompt, setPrompt] = useState(column.prompt ?? "");
-  const [promptSaved, setPromptSaved] = useState(column.prompt ?? "");
   const [promptError, setPromptError] = useState<string | null>(null);
   /**
    * The column this drawer is editing no longer exists.
@@ -241,6 +240,43 @@ export function ColumnEditor({ sheetId, column, columns, sheets, rowCount, onClo
   /** Whether the heading is currently an editor. Opened by double-clicking it. */
   const [renamingTitle, setRenamingTitle] = useState(false);
   const [autoRun, setAutoRun] = useState(!!column.autoRun);
+
+  /**
+   * The instruction field's wrapper, used only to answer "is the caret in there right now?".
+   *
+   * See `savePrompt` below: the server's canonical text is adopted after a save, and repainting a
+   * field somebody is typing in would move their caret mid-sentence.
+   */
+  const promptFieldRef = useRef<HTMLDivElement>(null);
+
+  /**
+   * The last thing typed, so a finished save knows whether it is still the current one.
+   *
+   * The hint under the field used to read `prompt !== promptSaved`, which worked only while the
+   * saved text was byte-identical to the typed text. It is not: the server canonicalizes a
+   * plain-text reference into a real one, so the moment `promptSaved` holds the truth that
+   * comparison is permanently unequal and the field says "Saving…" forever.
+   */
+  const promptLatest = useRef(column.prompt ?? "");
+  const [promptDirty, setPromptDirty] = useState(false);
+
+  /**
+   * A correction from the server waiting for the caret to leave. See `savePrompt` and `adoptStored`.
+   *
+   * `sent` is what produced it, so it can be discarded if the field has moved on since — applying a
+   * correction to text that has since been rewritten would undo the rewrite.
+   */
+  const promptCanonical = useRef<{ sent: string; stored: string } | null>(null);
+
+  /** Apply a held correction, once the field is no longer being typed in. */
+  const adoptStored = useCallback(() => {
+    const pending = promptCanonical.current;
+    if (!pending) return;
+    promptCanonical.current = null;
+    if (promptLatest.current !== pending.sent) return;
+    promptLatest.current = pending.stored;
+    setPrompt(pending.stored);
+  }, []);
 
   const savePrompt = useCallback(async (next: string) => {
     setBusy(true);
@@ -262,7 +298,37 @@ export function ColumnEditor({ sheetId, column, columns, sheets, rowCount, onClo
         return;
       }
       setPromptError(null);
-      setPromptSaved(next);
+      /**
+       * What the SERVER stored, not what we sent.
+       *
+       * The two are routinely different and the difference is a feature: type `/Company` as plain
+       * text and the server canonicalizes it into a real reference before storing. Recording `next`
+       * meant the field said "Saved." for a version the database did not hold, and the cost estimate
+       * beside it was calculated on the wrong text — right again only after a reload.
+       *
+       * Falls back to `next` if the response does not carry the column, so an older engine behaves
+       * exactly as before rather than showing a permanent "Saving…".
+       */
+      const stored = typeof res.column?.prompt === "string" ? res.column.prompt : next;
+      // Re-seeding the visible field is what makes the chip appear in place of the text that was
+      // typed — but only when nobody is typing in it. RefField adopts an outside change by
+      // repainting its whole content, and a repaint mid-edit destroys the caret.
+      //
+      // The common case is that somebody IS typing: this autosaves a moment after the keys stop, so
+      // the correction almost always arrives while the caret is still in the field. Held until they
+      // leave rather than dropped — dropping it is what left the field showing text the database
+      // does not hold until the next reload.
+      if (stored !== next) {
+        if (promptFieldRef.current?.contains(document.activeElement)) {
+          promptCanonical.current = { sent: next, stored };
+        } else {
+          setPrompt(stored);
+          promptLatest.current = stored;
+        }
+      }
+      // Only if nothing has been typed since this save left. Otherwise a newer save is already on
+      // its way and the field is genuinely still unsaved.
+      if (promptLatest.current === next || promptLatest.current === stored) setPromptDirty(false);
       onSaved();
     } catch {
       setPromptError("Could not reach the engine to save the instruction.");
@@ -292,7 +358,8 @@ export function ColumnEditor({ sheetId, column, columns, sheets, rowCount, onClo
       setValueType(c.valueType);
       setModel(c.model ?? "auto");
       setPrompt(c.prompt ?? "");
-      setPromptSaved(c.prompt ?? "");
+      promptLatest.current = c.prompt ?? "";
+      setPromptDirty(false);
       setAutoRun(!!c.autoRun);
       setHttp({ ...DEFAULT_HTTP, ...((c.httpConfig ?? {}) as Partial<HttpConfig>) });
       setMcp({ ...DEFAULT_MCP, ...(((c as any).mcpConfig ?? {}) as Partial<McpConfig>) });
@@ -526,7 +593,7 @@ export function ColumnEditor({ sheetId, column, columns, sheets, rowCount, onClo
     }
   }, [column.id, column.name, onSaved]);
   /** The one autosaved field the footer can see the state of. */
-  const settingsSaving = prompt !== promptSaved && !promptError;
+  const settingsSaving = promptDirty && !promptError;
 
   // A drawer that cannot be dismissed the way every other drawer can is the defect; a drawer that
   // discards a script on a stray click is a worse one. So: dismiss freely when clean, ask when not.
@@ -1280,7 +1347,7 @@ export function ColumnEditor({ sheetId, column, columns, sheets, rowCount, onClo
               never labelling the prompt — a `<label>` cannot label a contenteditable, so the element
               bought nothing even before the chips existed. The field carries its own `aria-label`.
             */}
-            <div className="cc-field">
+            <div className="cc-field" ref={promptFieldRef}>
               <span className="cc-field__label" id="cc-prompt-label">
                 What should the model put in this cell?
                 <span className="cc-field__sub">runs once per row</span>
@@ -1297,8 +1364,15 @@ export function ColumnEditor({ sheetId, column, columns, sheets, rowCount, onClo
                 value={prompt}
                 columns={columns}
                 options={refOptions}
-                onChange={(v) => { setPrompt(v); promptSave.schedule(v); }}
-                onBlur={promptSave.flush}
+                onChange={(v) => {
+                  setPrompt(v);
+                  promptLatest.current = v;
+                  setPromptDirty(true);
+                  // A correction held for a value that has just been typed over is stale.
+                  promptCanonical.current = null;
+                  promptSave.schedule(v);
+                }}
+                onBlur={() => { promptSave.flush(); adoptStored(); }}
                 showChips
               />
               {/* "Saving…" is only true while a save is actually in flight. Showing it for anything
@@ -1306,7 +1380,7 @@ export function ColumnEditor({ sheetId, column, columns, sheets, rowCount, onClo
                   the drawer stays open. */}
               <span className="cc-field__hint">
                 Type <kbd>/</kbd> to put another column's value in.{" "}
-                {gone ? "Not saved." : prompt !== promptSaved ? (promptError ? "Not saved." : "Saving…") : "Saved."}
+                {gone ? "Not saved." : promptDirty ? (promptError ? "Not saved." : "Saving…") : "Saved."}
               </span>
             </div>
 

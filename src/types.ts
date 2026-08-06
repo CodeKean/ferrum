@@ -225,6 +225,18 @@ export interface Column {
   onUpstreamError: "block" | "run" | "fallback";
   autoRecompute: boolean;
 
+  /**
+   * How a `lookup` or `rollup` column reads across a link.
+   *
+   * Read off the row by `toColumn` since these lanes shipped, and declared here only now — which
+   * meant every reader had to reach for them through a cast, and nothing checked that the name it
+   * used was the name the store sets. `rollup` stays loosely typed because its shape belongs to
+   * rollup.ts, which validates it.
+   */
+  relationId?: number | null;
+  lookupColumnId?: number | null;
+  rollup?: { fn?: string } | Record<string, unknown>;
+
   /** The column this one is a JSON projection of, and the path it reads. Null on every other column. */
   sourceColumnId?: number | null;
   jsonPath?: string | null;

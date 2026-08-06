@@ -23,7 +23,7 @@
 // their results were filtered and acts on output that was not.
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Select } from "../ui/Select.tsx";
+import { Select, SAVING_REASON } from "../ui/Select.tsx";
 import { useAutosave } from "../ui/useAutosave.ts";
 import { searchCostUsd } from "./cost.ts";
 import "./SearchSettings.css";
@@ -268,6 +268,8 @@ export function SearchSettings({ value, onChange, error, busy }: Props) {
             options={ENGINES}
             size="md"
             showLabel={false}
+            disabled={busy}
+            disabledReason={SAVING_REASON}
             onChange={(v) => set({ engine: v, ...(keepsContext(v) ? {} : { contextSize: null }) })}
           />
           <span className="cc-field__hint">
@@ -413,6 +415,8 @@ export function SearchSettings({ value, onChange, error, busy }: Props) {
           options={CONTEXT}
           size="md"
           showLabel={false}
+          disabled={busy}
+          disabledReason={SAVING_REASON}
           onChange={(v) => set({ contextSize: (v || null) as WebSearchSettings["contextSize"] })}
         />
         <span className="cc-field__hint">

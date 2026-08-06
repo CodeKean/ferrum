@@ -11,7 +11,7 @@
 // arguments from the schema it published — the form starts from what the tool actually takes.
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Select } from "../ui/Select.tsx";
+import { Select, SAVING_REASON } from "../ui/Select.tsx";
 import { useAutosave } from "../ui/useAutosave.ts";
 import { Section } from "../ui/Section.tsx";
 import { RefField } from "./RefField.tsx";
@@ -163,6 +163,8 @@ export function McpSettings({ column, columns, refOptions, value, onChange, erro
           label="Connected app"
           showLabel={false}
           value={local.serverId}
+          disabled={busy}
+          disabledReason={SAVING_REASON}
           onChange={(v) => set({ serverId: v, tool: "", args: [] })}
           options={[
             { value: "", label: servers.length ? "Choose an app…" : "No apps set up yet" },
@@ -184,6 +186,8 @@ export function McpSettings({ column, columns, refOptions, value, onChange, erro
           label="Tool"
           showLabel={false}
           value={local.tool}
+          disabled={busy}
+          disabledReason={SAVING_REASON}
           onChange={pickTool}
           options={[
             {

@@ -15,7 +15,7 @@
 // offers and shows the answer.
 
 import { useEffect, useState } from "react";
-import { Select } from "../ui/Select.tsx";
+import { Select, SAVING_REASON } from "../ui/Select.tsx";
 import { IconPlus, IconTrash } from "../ui/Icon.tsx";
 import type { McpServer, McpToolInfo } from "../prompt/mcpConfig.ts";
 import "./Providers.css";
@@ -213,6 +213,8 @@ export function McpServers() {
               label="Where it runs"
               showLabel={false}
               value={draft.transport}
+              disabled={busy}
+              disabledReason={SAVING_REASON}
               onChange={(v) => setDraft({ ...draft, transport: v as "stdio" | "http" })}
               options={[
                 { value: "stdio", label: "On this computer" },

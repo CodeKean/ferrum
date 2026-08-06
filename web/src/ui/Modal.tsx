@@ -18,6 +18,14 @@ interface Props {
   title: string;
   children: ReactNode;
   footer?: ReactNode;
+  /**
+   * A message pinned directly above the footer, outside the scrolling body.
+   *
+   * For the thing the user has to read before pressing the button again — a failed attempt, most of
+   * all. Inside `children` it would be at the end of a body that scrolls, so on a dialog with any
+   * length to it the explanation for a dead-looking button sits off screen.
+   */
+  notice?: ReactNode;
   /** Text shown at the left of the footer — a status line, not an action. */
   footNote?: string;
   /** Wider than the default, for content that is a table rather than a sentence. */
@@ -57,7 +65,7 @@ export function useModalDismiss(onClose: () => void): [boolean, () => void] {
 const FOCUSABLE =
   'a[href], button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])';
 
-export function Modal({ open, onClose, title, children, footer, footNote, width }: Props) {
+export function Modal({ open, onClose, title, children, footer, notice, footNote, width }: Props) {
   // Kept mounted through the exit animation, then unmounted. An overlay that vanishes instantly on
   // dismiss reads as a glitch even when the entrance was animated.
   const [mounted, setMounted] = useState(open);
@@ -156,6 +164,7 @@ export function Modal({ open, onClose, title, children, footer, footNote, width 
           <h2 className="cc-modal__title">{title}</h2>
         </header>
         <div className="cc-modal__body">{children}</div>
+        {notice && <div className="cc-modal__notice">{notice}</div>}
         {(footer || footNote) && (
           <footer className="cc-modal__foot">
             <span className="cc-modal__foot-note">{footNote ?? ""}</span>

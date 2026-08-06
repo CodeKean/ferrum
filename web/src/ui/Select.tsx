@@ -56,6 +56,19 @@ interface Props<T extends string> {
    * default: a list you can take in at a glance does not need one, and a list you cannot does.
    */
   searchable?: boolean;
+  /**
+   * Make the control inert.
+   *
+   * This did not exist at all, which is why every panel that goes quiet while it saves failed to do
+   * so for its dropdowns — 20 of them in the column drawer alone, 48 across the app, including the
+   * model picker, so a save in flight could be raced by changing the model again underneath it.
+   *
+   * Disabled with no `disabledReason` is not allowed by convention here: a dead control that will
+   * not say why is the same defect the drawer footer had.
+   */
+  disabled?: boolean;
+  /** Shown on hover and to a screen reader in place of the value, saying why this cannot be changed. */
+  disabledReason?: string;
 }
 
 /**
@@ -65,6 +78,14 @@ interface Props<T extends string> {
  * cost of a search box (one more thing on screen) is smaller than the cost of hunting.
  */
 const SEARCH_AT = 12;
+
+/**
+ * The reason a settings control is inert while its panel is saving.
+ *
+ * One sentence, in one place, because it is the answer at roughly twenty call sites and twenty
+ * hand-written versions of it would be twenty slightly different explanations of the same second.
+ */
+export const SAVING_REASON = "Saving your last change. This unlocks in a moment.";
 
 /**
  * Every word must appear, in the label or the value. Order does not matter.
@@ -82,6 +103,7 @@ const matches = <T extends string>(o: SelectOption<T>, q: string): boolean => ma
 
 export function Select<T extends string>({
   label, value, options, onChange, size = "sm", showLabel = true, scrollContainer, searchable,
+  disabled, disabledReason,
 }: Props<T>) {
   const ref = useRef<HTMLButtonElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -123,6 +145,10 @@ export function Select<T extends string>({
     setActive(Math.max(0, options.findIndex((o) => o.value === value)));
     setOpen(true);
   }, [options, value]);
+
+  // Going inert while the menu is open has to CLOSE it. A disabled trigger under a live listbox is
+  // the worst of both: the control says it cannot be changed and the list still commits on Enter.
+  useEffect(() => { if (disabled) setOpen(false); }, [disabled]);
 
   // Focus the search box on open, so typing goes where it is expected. Without this the menu opens,
   // you type, and the keystrokes land on the page behind it.
@@ -174,8 +200,9 @@ export function Select<T extends string>({
         // and all — to the trigger.
         aria-label={label}
         aria-expanded={open}
+        disabled={disabled}
         onClick={() => (open ? setOpen(false) : show())}
-        title={`${label}: ${selected?.label ?? ""}`}
+        title={disabled && disabledReason ? disabledReason : `${label}: ${selected?.label ?? ""}`}
       >
         <span className="cc-select__value truncate">
           {showLabel ? `${label}: ` : ""}{selected?.label ?? ""}

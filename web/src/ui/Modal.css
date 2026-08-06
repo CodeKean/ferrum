@@ -175,6 +175,21 @@
   padding-top: var(--s-2);
 }
 
+/* Pinned between the scrolling body and the footer, so the reason a button did not work is beside
+   the button rather than at the bottom of a body the user would have to scroll. */
+.cc-modal__notice {
+  flex: 0 0 auto;
+  padding: var(--s-2) var(--s-4) 0;
+}
+
+/* A list inside a warning — the columns that are not set up, one per line. Named rather than left
+   to the browser default, which indents a bulleted list well outside the warning's own padding. */
+.cc-modal__warnlist {
+  margin: var(--s-1) 0 0;
+  padding-left: var(--s-4);
+}
+.cc-modal__warnlist li { margin-top: 2px; }
+
 .cc-modal__foot {
   flex: 0 0 auto;
   display: flex;

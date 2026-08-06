@@ -16,7 +16,7 @@
 // cannot add a field to the request.
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Select } from "../ui/Select.tsx";
+import { Select, SAVING_REASON } from "../ui/Select.tsx";
 import { DestinationPicker } from "./DestinationPicker.tsx";
 import { applyDestination } from "./destinations.ts";
 import { useAutosave } from "../ui/useAutosave.ts";
@@ -293,6 +293,10 @@ export function HttpSettings({ column, columns, refOptions, value, onChange, err
             size="sm"
             showLabel={false}
             onChange={(v) => set({ method: v })}
+            /* Inert while a save is in flight, like every other control in this panel. The shared
+               Select had no disabled state at all until now, so `busy` stopped at the dropdowns. */
+            disabled={busy}
+            disabledReason={SAVING_REASON}
           />
           <RefField
             className="cc-input cc-http__url"

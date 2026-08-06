@@ -20,7 +20,7 @@
 //   a button, never as a silent side effect of ticking a checkbox.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Select } from "../ui/Select.tsx";
+import { Select, SAVING_REASON } from "../ui/Select.tsx";
 import { Section } from "../ui/Section.tsx";
 import { IconPlay, IconPlus } from "../ui/Icon.tsx";
 import { RefField } from "./RefField.tsx";
@@ -396,6 +396,8 @@ export function SendSettings({ column, columns, refOptions, sheets, value, onCha
           ]}
           size="md"
           showLabel={false}
+          disabled={busy}
+          disabledReason={SAVING_REASON}
           onChange={(v) => {
             invalidate();
             if (v === "__new__") { setNewName(column.name.replace(/\bsend\b/i, "").trim() || "Sent rows"); return; }
@@ -512,6 +514,8 @@ export function SendSettings({ column, columns, refOptions, sheets, value, onCha
                     // plausible names and the one present on 48 rows with 300 items is the answer.
                     label: `${p.label} — ${p.rows} ${p.rows === 1 ? "row" : "rows"}, ${p.items} ${p.items === 1 ? "item" : "items"}${p.objects ? "" : " (plain values)"}`,
                   }))}
+                  disabled={busy}
+                  disabledReason={SAVING_REASON}
                   onChange={(path) => { set({ listPath: path || undefined }); invalidate(); }}
                 />
               </label>
@@ -624,6 +628,8 @@ export function SendSettings({ column, columns, refOptions, sheets, value, onCha
           ]}
           size="md"
           showLabel={false}
+          disabled={busy}
+          disabledReason={SAVING_REASON}
           onChange={(v) => {
             const hit = sending.find((s) => s.key === v);
             // The key and the conflict policy are one decision, so they move together. Picking a key

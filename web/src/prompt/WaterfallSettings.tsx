@@ -12,7 +12,7 @@
 // amount that matters.
 
 import { useCallback, useMemo, useState } from "react";
-import { Select } from "../ui/Select.tsx";
+import { Select, SAVING_REASON } from "../ui/Select.tsx";
 import { IconPlus, IconTrash } from "../ui/Icon.tsx";
 import {
   DEFAULT_ACCEPT, STEP_KINDS, STEP_KIND_LABEL, describeAccept, parseWaterfall, waterfallCost,
@@ -129,6 +129,8 @@ export function WaterfallSettings({ value, onChange, busy, error }: Props) {
                 size="sm"
                 value={(step.accept ?? waterfall.accept).kind}
                 options={ACCEPT_CHOICES}
+                disabled={busy}
+                disabledReason={SAVING_REASON}
                 onChange={(kind) => patchStep(step.id, { accept: defaultRuleFor(kind) })}
               />
 
@@ -138,6 +140,8 @@ export function WaterfallSettings({ value, onChange, busy, error }: Props) {
                   size="sm"
                   value={((step.accept ?? waterfall.accept) as { pattern: string }).pattern}
                   options={SHAPES}
+                  disabled={busy}
+                  disabledReason={SAVING_REASON}
                   onChange={(pattern) => patchStep(step.id, { accept: { kind: "matches", pattern } })}
                 />
               )}

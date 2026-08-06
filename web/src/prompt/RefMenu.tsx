@@ -149,6 +149,24 @@ export function RefMenu({ open, anchorRect, options, query, onPick, onClose, onA
                 disabled={disabled}
                 title={o.cyclePath ? `Circular reference: ${o.cyclePath}` : o.isSelf ? "A column cannot reference itself" : undefined}
                 onMouseEnter={() => setActive(i)}
+                /**
+                 * Do not take the caret. This is the whole reason clicking an option used to do
+                 * nothing.
+                 *
+                 * Pressing a button moves focus, the field that owns the caret sees a blur, and the
+                 * blur closes the menu. The menu then animates out for 140ms and unmounts — so a
+                 * click held longer than that released over an element the browser had already
+                 * removed, and no `click` was ever generated. Measured on the running app: blur at
+                 * +0.3ms, fade at +2ms, gone at +142ms. A machine-fast 4ms click inserted; a
+                 * press-and-hold inserted nothing. The keyboard path never broke because arrows and
+                 * Enter do not move focus.
+                 *
+                 * `preventDefault` on MOUSEDOWN is the only point that keeps the caret — by `click`
+                 * focus has already moved. Same technique, same reason, as the chip switches in
+                 * RefField. The popover's own outside-click handler ignores presses inside it, so
+                 * nothing else closes the menu either.
+                 */
+                onMouseDown={(e) => e.preventDefault()}
                 onClick={() => !disabled && onPick(o.column)}
               >
                 <span className="cc-menu__icon"><IconTable size={14} /></span>

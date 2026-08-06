@@ -88,6 +88,7 @@ import { deleteSecret, getSecretValue, listCategories, listSecrets, saveSecret, 
 import { createSchedule, deleteSchedule, getSchedule, listSchedules, paidColumnsOf, runScheduleNow, updateSchedule } from "./schedules.ts";
 import { applyColumnTemplate, checkColumnTemplate, deleteColumnTemplate, listColumnTemplates, saveColumnTemplate, updateColumnTemplate } from "./columnTemplates.ts";
 import { estimateRun, perRowCost, MAX_TOOL_CALLS } from "./estimate.ts";
+import { notReadyReason } from "./columnReady.ts";
 import { DEFAULT_HTTP, normalizeHttpConfig } from "./http/httpColumn.ts";
 import { normalizeMcpConfig } from "./mcp/mcpColumn.ts";
 import { listMcpServers, saveMcpServer, deleteMcpServer, getMcpServer } from "./mcp/servers.ts";
@@ -2252,6 +2253,23 @@ export function createServer(bootId: string) {
       .filter((c) => (c.kind === "ai" || c.kind === "agent") && !c.conditionScriptId)
       .map((c) => c.name);
     if (ungated.length > 0) warnings.push({ kind: "ungated", names: ungated });
+
+    /**
+     * Columns that will skip every single row, because they were never finished.
+     *
+     * Every lane already refuses these politely at run time — a blank prompt skips rather than
+     * errors — but nothing said so BEFORE the run. A column with no instruction was offered here as
+     * an ordinary priced run, and then produced nothing on every row, with the only explanation
+     * buried one cell at a time.
+     *
+     * A warning rather than a block: a mixed run where one of five columns is half set up is a
+     * perfectly reasonable thing to start, and refusing it would be the app deciding for the user.
+     */
+    const notReady = columns
+      .map((c) => ({ name: c.name, why: notReadyReason(c) }))
+      .filter((x) => x.why !== null)
+      .map((x) => `${x.name} — ${x.why}`);
+    if (notReady.length > 0) warnings.push({ kind: "unconfigured", names: notReady });
 
     res.json({
       rowCount: resolved.rowCount,

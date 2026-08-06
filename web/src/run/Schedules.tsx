@@ -16,7 +16,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Modal } from "../ui/Modal.tsx";
-import { Select } from "../ui/Select.tsx";
+import { Select, SAVING_REASON } from "../ui/Select.tsx";
 import { IconPlus, IconTrash, IconAlert } from "../ui/Icon.tsx";
 import type { Column } from "../api.ts";
 import "./Schedules.css";
@@ -401,6 +401,8 @@ function Editor(
               showLabel={false}
               value={cadence.kind}
               options={CADENCE_KINDS}
+              disabled={busy}
+              disabledReason={SAVING_REASON}
               onChange={(k) =>
                 setCadence(
                   k === "interval" ? { kind: "interval", minutes: 60 }
@@ -414,6 +416,8 @@ function Editor(
                 label="" showLabel={false}
                 value={String(cadence.minutes)}
                 options={INTERVALS}
+                disabled={busy}
+                disabledReason={SAVING_REASON}
                 onChange={(v) => setCadence({ kind: "interval", minutes: Number(v) })}
               />
             )}
@@ -422,6 +426,8 @@ function Editor(
                 label="" showLabel={false}
                 value={String(cadence.weekday)}
                 options={DAYS}
+                disabled={busy}
+                disabledReason={SAVING_REASON}
                 onChange={(v) => setCadence({ ...cadence, weekday: Number(v) })}
               />
             )}
@@ -431,6 +437,8 @@ function Editor(
                 value={String(cadence.at)}
                 options={TIMES}
                 searchable
+                disabled={busy}
+                disabledReason={SAVING_REASON}
                 onChange={(v) => setCadence({ ...cadence, at: Number(v) })}
               />
             )}
@@ -473,6 +481,8 @@ function Editor(
             label="" showLabel={false}
             value={viewId == null ? "" : String(viewId)}
             options={[{ value: "", label: "Every row" }, ...views.map((v) => ({ value: String(v.id), label: v.name }))]}
+            disabled={busy}
+            disabledReason={SAVING_REASON}
             onChange={(v) => setViewId(v === "" ? null : Number(v))}
           />
         </div>

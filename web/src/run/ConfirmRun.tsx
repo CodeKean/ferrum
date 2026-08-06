@@ -9,6 +9,7 @@ import { useEffect, useState } from "react";
 import { IconPlay } from "../ui/Icon.tsx";
 import { Modal } from "../ui/Modal.tsx";
 import { SampleForecast, type Forecast } from "./SampleForecast.tsx";
+import { pricingVerdict } from "./pricingVerdict.ts";
 import "./SampleForecast.css";
 // Imported by nothing until now, so every rule in it was inert — including the one reserving the
 // hint's height to stop the dialog resizing on tick. Found by looking at the rendered dialog: the
@@ -63,7 +64,20 @@ interface Resolved {
   rowCount: number;
   columnIds: number[];
   summary: string;
-  cost?: { total: number; columns: ColumnCost[]; incomplete: boolean; free: boolean; external?: boolean };
+  cost?: {
+    total: number;
+    columns: ColumnCost[];
+    incomplete: boolean;
+    free: boolean;
+    external?: boolean;
+    /**
+     * Whether the published price list could be read at all. See RunCost in src/estimate.ts.
+     *
+     * Absent on a response from an older engine, and read as TRUE there — which is exactly the
+     * behaviour that preceded it, so an out-of-date server cannot accidentally unlock the gate below.
+     */
+    catalogueReachable?: boolean;
+  };
   /** Facts about this run only the server knows. See the resolve-scope route. */
   warnings?: Array<{ kind: string; count?: number; atLeast?: boolean; names?: string[] }>;
 }
@@ -95,7 +109,23 @@ function usd(n: number): string {
 
 export function ConfirmRun({ sheetId, scope, title, onCancel, onStarted }: Props) {
   const [resolved, setResolved] = useState<Resolved | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  /**
+   * Two errors, not one, and keeping them apart is the whole fix.
+   *
+   * There used to be a single `error`. Anything that set it replaced the dialog's entire body — row
+   * count, cost breakdown, warnings, all of it — and disabled the primary button, and nothing
+   * anywhere ever cleared it. So one refusal from the start route, such as "no OpenRouter key is
+   * configured", left the dialog permanently dead: you could go and add the key, come back, and the
+   * only control that still worked was Cancel. From the user's side that is "I pressed Run and
+   * nothing happened", which is precisely how it was reported.
+   *
+   * `scopeError` — we could not work out WHAT this run covers. There is genuinely nothing to show,
+   * so it replaces the body and blocks the run.
+   * `startError` — the run could not be STARTED. Everything above it is still true and still worth
+   * reading, so it appears above the buttons and Run stays live to be pressed again.
+   */
+  const [scopeError, setScopeError] = useState<string | null>(null);
+  const [startError, setStartError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const [confirmText, setConfirmText] = useState("");
   /**
@@ -129,10 +159,12 @@ export function ConfirmRun({ sheetId, scope, title, onCancel, onStarted }: Props
           body: JSON.stringify({ ...scope, overwriteEdited }),
         }).then((r) => r.json());
         if (!live) return;
-        if (res.error) setError(res.error);
-        else setResolved(res);
+        if (res.error) setScopeError(res.error);
+        // Cleared on every success, so a scope that failed once and now resolves does not leave the
+        // dialog showing a stale reason for a problem that has gone.
+        else { setScopeError(null); setResolved(res); }
       } catch (e) {
-        if (live) setError(e instanceof Error ? e.message : String(e));
+        if (live) setScopeError(e instanceof Error ? e.message : String(e));
       }
     })();
     return () => { live = false; };
@@ -140,16 +172,19 @@ export function ConfirmRun({ sheetId, scope, title, onCancel, onStarted }: Props
 
   const start = async () => {
     setStarting(true);
+    // Cleared as the retry begins. Without this the reason the LAST attempt failed sits above a
+    // button that is now working on a new one.
+    setStartError(null);
     try {
       const res = await fetch(`/api/sheets/${sheetId}/runs`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ scope, overwriteEdited }),
       }).then((r) => r.json());
-      if (res.error) { setError(res.error); setStarting(false); return; }
+      if (res.error) { setStartError(res.error); setStarting(false); return; }
       onStarted(res.run.id);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setStartError(e instanceof Error ? e.message : String(e));
       setStarting(false);
     }
   };
@@ -163,16 +198,17 @@ export function ConfirmRun({ sheetId, scope, title, onCancel, onStarted }: Props
    */
   const startSample = async () => {
     setSampling(true);
+    setStartError(null);
     try {
       const res = await fetch(`/api/sheets/${sheetId}/sample`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ scope, rows: SAMPLE_ROWS, overwriteEdited }),
       }).then((r) => r.json());
-      if (res.error) { setError(res.error); setSampling(false); return; }
+      if (res.error) { setStartError(res.error); setSampling(false); return; }
       setSampleRunId(res.run.id);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setStartError(e instanceof Error ? e.message : String(e));
     } finally {
       setSampling(false);
     }
@@ -205,11 +241,9 @@ export function ConfirmRun({ sheetId, scope, title, onCancel, onStarted }: Props
   const externalRequests = externalColumns.reduce((n, c) => n + (c.requests ?? 0), 0);
   const externalHosts = [...new Set(externalColumns.map((c) => c.host).filter(Boolean))] as string[];
 
-  // An unpriced model is not a licence to proceed quietly. If we could not work out what a column
-  // costs, the run is blocked rather than started on an estimate we know is missing a piece.
-  // `incomplete` is the server's own summary of the same fact — read as well as the per-column flag,
-  // so a future estimate that sets one without the other still fails closed.
-  const unpriced = (cost?.columns ?? []).some((c) => c.unpriced) || !!cost?.incomplete;
+  // An unpriced model is not a licence to proceed quietly — but the two reasons it happens need
+  // opposite answers, and this used to give them the same one. See pricingVerdict.ts.
+  const { unpriced, blocked: pricingBlocked, unknownCatalogue } = pricingVerdict(cost);
 
   /**
    * A big spend has to be TYPED, not clicked.
@@ -236,11 +270,21 @@ export function ConfirmRun({ sheetId, scope, title, onCancel, onStarted }: Props
 
   const expensive = gateTotal >= EXPENSIVE_USD;
   const externalHeavy = !expensive && externalRequests >= LARGE_RUN;
+  /**
+   * A run with NO estimate at all takes the same gate, on the row count.
+   *
+   * This is the price list being unreachable rather than a bad model, so the run is allowed — but
+   * "we cannot tell you what this costs" is the last thing that should pass on a single click, and
+   * the row count is the only number anybody has.
+   */
+  const unestimated = unknownCatalogue && !expensive && !externalHeavy;
   const requiredPhrase = expensive
     ? String(Math.round(gateTotal))
     : externalHeavy
       ? String(externalRequests)
-      : "";
+      : unestimated
+        ? String(resolved?.rowCount ?? 0)
+        : "";
   const phraseOk = !requiredPhrase || confirmText.trim().replace(/^\$/, "").replace(/,/g, "") === requiredPhrase;
 
   /**
@@ -264,6 +308,15 @@ export function ConfirmRun({ sheetId, scope, title, onCancel, onStarted }: Props
       onClose={onCancel}
       title={title}
       footNote={resolved && resolved.rowCount === 0 ? "Nothing matches this selection." : ""}
+      /* Beside the button that failed, and everything the dialog already worked out stays on screen
+         behind it. Fix whatever this names — in another tab if you have to — and press Run again. */
+      notice={
+        startError ? (
+          <div className="cc-modal__error" role="alert">
+            <strong>That did not start.</strong> {startError}
+          </div>
+        ) : null
+      }
       footer={
         <>
           <button className="cc-btn" onClick={onCancel}>Cancel</button>
@@ -277,7 +330,10 @@ export function ConfirmRun({ sheetId, scope, title, onCancel, onStarted }: Props
           <button
             className="cc-btn cc-btn--primary"
             onClick={start}
-            disabled={starting || !resolved || resolved.rowCount === 0 || !!error || unpriced || !phraseOk}
+            /* `startError` is deliberately NOT here. A run that failed to start is the one case where
+               the button must stay alive — that is what leaves the user somewhere to go after they
+               have fixed whatever the message named. */
+            disabled={starting || !resolved || resolved.rowCount === 0 || !!scopeError || pricingBlocked || !phraseOk}
             /* Every reason this button can be dead is named on it.
                Two of them were not: an empty selection and a run already starting both left the
                primary action greyed with nothing to say, which is the same "am I stuck or is it
@@ -286,9 +342,13 @@ export function ConfirmRun({ sheetId, scope, title, onCancel, onStarted }: Props
               starting ? "Starting the run…"
               : !resolved ? "Working out how many rows this covers…"
               : resolved.rowCount === 0 ? "Nothing matches this selection, so there is nothing to run."
-              : error ? "This cannot start until the problem above is fixed."
-              : unpriced ? "One of these columns uses a model with no published price, so this run cannot be estimated."
-              : !phraseOk ? `Type ${requiredPhrase} to confirm ${expensive ? "this amount" : "this many billed requests"}.`
+              : scopeError ? "This cannot start until the problem above is fixed."
+              : pricingBlocked ? "One of these columns uses a model with no published price, so this run cannot be estimated."
+              : !phraseOk
+                ? `Type ${requiredPhrase} to confirm ${
+                    expensive ? "this amount" : unestimated ? "this many rows" : "this many billed requests"
+                  }.`
+              : startError ? "Try starting the run again."
               : "Start the run. You can pause or cancel it from the strip at the top."
             }
           >
@@ -302,8 +362,8 @@ export function ConfirmRun({ sheetId, scope, title, onCancel, onStarted }: Props
         </>
       }
     >
-      {error ? (
-        <div className="cc-modal__error" role="alert">{error}</div>
+      {scopeError ? (
+        <div className="cc-modal__error" role="alert">{scopeError}</div>
       ) : !resolved ? (
         // Fixed-height placeholder, so resolving does not resize the dialog under the cursor.
         <div className="cc-modal__resolving">
@@ -394,17 +454,29 @@ export function ConfirmRun({ sheetId, scope, title, onCancel, onStarted }: Props
 
           <p className="cc-modal__summary">{resolved.summary}</p>
 
-          {unpriced && (
+          {/* Two different problems, two different sentences. The old single message told everyone
+              to "pick a model with a price" — advice that is impossible to follow in the second case,
+              because while the price list is unreachable no model has one. */}
+          {pricingBlocked && (
             <div className="cc-modal__warn" role="alert">
               A column here uses a model with no published price, so this run cannot be costed. Pick
               a model with a price on the column's Mode tab before running it.
             </div>
           )}
 
+          {unknownCatalogue && (
+            <div className="cc-modal__warn" role="alert">
+              <strong>The price list could not be read</strong>, so this run has no cost estimate.
+              Nothing is wrong with the columns — either no OpenRouter key is set yet, or the
+              provider did not answer. The run can still go ahead and will be billed at whatever the
+              models actually charge.
+            </div>
+          )}
+
           {/* Named before the gate below it, so the number being typed has already been explained.
               The engine bills nothing for these and the service does — which is exactly the shape
               of cost that gets discovered on an invoice rather than on this screen. */}
-          {externalColumns.length > 0 && !unpriced && (
+          {externalColumns.length > 0 && !pricingBlocked && (
             <div className="cc-modal__warn">
               <strong>
                 {externalRequests.toLocaleString()}{" "}
@@ -421,7 +493,10 @@ export function ConfirmRun({ sheetId, scope, title, onCancel, onStarted }: Props
             </div>
           )}
 
-          {requiredPhrase && !unpriced && (
+          {/* Gated on `pricingBlocked`, not on `unpriced`. Those were the same thing until the price
+              list got its own answer — and with the old test this box disappeared in exactly the
+              state that now needs it, leaving a button demanding a phrase with nowhere to type it. */}
+          {requiredPhrase && !pricingBlocked && (
             <div className="cc-modal__warn">
               <p>
                 {expensive ? (
@@ -432,6 +507,12 @@ export function ConfirmRun({ sheetId, scope, title, onCancel, onStarted }: Props
                     This run {measuredTotal != null ? "measures at" : "is estimated at"}{" "}
                     <strong>{usd(gateTotal)}</strong>. Type <strong>{requiredPhrase}</strong> to
                     confirm you have read that.
+                  </>
+                ) : unestimated ? (
+                  <>
+                    This run covers <strong>{requiredPhrase}</strong> rows and there is no cost
+                    estimate for it. Type <strong>{requiredPhrase}</strong> to confirm you are
+                    starting it anyway.
                   </>
                 ) : (
                   <>
@@ -498,6 +579,21 @@ export function ConfirmRun({ sheetId, scope, title, onCancel, onStarted }: Props
                 </strong>
                 , so every row in this run is paid for. A condition is free, runs before anything is
                 spent, and lives on the column's “When to run” tab.
+              </div>
+            ) : w.kind === "unconfigured" ? (
+              /* A column that was never finished skips every row it touches. The engine has always
+                 handled this gracefully — a skip, not an error — but it said so one cell at a time,
+                 after the run. On a large run that is a long wait for nothing with no explanation
+                 until you open a cell. */
+              <div key="unconfigured" className="cc-modal__warn">
+                <strong>
+                  {w.names!.length === 1 ? "One column is not set up yet" : `${w.names!.length} columns are not set up yet`}
+                </strong>
+                , so every row of {w.names!.length === 1 ? "it" : "them"} will be skipped and nothing
+                spent on {w.names!.length === 1 ? "it" : "them"}:
+                <ul className="cc-modal__warnlist">
+                  {w.names!.map((n) => <li key={n}>{n}</li>)}
+                </ul>
               </div>
             ) : null,
           )}
