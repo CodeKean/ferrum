@@ -9,7 +9,8 @@ import assert from "node:assert/strict";
 import { db } from "../db.ts";
 import { setConfig } from "../dedupe.ts";
 import {
-  addColumn, createSheet, deleteColumn, insertRows, listColumns, readWindow, setColumnValueType,
+  addColumn, createSheet, deleteColumn, insertRows, listColumns, readWindow, setColumnEnumValues,
+  setColumnValueType,
 } from "../store.ts";
 import {
   createSource, deleteSource, deliver, findByToken, listDeliveries, newToken, rotateToken,
@@ -47,6 +48,46 @@ test("a retried delivery updates the row it made, rather than adding a second on
 
   assert.equal(values(f.sheet.id).length, 1, "still one row");
   assert.deepEqual(values(f.sheet.id)[0], ["Ada@Example.com", "Acme Ltd", "enterprise"]);
+});
+
+test("a delivery to a typed column is coerced like a run, but keeps raw text it cannot read", () => {
+  // Every other lane — AI, agent, HTTP, MCP — stores a typed column's canonical form through `coerce`.
+  // A webhook used a weaker normaliser, so the SAME column held "$1,234" from a delivery and 1234 from
+  // a run and stopped sorting; a `date` lost the ISO invariant its range-filter needs. It now runs the
+  // same coercion — and keeps the sender's raw text only when coerce cannot read the value at all.
+  const sheet = createSheet("hook-coerce");
+  const amount = addColumn(sheet.id, { name: "Amount" });
+  const active = addColumn(sheet.id, { name: "Active" });
+  const signed = addColumn(sheet.id, { name: "Signed" });
+  const status = addColumn(sheet.id, { name: "Status" });
+  const email = addColumn(sheet.id, { name: "Email" });
+  setColumnValueType(amount.id, "currency");
+  setColumnValueType(active.id, "boolean");
+  setColumnValueType(signed.id, "date");
+  setColumnValueType(status.id, "enum");
+  setColumnEnumValues(status.id, ["Active", "Churned"]);
+  setColumnValueType(email.id, "email");
+
+  const source = createSource(sheet.id, "Signups");
+  updateSource(source.id, {
+    mapping: {
+      [String(amount.id)]: "amount",
+      [String(active.id)]: "active",
+      [String(signed.id)]: "signed",
+      [String(status.id)]: "status",
+      [String(email.id)]: "email",
+    },
+  });
+  const src = findByToken(source.token)!;
+
+  // "$1,234.50" → 1234.5, "yes" → true, "March 3, 2024" → 2024-03-03, "active" → the canonical "Active",
+  // and the email lower-cased — the same shapes a run would have written.
+  deliver(src, { amount: "$1,234.50", active: "yes", signed: "March 3, 2024", status: "active", email: "Ada@Example.com" }, "{}");
+  assert.deepEqual(values(sheet.id)[0], ["1234.5", "true", "2024-03-03", "Active", "ada@example.com"]);
+
+  // A value coerce cannot read is kept verbatim, not dropped — the sender's data is theirs to see.
+  deliver(src, { amount: "N/A", active: "maybe", signed: "whenever", status: "Nope", email: "b@x.com" }, "{}");
+  assert.deepEqual(values(sheet.id)[1], ["N/A", "maybe", "whenever", "Nope", "b@x.com"]);
 });
 
 test("a payload cannot create a column, or land anywhere the mapping did not say", () => {

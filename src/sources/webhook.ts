@@ -36,6 +36,8 @@ import { bumpDataVersion } from "../store.ts";
 import { markSheetDirty } from "../columnStats.ts";
 import { markCellsDirty } from "../bus.ts";
 import { autoDedupe, normalizeKey } from "../dedupe.ts";
+import { coerce } from "../agent/executor.ts";
+import type { ValueType } from "../types.ts";
 
 /** How much JSON one delivery may carry. Generous for a record, far short of a data dump. */
 export const MAX_BODY_BYTES = 256 * 1024;
@@ -436,7 +438,11 @@ const PHONE_ONLY = /^[+()\-.\s\d]+$/;
  * which would swallow an extension into the number. So this keeps everything that could be data and
  * drops only what never is: surrounding whitespace, and case where case is not meaning.
  */
-function normalizeValue(text: string | null, valueType: string): string | null {
+const COERCE_ON_DELIVERY: ReadonlySet<string> = new Set<ValueType>([
+  "number", "currency", "percent", "boolean", "date", "datetime", "enum", "json", "array", "multi_select",
+]);
+
+function normalizeValue(text: string | null, valueType: string, enumValues?: string[]): string | null {
   if (text == null) return null;
   const v = text.trim();
   if (!v) return v;
@@ -453,6 +459,20 @@ function normalizeValue(text: string | null, valueType: string): string | null {
   // Only when the value is a phone number and nothing else. "555 0100 ext 12" keeps its extension
   // rather than having it merged into the digits.
   if (valueType === "phone" && PHONE_ONLY.test(v)) return normalizeKey(v, "phone") ?? v;
+
+  // Every OTHER lane — AI, agent, HTTP, MCP — stores a typed column's CANONICAL form: `coerce` turns
+  // "$1,234" into 1234, "(29)" into -29, "yes" into true, "March 3, 2024" into 2024-03-03. A webhook
+  // that skipped it left the same column holding two shapes at once — 1234 from a run and "$1,234"
+  // from a delivery — so the column stopped sorting numerically and a `date` lost the ISO invariant
+  // its lexical range-filter depends on. So the same rule runs here.
+  //
+  // On a value `coerce` cannot read (an error, not a null), the sender's raw text is KEPT rather than
+  // dropped — this path's whole promise is that a delivered value is never silently lost, and a "N/A"
+  // in a number field is the sender's data to see, not a blank to write over it.
+  if (COERCE_ON_DELIVERY.has(valueType)) {
+    const { text: c, error } = coerce(v, valueType as ValueType, enumValues ? { enumValues } : {});
+    return error ? v : c;
+  }
 
   return v;
 }
@@ -597,6 +617,9 @@ export function deliver(source: WebhookSource, body: unknown, rawText: string): 
   }
 
   const valueTypes = new Map(cols.map((c) => [Number(c.id), String(c.valueType)]));
+  // An enum column can only be coerced to its canonical spelling if the allowed values travel with
+  // the type — "active" becomes "Active" only when the options are known, exactly as on a run.
+  const enumOptions = new Map(cols.map((c) => [Number(c.id), c.enumValues]));
 
   let inserted = 0;
   let updated = 0;
@@ -634,7 +657,7 @@ export function deliver(source: WebhookSource, body: unknown, rawText: string): 
         // exactly as it is.
         if (raw === undefined) continue;
         const id = Number(colId);
-        values.set(id, normalizeValue(toText(raw), valueTypes.get(id) ?? "text"));
+        values.set(id, normalizeValue(toText(raw), valueTypes.get(id) ?? "text", enumOptions.get(id)));
       }
       if (payloadColumnId != null && rec != null) {
         // Pretty-printed, because this cell is read by a person deciding what to pull out of it, and
