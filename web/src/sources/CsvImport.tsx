@@ -84,6 +84,8 @@ export function CsvImport({ sheetId, columns, onImported }: Props) {
   const [dedupeOn, setDedupeOn] = useState(-1);
   const [result, setResult] = useState<Result | null>(null);
   const [busy, setBusy] = useState<"upload" | "import" | null>(null);
+  /** Rows written so far during an import, streamed from the engine. null when not importing. */
+  const [progress, setProgress] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
 
@@ -119,6 +121,7 @@ export function CsvImport({ sheetId, columns, onImported }: Props) {
     if (!file || !preview) return;
     setBusy("import");
     setError(null);
+    setProgress(0);
     try {
       const res = await fetch(`/api/sheets/${sheetId}/import`, {
         method: "POST",
@@ -132,14 +135,49 @@ export function CsvImport({ sheetId, columns, onImported }: Props) {
           ),
           dedupeOnIndex: dedupeOn >= 0 && mappings[dedupeOn]?.target !== "skip" ? dedupeOn : undefined,
         }),
-      }).then((r) => r.json());
-      if (res.error) { setError(res.error); return; }
-      setResult(res);
-      onImported();
+      });
+
+      // A pre-stream rejection ("File not found") is a plain JSON error with a 4xx; only a started
+      // import streams. Read the body either way.
+      if (!res.ok || !res.body) {
+        const j = await res.json().catch(() => null);
+        setError(j?.error ?? "Could not reach the engine.");
+        return;
+      }
+
+      // Newline-delimited JSON: `progress` lines while it runs, then one `done` or `error` line. The
+      // row count is read off the progress lines so the footer can count up as rows land.
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+      let done: Result | null = null;
+      let streamError: string | null = null;
+      for (;;) {
+        const chunk = await reader.read();
+        if (chunk.done) break;
+        buf += decoder.decode(chunk.value, { stream: true });
+        let nl: number;
+        while ((nl = buf.indexOf("\n")) >= 0) {
+          const raw = buf.slice(0, nl).trim();
+          buf = buf.slice(nl + 1);
+          if (!raw) continue;
+          const ev = JSON.parse(raw) as
+            | { type: "progress"; rows: number }
+            | { type: "done"; result: Result }
+            | { type: "error"; error: string };
+          if (ev.type === "progress") setProgress(ev.rows);
+          else if (ev.type === "done") done = ev.result;
+          else if (ev.type === "error") streamError = ev.error;
+        }
+      }
+
+      if (streamError) { setError(streamError); return; }
+      if (done) { setResult(done); onImported(); }
     } catch {
       setError("Could not reach the engine.");
     } finally {
       setBusy(null);
+      setProgress(null);
     }
   };
 
@@ -369,7 +407,9 @@ export function CsvImport({ sheetId, columns, onImported }: Props) {
 
           <div className="cc-csv__foot">
             <span className="cc-csv__meta mono">
-              {(file!.bytes / 1024 / 1024).toFixed(1)} MB · showing {Math.min(5, preview.sampleRows.length)} rows
+              {busy === "import"
+                ? `${(progress ?? 0).toLocaleString()} rows imported…`
+                : `${(file!.bytes / 1024 / 1024).toFixed(1)} MB · showing ${Math.min(5, preview.sampleRows.length)} rows`}
             </span>
             <button
               className="cc-btn cc-btn--primary"

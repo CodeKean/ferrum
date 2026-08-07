@@ -5529,20 +5529,46 @@ export function createServer(bootId: string) {
   app.post("/api/sheets/:id/import", wrap(async (req, res) => {
     const path = stagedPath(req.body?.path);
     if (!path) return res.status(400).json({ error: "File not found" });
-    const result = await importCsv(param(req, "id"), path, {
-      delimiter: req.body?.delimiter,
-      encoding: req.body?.encoding,
-      hasHeader: req.body?.hasHeader,
-      mappings: req.body?.mappings,
-      dedupeOnIndex: req.body?.dedupeOnIndex,
-      // Asked for explicitly or not at all. Its sibling is the `override` flag on a single cell
-      // edit; this is the same decision taken once for a whole file, so it is never inferred.
-      overwriteComputed: req.body?.overwriteComputed === true,
-    });
-    // Rows arrived, so anything set to keep itself up to date has work. The settings panel has
-    // always promised this reacts "on an import"; until the trigger existed it did not.
-    noteRowsArrived(param(req, "id"));
-    res.json({ ...result, rowCount: countRows(param(req, "id")) });
+    const id = param(req, "id");
+
+    // Streamed as newline-delimited JSON so the modal can show the row count climbing instead of a
+    // spinner that says nothing on a file with millions of rows. A `progress` line now and then while
+    // it runs, then exactly one terminal line: `done` with the result, or `error` with the reason.
+    // Once the first byte is out the status is already 200, so a failure AFTER that is carried in an
+    // `error` line rather than a status code — the client reads the last line to know which it was.
+    res.setHeader("Content-Type", "application/x-ndjson");
+    res.setHeader("Cache-Control", "no-store");
+    res.setHeader("X-Accel-Buffering", "no"); // no proxy may collect the progress into one lump
+    const line = (obj: unknown) => res.write(JSON.stringify(obj) + "\n");
+
+    let lastPing = 0;
+    try {
+      const result = await importCsv(id, path, {
+        delimiter: req.body?.delimiter,
+        encoding: req.body?.encoding,
+        hasHeader: req.body?.hasHeader,
+        mappings: req.body?.mappings,
+        dedupeOnIndex: req.body?.dedupeOnIndex,
+        // Asked for explicitly or not at all. Its sibling is the `override` flag on a single cell
+        // edit; this is the same decision taken once for a whole file, so it is never inferred.
+        overwriteComputed: req.body?.overwriteComputed === true,
+        onProgress: (rows) => {
+          // Throttled: a fast import calls this every 500 rows, and a line per batch on a ten-million
+          // row file is tens of thousands of writes to say nothing new. At most one every 200ms.
+          const now = Date.now();
+          if (now - lastPing < 200) return;
+          lastPing = now;
+          line({ type: "progress", rows });
+        },
+      });
+      // Rows arrived, so anything set to keep itself up to date has work. The settings panel has
+      // always promised this reacts "on an import"; until the trigger existed it did not.
+      noteRowsArrived(id);
+      line({ type: "done", result: { ...result, rowCount: countRows(id) } });
+    } catch (e) {
+      line({ type: "error", error: e instanceof Error ? e.message : String(e) });
+    }
+    res.end();
   }));
 
   app.get("/api/sheets/:id/export.csv", wrap((req, res) => {
