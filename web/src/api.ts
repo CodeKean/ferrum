@@ -40,6 +40,8 @@ export interface Column {
   position: number;
   kind: "static" | "script" | "http" | "mcp" | "ai" | "agent" | "send" | "lookup" | "rollup" | "waterfall" | "wait";
   valueType: ValueType;
+  /** The allowed values of an `enum` column. Empty or absent means no constraint (behaves as text). */
+  enumValues?: string[];
   /** The instruction an `ai` or `agent` column runs on every row. */
   prompt?: string | null;
   /** Which model this column runs on, or "auto" to follow the engine default. */

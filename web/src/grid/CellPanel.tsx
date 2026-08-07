@@ -35,9 +35,9 @@ interface Detail {
   errorMsg?: string;
   stale?: boolean;
   pinned?: boolean;
-  /** How sure the model said it was. Returned by this route since it was written; never populated. */
+  /** How sure the model said it was — the finish tool requires it, so every run records one. */
   confidence?: "high" | "medium" | "low" | null;
-  /** Where the answer came from, when a page was used. Same story. */
+  /** Where the answer came from, when a page was used. */
   sourceUrl?: string | null;
   attempt?: number;
   durationMs?: number;

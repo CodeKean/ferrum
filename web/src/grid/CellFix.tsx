@@ -44,10 +44,10 @@ interface Props {
   /**
    * Open the column's own editor.
    *
-   * For the settings a proposal cannot reach: the apply route writes the mode, the data type, the
-   * instruction, the request, the search settings and a script, and nothing else — so a correct
-   * suggestion about an enum's allowed values has nowhere to land, and the honest answer is to send
-   * someone to where it CAN be changed rather than to say the column is fine.
+   * The fallback for a suggestion the apply route still cannot reach. That route now writes the mode,
+   * the data type, an enum's allowed values, the instruction, the request, the search settings and a
+   * script — so the enum case that used to have nowhere to land now does. This stays as the honest
+   * way out for anything left over, rather than claiming the column is fine.
    */
   onEditColumn?: () => void;
 }
@@ -192,13 +192,14 @@ export function CellFix({ cellId, columnId, sheetId, rowId, onApplied, onRunCell
            * The first version of this said "Nothing about the column needs changing" in both cases.
            * Caught on the very first live run: the answer came back explaining that the model had
            * returned "Biotechnology" and that the allowed list should include it — and this line
-           * appeared directly underneath saying nothing needed changing. Two sentences, touching,
-           * contradicting each other, and the wrong one is the confident one.
+           * appeared directly underneath saying nothing needed changing.
            *
-           * The real cause is worth naming: the apply route can write the mode, the data type, the
-           * instruction, the request, the search settings and a script. It cannot edit an enum's
-           * allowed values. So a genuinely correct suggestion had nowhere to land, which is a reason
-           * to point at the column's own settings, not to claim the column is fine.
+           * The specific hole that produced that — an enum whose allowed values could be edited
+           * nowhere, so a correct "add Biotechnology" suggestion had no change to attach — is now
+           * closed: the apply route writes `enumValues`, and the proposer returns them as a real
+           * change. This branch remains for the genuine leftover case: an answer that describes a
+           * change in prose without producing an applicable one. "Ask again" is usually the fix, and
+           * the column's own editor is offered for anything this route still cannot reach.
            */
           proposal?.why ? (
             <>

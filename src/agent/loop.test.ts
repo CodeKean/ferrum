@@ -442,3 +442,26 @@ test("prose with no tool call is still `answered`, not `empty`", async () => {
   assert.equal(res.stoppedBy, "answered");
   assert.equal(res.text, "I think it is Fintech.");
 });
+
+test("finishTool declares an enum column's options as the value's own schema", () => {
+  // An enum column constrains the model at the schema level, not just afterwards. The options become
+  // the value's `enum`, which is the strongest way to say "pick one of these".
+  const tool = finishTool("the industry", ["Fintech", "Biotech", "Retail"]);
+  const value = (tool.parameters.properties as Record<string, any>).value;
+  assert.deepEqual(value.enum, ["Fintech", "Biotech", "Retail"]);
+  assert.equal(value.type, "string");
+});
+
+test("finishTool with no options leaves the value unconstrained", () => {
+  // Every non-enum column, and an enum with no options set, must answer freely — no stray `enum`.
+  for (const opts of [undefined, []]) {
+    const value = (finishTool("the value", opts).parameters.properties as Record<string, any>).value;
+    assert.equal(value.enum, undefined);
+  }
+});
+
+test("finishTool drops blank options rather than offering an empty choice", () => {
+  // A blank in the list would let the model 'pick' nothing and have it count as a valid answer.
+  const value = (finishTool("v", ["A", "  ", "", "B"]).parameters.properties as Record<string, any>).value;
+  assert.deepEqual(value.enum, ["A", "B"]);
+});

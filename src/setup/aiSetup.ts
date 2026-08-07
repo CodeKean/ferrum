@@ -180,6 +180,8 @@ export interface SetupProposal {
   why: string;
   kind?: Column["kind"];
   valueType?: ValueType;
+  /** The allowed values for an enum column. Present only when the column is (or is becoming) an enum. */
+  enumValues?: string[];
   prompt?: string;
   http?: HttpConfig;
   script?: { hook: "transform" | "condition"; runtime: "js" | "powershell" | "bash"; intent: string; code: string };
@@ -242,6 +244,14 @@ const TOOL_SCHEMA = {
     valueType: {
       type: "string",
       enum: ["text", "number", "boolean", "url", "email", "date", "currency", "percent", "phone", "enum", "json"],
+    },
+    enumValues: {
+      type: "array",
+      items: { type: "string" },
+      description:
+        "For valueType enum ONLY: the complete list of allowed values a run may return. If a cell " +
+        "failed because a real answer was not on the list, return the FULL list including the new " +
+        "value — not just the addition. Leave this out for every other type.",
     },
     prompt: { type: "string", description: "For kind ai or agent: the instruction, referencing /Column name." },
     script: {
@@ -981,7 +991,7 @@ function pairSummary(label: string, pairs: Array<{ name: string; value: string }
  */
 export function diff(
   column: Column,
-  p: Partial<Pick<SetupProposal, "kind" | "valueType" | "prompt" | "http" | "script" | "send" | "link" | "waterfall">>,
+  p: Partial<Pick<SetupProposal, "kind" | "valueType" | "enumValues" | "prompt" | "http" | "script" | "send" | "link" | "waterfall">>,
 ): Change[] {
   const out: Change[] = [];
   const push = (field: string, label: string, before: string, after: string) => {
@@ -990,6 +1000,13 @@ export function diff(
 
   if (p.kind) push("kind", "How it runs", KIND_LABEL[column.kind] ?? column.kind, KIND_LABEL[p.kind] ?? p.kind);
   if (p.valueType) push("valueType", "Data type", column.valueType, p.valueType);
+  // Shown as the option list, comma-joined, so the change reads as "these are the allowed values now"
+  // rather than a raw array. Only when the proposer actually returned a list.
+  if (p.enumValues) {
+    push("enumValues", "Allowed values",
+      (column.enumValues ?? []).join(", ") || "none",
+      p.enumValues.join(", ") || "none");
+  }
   if (p.prompt != null) push("prompt", "Instruction", (column.prompt ?? "").trim() || "none", p.prompt.trim() || "none");
 
   if (p.http) {
@@ -1197,6 +1214,13 @@ export async function proposeSetup(req: SetupRequest, signal?: AbortSignal): Pro
   const body: Omit<SetupProposal, "changes" | "why" | "model" | "costUsd" | "missing"> = {
     kind,
     valueType: typeof a.valueType === "string" ? (a.valueType as ValueType) : undefined,
+    // Only kept when the column IS (or is becoming) an enum — a list attached to a text column is a
+    // constraint nothing would enforce, and passing it on would put a change on screen that does
+    // nothing when applied. Cleaned to strings; the apply route normalises again.
+    enumValues:
+      (a.valueType === "enum" || (a.valueType == null && req.column.valueType === "enum")) && Array.isArray(a.enumValues)
+        ? a.enumValues.filter((v: unknown): v is string => typeof v === "string" && v.trim() !== "")
+        : undefined,
     prompt: typeof a.prompt === "string" && a.prompt.trim() ? storeRefs(a.prompt, req.columns) : undefined,
     http: kind === "http" || a.http ? safeHttp(refsToStored(a.http, req.columns), currentHttp) : undefined,
     script:

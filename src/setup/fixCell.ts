@@ -102,6 +102,14 @@ export function buildFixIntent(i: FixInput): string {
       "data type, whatever it is. An explanation of what should change, with no changed value " +
       "attached, cannot be applied and is no use to me.",
   );
+  // The specific case that produced correct-but-inapplicable answers three times: an enum whose
+  // allowed list was missing the real answer. Now the change HAS somewhere to land, so ask for it by
+  // name rather than as prose.
+  lines.push(
+    "If this is an enum column and a real answer was turned away for not being on the list, return " +
+      "`enumValues` — the COMPLETE allowed list including the value that was missing — not a sentence " +
+      "saying the list should be extended.",
+  );
   lines.push("");
   lines.push(
     "Do not change the model, do not change any spending limit, and do not change whether private " +

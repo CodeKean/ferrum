@@ -33,7 +33,7 @@ import {
   moveSheet, nextRowPosition, readWindow, renameColumn, renameSheet, setCellValue,
   duplicateColumn, setColumnDescription, setColumnSendConfig, setColumnWaterfall, setColumnWidth, setColumnColor,
   setColumnAgent, setColumnAllowedTools, setColumnAutoRun, setColumnAutoRunBudget, setColumnMaxBudget, setColumnFrozen, setColumnHttpConfig, setColumnMcpConfig, setColumnMcpServers, setColumnFirstModel, setColumnKind, setColumnModel, setColumnPrompt,
-  setColumnValueType, unpinCell, setPrimaryColumn, setSheetKind, rowLabelColumn,
+  setColumnValueType, setColumnEnumValues, unpinCell, setPrimaryColumn, setSheetKind, rowLabelColumn,
   type ReadOptions,
 } from "./store.ts";
 import { proposeSetup, safeHttp, storeRefs, type SetupArea, type WaterfallStepProposal } from "./setup/aiSetup.ts";
@@ -89,6 +89,7 @@ import { createSchedule, deleteSchedule, getSchedule, listSchedules, paidColumns
 import { applyColumnTemplate, checkColumnTemplate, deleteColumnTemplate, listColumnTemplates, saveColumnTemplate, updateColumnTemplate } from "./columnTemplates.ts";
 import { estimateRun, perRowCost, MAX_TOOL_CALLS } from "./estimate.ts";
 import { notReadyReason } from "./columnReady.ts";
+import { normalizeEnumValues } from "./enumValues.ts";
 import { DEFAULT_HTTP, normalizeHttpConfig } from "./http/httpColumn.ts";
 import { normalizeMcpConfig } from "./mcp/mcpColumn.ts";
 import { listMcpServers, saveMcpServer, deleteMcpServer, getMcpServer } from "./mcp/servers.ts";
@@ -2391,6 +2392,18 @@ export function createServer(bootId: string) {
       record(before.sheetId, "column.field", `Set "${before.name}" to ${req.body.valueType}`,
         { columnId: Number(id), field: "value_type", from: before.valueType, to: req.body.valueType });
     }
+    if (req.body?.enumValues !== undefined) {
+      // The allowed values of an enum column. Normalised, not stored as sent: a duplicate spelling or
+      // a blank option silently changes what a valid answer is, so the rule lives in one tested place
+      // and both the model prompt and coercion read the cleaned list. A non-array is the one shape
+      // refused outright — everything else (blanks, dupes, an over-long paste) is cleaned, not
+      // rejected, so filling this in never fails on a technicality.
+      const { values, error } = normalizeEnumValues(req.body.enumValues);
+      if (error) { res.status(400).json({ error }); return; }
+      setColumnEnumValues(id, values);
+      record(before.sheetId, "column.field", `Set the options for "${before.name}"`,
+        { columnId: Number(id), field: "enum_values", from: before.enumValues ?? [], to: values });
+    }
     if (req.body?.kind !== undefined) {
       // The lane is what a column costs. An unrecognised one written straight through would either
       // never be picked up by any executor — a column that silently does nothing forever — or land
@@ -3022,6 +3035,18 @@ export function createServer(bootId: string) {
           record(before.sheetId, "column.field", `Change the instruction for "${before.name}"`,
             { columnId: Number(id), field: "prompt", from: before.prompt ?? null, to: p.prompt });
           applied.push("prompt");
+        }
+        if (p.enumValues !== undefined) {
+          // An enum column's allowed values — the change this route used to have nowhere to put, so a
+          // correct "add Biotechnology to the list" diagnosis had to be sent to the editor by hand.
+          // Normalised the same way the hand-edited PATCH normalises it, since the proposal made a
+          // round trip through the browser and is input like any other.
+          const { values, error } = normalizeEnumValues(p.enumValues);
+          if (error) throw new Error(error);
+          setColumnEnumValues(id, values);
+          record(before.sheetId, "column.field", `Set the options for "${before.name}"`,
+            { columnId: Number(id), field: "enum_values", from: before.enumValues ?? [], to: values });
+          applied.push("enumValues");
         }
         if (p.http) {
           // Re-normalized on the way in. The proposal came back over HTTP and could have been edited

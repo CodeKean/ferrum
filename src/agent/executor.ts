@@ -864,6 +864,10 @@ async function runCell(
         })
       : [];
 
+  // The allowed values, passed to the finish tool so an enum column constrains the answer at the
+  // schema level rather than only rejecting it afterwards. Undefined on every non-enum column.
+  const enumOptions = column.valueType === "enum" ? column.enumValues : undefined;
+
   const tools =
     job.kind === "agent"
       ? [
@@ -886,9 +890,9 @@ async function runCell(
                 }
               : undefined,
           }),
-          finishTool(`the value for the "${column.name}" column`),
+          finishTool(`the value for the "${column.name}" column`, enumOptions),
         ]
-      : [finishTool(`the value for the "${column.name}" column`)];
+      : [finishTool(`the value for the "${column.name}" column`, enumOptions)];
 
   // 0 means "no cap" rather than "spend nothing" — the column default is 0.05, and reading a zero as
   // a zero-dollar budget would make every cell fail before its first call.

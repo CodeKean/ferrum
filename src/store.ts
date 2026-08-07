@@ -592,6 +592,20 @@ export function setColumnValueType(id: number | string, valueType: ValueType): v
 }
 
 /**
+ * The allowed values of an `enum` column, or an empty list to lift the constraint.
+ *
+ * Bumps `prompt_version` like the type itself does: the options are part of what a valid answer is,
+ * they are told to the model up front, and they gate coercion — so a row answered before the list
+ * changed was answering a different question and must be eligible to re-run. Stored as a JSON array,
+ * or NULL when empty so an enum with no options reads the same as a column that never had any.
+ */
+export function setColumnEnumValues(id: number | string, values: string[]): void {
+  db.prepare(
+    "UPDATE columns SET enum_values = ?, prompt_version = prompt_version + 1, updated_at = datetime('now') WHERE id = ?",
+  ).run(values.length ? JSON.stringify(values) : null, Number(id));
+}
+
+/**
  * Change how a column gets its value — the lane it runs on.
  *
  * `prompt_version` is bumped because the lane is part of what produces a value: the same rule run as

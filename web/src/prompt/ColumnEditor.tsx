@@ -20,6 +20,7 @@ import { Modal } from "../ui/Modal.tsx";
 import { SearchSettings, DEFAULT_SEARCH, type WebSearchSettings } from "./SearchSettings.tsx";
 import { ModePicker } from "./ModePicker.tsx";
 import { RuleSettings } from "./RuleSettings.tsx";
+import { EnumOptions } from "./EnumOptions.tsx";
 import type { RuleSet } from "@shared/validate.ts";
 import { ModelPicker } from "./ModelPicker.tsx";
 import { LookupSettings } from "./LookupSettings.tsx";
@@ -157,6 +158,8 @@ export function ColumnEditor({ sheetId, column, columns, sheets, rowCount, onClo
   const [code, setCode] = useState("");
   const [runtime, setRuntime] = useState<"js" | "powershell" | "bash">("js");
   const [valueType, setValueType] = useState(column.valueType);
+  const [enumValues, setEnumValues] = useState<string[]>(column.enumValues ?? []);
+  const [enumError, setEnumError] = useState<string | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
   const [saved, setSaved] = useState<SavedScript | null>(null);
   const [samples, setSamples] = useState<Record<string, string | null>>({});
@@ -356,6 +359,7 @@ export function ColumnEditor({ sheetId, column, columns, sheets, rowCount, onClo
       if (!c) return;
       setKind(c.kind);
       setValueType(c.valueType);
+      setEnumValues(c.enumValues ?? []);
       setModel(c.model ?? "auto");
       setPrompt(c.prompt ?? "");
       promptLatest.current = c.prompt ?? "";
@@ -463,6 +467,36 @@ export function ColumnEditor({ sheetId, column, columns, sheets, rowCount, onClo
       onSaved();
     } catch {
       setRuleError("Could not reach the engine to save the rules.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /**
+   * Save the enum options, and adopt the list the SERVER stored rather than the one sent.
+   *
+   * The server cleans the list — trims, drops blanks, removes case-insensitive duplicates keeping
+   * the first spelling. Keeping what we sent would leave the editor showing options the database does
+   * not hold (a trailing blank, a duplicate) until a reload, exactly the "Saved but not really"
+   * problem the prompt field had. The editor re-seeds from `enumValues` only when no row is focused,
+   * so adopting the cleaned list cannot jump a caret mid-word.
+   */
+  const saveEnumValues = async (next: string[]) => {
+    setEnumValues(next);
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/columns/${column.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enumValues: next }),
+      }).then((r) => r.json());
+      if (res.error) { setEnumError(res.error); return; }
+      setEnumError(null);
+      if (Array.isArray(res.column?.enumValues)) setEnumValues(res.column.enumValues);
+      else if (res.column) setEnumValues([]);
+      onSaved();
+    } catch {
+      setEnumError("Could not reach the engine to save the options.");
     } finally {
       setBusy(false);
     }
@@ -1533,6 +1567,16 @@ export function ColumnEditor({ sheetId, column, columns, sheets, rowCount, onClo
               filter operators you get. Saved as soon as you pick it — it does not change values
               already in the column, it changes what the next run must produce.
             </span>
+
+            {/* The options an enum is allowed to return. Only an enum HAS this second half — for
+                every other type the shape is the whole constraint; for an enum the shape is "one of
+                these", and until now there was no "these" to name. */}
+            {valueType === "enum" && (
+              <>
+                {enumError && <div className="cc-modal__error" role="alert">{enumError}</div>}
+                <EnumOptions value={enumValues} onChange={(next) => { void saveEnumValues(next); }} disabled={busy} />
+              </>
+            )}
 
             {/* Rules live under the type, because they are the second half of the same question:
                 the type is what shape a value must be, these are what a valid one looks like. */}

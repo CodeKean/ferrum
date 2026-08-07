@@ -1386,6 +1386,7 @@ export function SheetGrid({
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
       window.removeEventListener("pointercancel", onCancel);
+      window.removeEventListener("keydown", onKey);
       endGesture.current = null;
     };
     const onMove = (e: PointerEvent) => {
@@ -1405,9 +1406,14 @@ export function SheetGrid({
       detach();
       scrollRef.current?.style.removeProperty(`--cw-${colId}`);
     };
+    // Escape abandons the resize at the width it started, the same way the reorder drag does. A drag
+    // with no way out is one people hesitate to start on a column they have carefully sized. Dropping
+    // the inline variable lets the committed width take back over.
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.preventDefault(); onCancel(); } };
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
     window.addEventListener("pointercancel", onCancel);
+    window.addEventListener("keydown", onKey);
     endGesture.current = onCancel;
   };
 
