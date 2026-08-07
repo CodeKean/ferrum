@@ -159,6 +159,14 @@ export function App() {
   const [columnStats, setColumnStats] = useState<Record<string, ColumnStats>>({});
   const [liveRun, setLiveRun] = useState<{ columnIds: number[]; done: number; errors: number; skipped: number; total: number } | null>(null);
   const [openCell, setOpenCell] = useState<OpenCell | null>(null);
+
+  // The cell panel and the column editor are the SAME right-hand inspector — both are fixed `right: 0`
+  // full-height drawers, so with both open they overlap: the wider editor's left edge juts out from
+  // behind the cell panel. They are mutually exclusive, so opening either closes the other. (Closing
+  // and toggling still go through the raw setters — only the OPEN transitions need to clear a sibling.)
+  const openColumnEditor = useCallback((col: Column | null) => { setOpenCell(null); setEditing(col); }, []);
+  const openCellPanel = useCallback((cell: OpenCell | null) => { setEditing(null); setOpenCell(cell); }, []);
+
   /**
    * The cell about to be written over by hand, on a column that produces its own value.
    *
@@ -536,7 +544,7 @@ export function App() {
       setStatsSettled(false);
       // Open the editor immediately — a script column with no rule does nothing, so landing the user
       // on an inert column would just be a dead end.
-      setEditing(column);
+      openColumnEditor(column);
     } catch {
       setToast("Could not add a column.");
     }
@@ -558,7 +566,7 @@ export function App() {
       cellStore.reset();
       bump();
       await refreshSheet(sheet.id);
-      setEditing(column);
+      openColumnEditor(column);
     } catch {
       setToast("Could not add a column there.");
     }
@@ -603,7 +611,7 @@ export function App() {
       // Re-read it, so the editor opens on what was actually saved rather than on the bare column
       // that existed before the destination was seeded onto it.
       const fresh = await fetch(`/api/columns/${column.id}`).then((r) => r.json()).catch(() => null);
-      setEditing(fresh?.column ?? column);
+      openColumnEditor(fresh?.column ?? column);
     } catch {
       setToast("Could not add that column.");
     }
@@ -619,7 +627,7 @@ export function App() {
       // Said out loud, because the copy is EMPTY: a duplicate that looks identical in the header and
       // holds nothing reads as a failed copy unless the difference is stated.
       setToast(`Copied "${column.name}" — the copy has no values yet. Run it when you are ready.`);
-      setEditing(made);
+      openColumnEditor(made);
     } catch {
       setToast("Could not duplicate that column.");
     }
@@ -1574,7 +1582,7 @@ export function App() {
             onNotice={setToast}
             /* No rect: the cell panel anchors itself full-height on the right, and the record page
                has no cell rectangle to point at. */
-            onOpenCell={(cellId) => setOpenCell({ cellId, rect: new DOMRect() })}
+            onOpenCell={(cellId) => openCellPanel({ cellId, rect: new DOMRect() })}
           />
           ) : columns.length === 0 ? (
             /*
@@ -1615,8 +1623,8 @@ export function App() {
             sheetId={sheet.id}
             columns={columns}
             onAddColumn={addColumn}
-            onOpenCell={(cellId, rect) => setOpenCell({ cellId, rect })}
-            onEditColumn={(c) => setEditing(c)}
+            onOpenCell={(cellId, rect) => openCellPanel({ cellId, rect })}
+            onEditColumn={(c) => openColumnEditor(c)}
             onRunColumn={(c) =>
               setPendingRun({ scope: { columnIds: [Number(c.id)] }, title: `Run "${c.name}"` })
             }
@@ -1825,7 +1833,7 @@ export function App() {
             onEditColumn={() => {
               const columnId = (openCell?.cellId ?? "").split(":")[1];
               const col = columns.find((c) => String(c.id) === String(columnId));
-              if (col) setEditing(col);
+              if (col) openColumnEditor(col);
             }}
             onExpandList={(columnId, path) => {
               const col = columns.find((c) => String(c.id) === String(columnId));
