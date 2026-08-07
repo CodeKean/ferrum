@@ -3,7 +3,14 @@
 
 .cc-pop {
   position: fixed;
-  z-index: 1000;
+  /* Above the modal scrim (1100), not below it. A Popover is the topmost TRANSIENT layer — a
+     dropdown, menu or the "/" picker — and it is routinely opened by a control that lives INSIDE a
+     modal (the CSV import mapping selects, the dedupe picker). At 1000 it portalled to <body> as a
+     sibling of the scrim and rendered behind it, so every option in a modal's dropdown was covered
+     by the overlay and clicks hit the scrim instead — the dropdowns looked completely dead. A
+     popover can never be "left under" a modal, because opening a modal is an outside-click that
+     dismisses any open popover first. Stays below the command palette / grid drag layer (1200). */
+  z-index: 1150;
   background: var(--canvas);
   border: 1px solid var(--hairline);
   border-radius: var(--r-md);
