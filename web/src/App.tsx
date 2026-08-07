@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
 import { api, connectStream, type Column, type Sheet, type UsageScope } from "./api.ts";
 import { cellStore } from "./store/cellStore.ts";
 import { SheetGrid } from "./grid/SheetGrid.tsx";
@@ -164,8 +164,25 @@ export function App() {
   // full-height drawers, so with both open they overlap: the wider editor's left edge juts out from
   // behind the cell panel. They are mutually exclusive, so opening either closes the other. (Closing
   // and toggling still go through the raw setters — only the OPEN transitions need to clear a sibling.)
+  //
+  // Closing the editor to show a cell is the one transition that could DISCARD work: the editor holds
+  // an unsaved rule until Save, while a cell panel has nothing to lose. So opening a cell respects the
+  // editor's own discard guard — if there is unsaved work, its "Discard changes?" prompt is raised
+  // instead of the drawer being unmounted from under the user. The editor reports its dirty state and
+  // lends its guarded close through these refs.
+  const editorDirtyRef = useRef(false);
+  const editorRequestCloseRef = useRef<null | (() => void)>(null);
   const openColumnEditor = useCallback((col: Column | null) => { setOpenCell(null); setEditing(col); }, []);
-  const openCellPanel = useCallback((cell: OpenCell | null) => { setEditing(null); setOpenCell(cell); }, []);
+  const openCellPanel = useCallback((cell: OpenCell | null) => {
+    // Opening a cell would close a dirty editor. Ask first, through the editor's own guard, and leave
+    // the cell for the next click once the drawer is actually shut — never drop the rule silently.
+    if (cell && editorDirtyRef.current && editorRequestCloseRef.current) {
+      editorRequestCloseRef.current();
+      return;
+    }
+    setEditing(null);
+    setOpenCell(cell);
+  }, []);
 
   /**
    * The cell about to be written over by hand, on a column that produces its own value.
@@ -1943,8 +1960,10 @@ export function App() {
               columns={columns}
               sheets={sheets}
               rowCount={sheet.rowCount}
-              onClose={() => setEditing(null)}
+              onClose={() => { editorDirtyRef.current = false; editorRequestCloseRef.current = null; setEditing(null); }}
               onSaved={() => { bump(); void refreshSheet(sheet.id); }}
+              onDirtyChange={(d) => { editorDirtyRef.current = d; }}
+              bindRequestClose={(fn) => { editorRequestCloseRef.current = fn; }}
             />
           )}
         </>

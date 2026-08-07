@@ -117,6 +117,19 @@ interface Props {
   rowCount: number;
   onClose: () => void;
   onSaved: () => void;
+  /**
+   * Reports whether closing right now would throw away unsaved work (an unsaved rule, a typed-but-
+   * unsaved AI setup). The parent uses it so that opening ANOTHER panel over this one asks first,
+   * instead of unmounting the drawer and discarding the rule silently.
+   */
+  onDirtyChange?: (dirty: boolean) => void;
+  /**
+   * Hands the drawer's OWN guarded close up to the parent — the same one the ✕ and a click-outside
+   * use, which shows the discard prompt when there is unsaved work. Registered on mount, cleared on
+   * unmount, so the parent can route a "close this to open that" through the guard rather than around
+   * it.
+   */
+  bindRequestClose?: (close: (() => void) | null) => void;
 }
 
 interface SavedScript {
@@ -128,7 +141,7 @@ interface SavedScript {
   version: number;
 }
 
-export function ColumnEditor({ sheetId, column, columns, sheets, rowCount, onClose, onSaved }: Props) {
+export function ColumnEditor({ sheetId, column, columns, sheets, rowCount, onClose, onSaved, onDirtyChange, bindRequestClose }: Props) {
   // Mode first, and it opens there on a column that has not been decided yet. The mode is the
   // expensive decision — landing on the code editor first invites writing a rule for a column that
   // should have been a search, or worse, leaving a fresh column on whatever the default was.
@@ -660,6 +673,15 @@ export function ColumnEditor({ sheetId, column, columns, sheets, rowCount, onClo
     if (dirty) { setConfirmDiscard(true); return; }
     dismiss();
   }, [dirty, dismiss]);
+
+  // Keep the parent informed whether there is work to lose, and lend it this drawer's guarded close,
+  // so opening a sibling panel over this one goes through the discard prompt instead of unmounting
+  // the drawer and dropping an unsaved rule without a word.
+  useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
+  useEffect(() => {
+    bindRequestClose?.(requestClose);
+    return () => bindRequestClose?.(null);
+  }, [bindRequestClose, requestClose]);
 
   useEffect(() => {
     const onDown = (e: MouseEvent) => {
