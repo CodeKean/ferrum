@@ -35,6 +35,20 @@ const BATCH = 500;
 /** Bytes of the head read to sniff encoding, delimiter and types. */
 const SAMPLE_BYTES = 64 * 1024;
 
+/**
+ * A csv-parse failure caused by quoting rather than by the data.
+ *
+ * `relax_quotes` (set on every parse below) already lets a stray quote — an inches mark, an
+ * unescaped `"` in a note — be read as a plain character. What it CANNOT rescue is a quote that
+ * opens a field and is never closed: the parser then swallows the rest of the file into one field
+ * and ends with `CSV_QUOTE_NOT_CLOSED`. That is the signal to re-read the file with quoting turned
+ * off entirely, so the rows land as plain text instead of the whole import failing on one bad line.
+ */
+function isQuoteError(e: unknown): boolean {
+  const code = e && typeof e === "object" && "code" in e ? String((e as { code: unknown }).code) : "";
+  return code === "CSV_QUOTE_NOT_CLOSED" || code === "INVALID_OPENING_QUOTE" || code === "INVALID_CLOSING_QUOTE";
+}
+
 // ─────────────────────────────────────────────────────────────── encoding + delimiter
 
 /**
@@ -166,6 +180,8 @@ export interface CsvPreview {
   encoding: "utf8" | "latin1";
   /** Rows whose field count differs from the header. Surfaced, never silently dropped. */
   raggedCount: number;
+  /** The file had a quote that never closed, so it was read with quoting off — quotes are literal. */
+  quotesDisabled: boolean;
 }
 
 export async function previewCsv(path: string, sampleSize = 50): Promise<CsvPreview> {
@@ -200,27 +216,47 @@ export async function previewCsv(path: string, sampleSize = 50): Promise<CsvPrev
   const firstLine = text.split(/\r?\n/)[0] ?? "";
   const delimiter = detectDelimiter(firstLine);
 
-  const records: string[][] = [];
-  let ragged = 0;
-  await new Promise<void>((res, rej) => {
-    const parser = parse({ delimiter, relax_column_count: true, skip_empty_lines: true, bom: true });
-    parser.on("readable", () => {
-      let rec: string[] | null;
-      while ((rec = parser.read() as string[] | null) !== null) {
-        if (records.length > 0 && rec.length !== records[0]!.length) ragged++;
-        if (records.length <= sampleSize) records.push(rec);
-      }
+  // `relax_quotes` reads a stray quote as text; `quote: false` (only on the retry) turns quoting off
+  // entirely for a file whose quote never closes, so the head always yields SOME rows to show and a
+  // mapping can still be picked. The preview is a sample either way — the import re-decides on the
+  // whole file, so a truncated head that merely looks unclosed does not commit the import to anything.
+  const parseHead = (quotesOff: boolean) =>
+    new Promise<{ records: string[][]; ragged: number }>((res, rej) => {
+      const records: string[][] = [];
+      let ragged = 0;
+      const parser = parse({
+        delimiter, relax_column_count: true, skip_empty_lines: true, bom: true,
+        relax_quotes: true, ...(quotesOff ? { quote: false } : {}),
+      });
+      parser.on("readable", () => {
+        let rec: string[] | null;
+        while ((rec = parser.read() as string[] | null) !== null) {
+          if (records.length > 0 && rec.length !== records[0]!.length) ragged++;
+          if (records.length <= sampleSize) records.push(rec);
+        }
+      });
+      parser.on("error", rej);
+      parser.on("end", () => res({ records, ragged }));
+      parser.write(text);
+      parser.end();
     });
-    parser.on("error", rej);
-    parser.on("end", () => res());
-    parser.write(text);
-    parser.end();
-  });
+
+  let quotesDisabled = false;
+  let parsed: { records: string[][]; ragged: number };
+  try {
+    parsed = await parseHead(false);
+  } catch (e) {
+    if (!isQuoteError(e)) throw e;
+    quotesDisabled = true;
+    parsed = await parseHead(true);
+  }
+  const records = parsed.records;
+  const ragged = parsed.ragged;
 
   const headers = (records.shift() ?? []).map((h, i) => stripBom(h).trim() || `Column ${i + 1}`);
   const inferredTypes = headers.map((_, i) => inferType(records.map((r) => r[i] ?? "")));
 
-  return { headers, sampleRows: records, inferredTypes, delimiter, encoding, raggedCount: ragged };
+  return { headers, sampleRows: records, inferredTypes, delimiter, encoding, raggedCount: ragged, quotesDisabled };
 }
 
 // ─────────────────────────────────────────────────────────────── import
@@ -269,6 +305,12 @@ export interface ImportResult {
   columnsCreated: number;
   /** What the file was finally decoded as, including a mid-stream correction to cp1252. */
   encoding: "utf8" | "latin1";
+  /**
+   * The file had a quote that opened and never closed, so it was re-read with quoting turned off and
+   * every quote kept as a literal character. Reported because it changes what a quoted field means:
+   * `"a, b"` lands as two columns, not one, and the user should know why before they trust the rows.
+   */
+  quotesDisabled: boolean;
   ms: number;
 }
 
@@ -437,7 +479,7 @@ export async function importCsv(sheetId: string, path: string, opts: ImportOptio
     opts.onProgress?.(inserted);
   };
 
-  const runPass = (encoding: "utf8" | "latin1", strict: boolean) =>
+  const runPass = (encoding: "utf8" | "latin1", strict: boolean, quotesOff: boolean) =>
     new Promise<void>((resolve, reject) => {
       const parser = parse({
         delimiter,
@@ -445,6 +487,10 @@ export async function importCsv(sheetId: string, path: string, opts: ImportOptio
         relax_column_count: true,
         skip_empty_lines: true,
         from_line: hasHeader ? 2 : 1,
+        // A stray quote is read as text rather than aborting the file; a quote that never closes
+        // cannot be, so the caller re-runs this pass with quoting off when that is the failure.
+        relax_quotes: true,
+        ...(quotesOff ? { quote: false } : {}),
       });
 
       const src = createReadStream(path);
@@ -517,26 +563,51 @@ export async function importCsv(sheetId: string, path: string, opts: ImportOptio
       }
     });
 
+  // Undo everything this import wrote and rewind every counter, so a re-read starts from a clean
+  // sheet and an honest zero. Used by both fallbacks below.
+  const resetProgress = () => {
+    rollbackImport(sheetId, startPosition, position);
+    position = startPosition;
+    inserted = 0;
+    duplicates = 0;
+    ragged = 0;
+    batch = [];
+    seenDedupe = new Set(preexistingKeys);
+  };
+
   // An explicit choice is honoured as given — the guard exists to correct a GUESS, and second-
   // guessing the user would make the override useless on the one file they reached for it.
   let encoding = opts.encoding ?? preview.encoding;
-  try {
+  let quotesDisabled = false;
+
+  // One import attempt, with the cp1252 fallback nested inside: the head can misjudge the encoding
+  // and force a re-read as latin1, exactly as before.
+  const attempt = async (quotesOff: boolean) => {
     try {
-      await runPass(encoding, opts.encoding == null && encoding === "utf8");
+      await runPass(encoding, opts.encoding == null && encoding === "utf8", quotesOff);
     } catch (e) {
       if (!(e instanceof NotUtf8)) throw e;
       // The head lied. Throw away what the UTF-8 reading produced and read the file again as cp1252
       // rather than storing a sheet full of U+FFFD nobody can recover the original bytes from.
       // Progress is reported from zero again, which is the honest account of what is happening.
-      rollbackImport(sheetId, startPosition, position);
-      position = startPosition;
-      inserted = 0;
-      duplicates = 0;
-      ragged = 0;
-      batch = [];
-      seenDedupe = new Set(preexistingKeys);
+      resetProgress();
       encoding = "latin1";
-      await runPass(encoding, false);
+      await runPass(encoding, false, quotesOff);
+    }
+  };
+
+  try {
+    try {
+      await attempt(false);
+    } catch (e) {
+      if (!isQuoteError(e)) throw e;
+      // A quote opened and never closed. Rather than fail the whole file on one bad line, read it
+      // again with quoting off so every row lands as plain text — recorded in the result, because a
+      // field that used quotes is now taken literally and that is a thing the user should see.
+      resetProgress();
+      encoding = opts.encoding ?? preview.encoding;
+      quotesDisabled = true;
+      await attempt(true);
     }
   } catch (e) {
     rollbackImport(sheetId, startPosition, position);
@@ -565,6 +636,7 @@ export async function importCsv(sheetId: string, path: string, opts: ImportOptio
     dodgedComputed: [...new Set(dodgedComputed)],
     columnsCreated,
     encoding,
+    quotesDisabled,
     ms: Date.now() - started,
   };
 }

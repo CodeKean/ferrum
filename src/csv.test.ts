@@ -129,6 +129,43 @@ test("a row with the wrong number of fields keeps the fields it does have", asyn
   ]);
 });
 
+test("a quote that never closes imports with quoting off, rather than failing the whole file", async () => {
+  // The exact failure a messy export hands you: one field opens a quote and never closes it, so a
+  // strict parser swallows the rest of the file and ends with "Quote Not Closed". The whole list used
+  // to be refused over that one line; now it is read with quoting off and every row lands.
+  const path = fixture('name,note\nAlice,ok\nBob,"he said hi\nCara,fine\nDan,ok\n');
+
+  const preview = await previewCsv(path);
+  assert.equal(preview.quotesDisabled, true, "the preview reports what it had to do");
+
+  const sheet = createSheet("csv-unclosed-quote");
+  const result = await importCsv(sheet.id, path);
+  assert.equal(result.quotesDisabled, true, "so does the result");
+  assert.equal(result.rowsInserted, 4, "no row is lost to the bad line");
+  // The stray quote is kept as a literal character rather than swallowing everything after it.
+  assert.deepEqual(gridValues(sheet.id), [
+    ["Alice", "ok"],
+    ["Bob", '"he said hi'],
+    ["Cara", "fine"],
+    ["Dan", "ok"],
+  ]);
+});
+
+test("a stray quote inside a field is read as text, and real quoting is left intact", async () => {
+  // `relax_quotes` handles the common cases WITHOUT turning quoting off: an inches mark reads as
+  // text, while a properly quoted field that holds a comma still parses as one value. quotesDisabled
+  // stays false, because nothing was given up.
+  const path = fixture('name,detail\nBob,5\'10"\nCara,"Acme, Inc."\n');
+
+  const sheet = createSheet("csv-stray-quote");
+  const result = await importCsv(sheet.id, path);
+  assert.equal(result.quotesDisabled, false, "quoting was never disabled");
+  assert.deepEqual(gridValues(sheet.id), [
+    ["Bob", '5\'10"'],
+    ["Cara", "Acme, Inc."],  // the quoted comma stayed one field
+  ]);
+});
+
 test("a character straddling the encoding sample does not condemn the whole file to cp1252", async () => {
   // The sample is cut at a fixed byte offset, so a multi-byte character crossing it fails the strict
   // decode exactly like a cp1252 byte would. The file is then read as cp1252 from its first row to
@@ -186,20 +223,27 @@ test("a cp1252 file whose first accent is past the sample is re-read, not mojiba
 });
 
 test("an import that fails part way leaves nothing behind, and says how far it got", async () => {
-  // It commits every 500 rows, so a file that fails at row 3,000 would leave 2,500 rows sitting
-  // in the sheet with no report and no undo — and re-importing the corrected file appended a second
-  // copy of them.
+  // It commits every 500 rows, so a failure at row 3,000 would leave 2,500 rows sitting in the sheet
+  // with no report and no undo — and re-importing the corrected file appended a second copy of them.
+  //
+  // The failure is injected through the progress callback rather than a malformed line, deliberately:
+  // the parser is now tolerant enough (stray quotes read as text, an unclosed quote read with quoting
+  // off) that bad CONTENT no longer fails an import — which is the whole point of the quote handling.
+  // The property under test is the OTHER half: whatever the reason a batch throws mid-stream, every
+  // committed row is rolled back and the message says how far it got.
   let csv = "Company,Note\r\n";
   for (let i = 0; i < 600; i++) csv += `company-${i},${"filler ".repeat(16)}\r\n`;
-  // Past the 64KB preview window, so the failure happens during the streamed import rather than
-  // during the sniff — which is the case that can leave rows behind.
+  // Past the 64KB preview window, so the failure happens during the streamed import rather than the
+  // sniff — the case that can leave rows behind.
   assert.ok(Buffer.byteLength(csv) > SAMPLE_BYTES);
-  csv += '"broken"quote",x\r\n';
   const path = fixture(csv);
+
+  // Throws once the first batch has committed, so there ARE rows to roll back when it does.
+  const failAfterFirstBatch = () => { throw new Error("boom"); };
 
   const sheet = createSheet("csv-midfile-failure");
   await assert.rejects(
-    () => importCsv(sheet.id, path),
+    () => importCsv(sheet.id, path, { onProgress: failAfterFirstBatch }),
     (e: Error) => {
       assert.match(e.message, /CSV import failed after \d+ rows/, "the message says how far it got");
       assert.match(e.message, /were removed/, "and that nothing was kept");
@@ -211,7 +255,7 @@ test("an import that fails part way leaves nothing behind, and says how far it g
   assert.deepEqual(gridValues(sheet.id), []);
 
   // The retry is the second half of the property: a rollback that only half worked shows up here.
-  await assert.rejects(() => importCsv(sheet.id, path));
+  await assert.rejects(() => importCsv(sheet.id, path, { onProgress: failAfterFirstBatch }));
   assert.equal(countRows(sheet.id), 0, "and retrying cannot double them");
 });
 

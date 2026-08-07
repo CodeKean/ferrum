@@ -24,6 +24,8 @@ interface Preview {
   delimiter: string;
   encoding: string;
   raggedCount: number;
+  /** The file had a quote that never closed, so it was read with quoting off — quotes are literal. */
+  quotesDisabled: boolean;
 }
 
 /** Mirrors `ImportResult` in src/csv.ts, plus the row count the route appends. */
@@ -41,6 +43,8 @@ interface Result {
   duplicateHeaders: string[];
   /** What the file was finally decoded as, after any mid-stream correction away from UTF-8. */
   encoding: "utf8" | "latin1";
+  /** A quote that never closed forced quoting off, so every quote was kept as a literal character. */
+  quotesDisabled: boolean;
   columnsCreated: number;
   ms: number;
   rowCount: number;
@@ -186,6 +190,13 @@ export function CsvImport({ sheetId, columns, onImported }: Props) {
             <span className="cc-modal__stat-value">Windows-1252</span>
           </div>
         )}
+        {result.quotesDisabled && (
+          <div className="cc-csv__warn" role="status">
+            This file had a quote that was never closed, so it was read with quoting off — every{" "}
+            <span className="mono">&quot;</span> was kept as part of the text. If a field used quotes to
+            hold a comma, that field split into more than one column; check those before you rely on them.
+          </div>
+        )}
         <p className="cc-csv__note">
           The sheet now has {result.rowCount.toLocaleString()} rows. Took {(result.ms / 1000).toFixed(1)}s.
         </p>
@@ -257,6 +268,14 @@ export function CsvImport({ sheetId, columns, onImported }: Props) {
               header. They still come in — short rows are padded, long ones lose the extras — but a
               value can land in the wrong column. Usually it means a value contains the separator and
               is not quoted.
+            </div>
+          )}
+
+          {preview.quotesDisabled && (
+            <div className="cc-csv__warn" role="status">
+              This file has a quote that is never closed, so it is read with quoting off — every{" "}
+              <span className="mono">&quot;</span> is kept as part of the text. It still imports, but a
+              field that used quotes to hold a comma will split into more than one column.
             </div>
           )}
 
