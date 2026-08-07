@@ -165,24 +165,39 @@ export function App() {
   // behind the cell panel. They are mutually exclusive, so opening either closes the other. (Closing
   // and toggling still go through the raw setters — only the OPEN transitions need to clear a sibling.)
   //
-  // Closing the editor to show a cell is the one transition that could DISCARD work: the editor holds
-  // an unsaved rule until Save, while a cell panel has nothing to lose. So opening a cell respects the
-  // editor's own discard guard — if there is unsaved work, its "Discard changes?" prompt is raised
-  // instead of the drawer being unmounted from under the user. The editor reports its dirty state and
-  // lends its guarded close through these refs.
+  // Closing the editor could DISCARD work: it holds an unsaved rule until Save (everything else there
+  // autosaves), while a cell panel has nothing to lose. So any transition that would unmount a dirty
+  // editor — opening a cell over it, OR switching to a DIFFERENT column's editor — first raises the
+  // editor's own "Discard changes?" prompt instead of pulling the drawer out from under the user. The
+  // editor reports its dirty state and lends its guarded close through these refs; `editingIdRef` is
+  // the column currently open, so switching back to the SAME column is not treated as losing it.
   const editorDirtyRef = useRef(false);
   const editorRequestCloseRef = useRef<null | (() => void)>(null);
-  const openColumnEditor = useCallback((col: Column | null) => { setOpenCell(null); setEditing(col); }, []);
+  const editingIdRef = useRef<string | number | null>(null);
+  useEffect(() => { editingIdRef.current = editing?.id ?? null; }, [editing]);
+
+  /** True when unmounting the open editor now would drop an unsaved rule — so ask first, don't switch. */
+  const guardDirtyEditor = useCallback((targetColumnId?: string | number): boolean => {
+    if (!editorDirtyRef.current || !editorRequestCloseRef.current) return false;
+    // Re-opening the SAME column is not a switch and must not nag; a cell (no id) always guards.
+    if (targetColumnId != null && editingIdRef.current != null
+        && String(targetColumnId) === String(editingIdRef.current)) return false;
+    editorRequestCloseRef.current();
+    return true;
+  }, []);
+
+  const openColumnEditor = useCallback((col: Column | null) => {
+    if (col && guardDirtyEditor(col.id)) return;
+    setOpenCell(null);
+    setEditing(col);
+  }, [guardDirtyEditor]);
   const openCellPanel = useCallback((cell: OpenCell | null) => {
     // Opening a cell would close a dirty editor. Ask first, through the editor's own guard, and leave
     // the cell for the next click once the drawer is actually shut — never drop the rule silently.
-    if (cell && editorDirtyRef.current && editorRequestCloseRef.current) {
-      editorRequestCloseRef.current();
-      return;
-    }
+    if (cell && guardDirtyEditor()) return;
     setEditing(null);
     setOpenCell(cell);
-  }, []);
+  }, [guardDirtyEditor]);
 
   /**
    * The cell about to be written over by hand, on a column that produces its own value.
