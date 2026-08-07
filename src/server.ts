@@ -14,7 +14,8 @@
 
 import express from "express";
 import type { Request, Response } from "express";
-import { existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { createWriteStream, existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
+import { pipeline } from "node:stream/promises";
 import { join } from "node:path";
 import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { db, getKv, parseCellId, tx } from "./db.ts";
@@ -139,10 +140,6 @@ import { checkValue, rulesProblem, type RuleSet } from "./validate.ts";
 
 /** Ceiling on a dry run. Mirrored by TRY_MAX in web/src/prompt/ColumnEditor.tsx. */
 const TRY_MAX_ROWS = 10_000;
-
-/** Ceiling on an uploaded CSV. Enforced while streaming, so an over-size file is refused rather
- *  than absorbed. */
-const MAX_UPLOAD_BYTES = 512 * 1024 * 1024;
 
 /** Methods that change something. GETs are readable cross-origin only through a browser that has
  *  already been given a same-origin document, which the Host guard is what prevents. */
@@ -5477,19 +5474,34 @@ export function createServer(bootId: string) {
    * Written under the app's own temp directory, never to a path the request chooses. The name is
    * generated; the one the user picked is kept only for display.
    */
-  app.post("/api/csv/upload", express.raw({ type: "*/*", limit: MAX_UPLOAD_BYTES }), wrap(async (req, res) => {
-    const body = req.body as Buffer;
-    if (!Buffer.isBuffer(body) || body.length === 0) {
-      return res.status(400).json({ error: "That file came through empty." });
-    }
+  app.post("/api/csv/upload", wrap(async (req, res) => {
     mkdirSync(TMP_DIR, { recursive: true });
     sweepStagedUploads();
     const path = join(TMP_DIR, `upload-${randomUUID()}.csv`);
-    writeFileSync(path, body);
+
+    // STREAMED to disk, not buffered. `express.raw` held the whole upload in memory, which capped it
+    // at what a single Buffer can hold and made a file the size of the ones this tool exists for — a
+    // 10 GB list — impossible before it ever reached the parser. Piping the request straight to a file
+    // keeps memory flat whatever the size, so there is no ceiling here: the free space on the disk is
+    // the only limit. Everything downstream already streams — the preview reads a 64 KB head and the
+    // import parses row by row — so nothing after this loads the file whole either.
+    try {
+      await pipeline(req, createWriteStream(path));
+    } catch {
+      rmSync(path, { force: true });
+      return res.status(400).json({ error: "That file could not be read all the way through." });
+    }
+
+    const bytes = existsSync(path) ? statSync(path).size : 0;
+    if (bytes === 0) {
+      rmSync(path, { force: true });
+      return res.status(400).json({ error: "That file came through empty." });
+    }
+
     // Previewed in the same call: the answer to "did that work" and the answer to "what is in it"
     // are the same question, and two round trips to learn a file is Windows-1252 is one too many.
     try {
-      res.json({ path, bytes: body.length, preview: await previewCsv(path) });
+      res.json({ path, bytes, preview: await previewCsv(path) });
     } catch (e) {
       res.status(400).json({ error: e instanceof Error ? e.message : String(e) });
     }
