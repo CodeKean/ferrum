@@ -410,6 +410,9 @@ function toColumn(r: any): Column {
     frozen: !!r.frozen,
     width: r.width == null ? null : Number(r.width),
     color: r.color ?? null,
+    // The display descriptor for a currency/percent column. Read off the row so the grid can format
+    // the value and the Output tab can show the current symbol/decimals.
+    format: r.format ? safeJson(r.format) : undefined,
     // How a lookup or rollup column reads across a link. Without these the editor cannot show which
     // link is selected — it would open on "nothing chosen" for a column that is fully configured.
     relationId: r.relation_id == null ? null : Number(r.relation_id),
@@ -589,6 +592,20 @@ export function setColumnValueType(id: number | string, valueType: ValueType): v
   db.prepare(
     "UPDATE columns SET value_type = ?, prompt_version = prompt_version + 1, updated_at = datetime('now') WHERE id = ?",
   ).run(valueType, Number(id));
+}
+
+/**
+ * How a currency/percent column is displayed — the symbol and decimals, or null to clear it.
+ *
+ * Presentation only, so it does NOT bump prompt_version: nothing about what a run produces changes,
+ * and re-running every row because someone changed "2 decimals" to "0" would be wasteful and wrong.
+ * Stored as JSON, or NULL when empty so an unformatted column reads the same as one that never had a
+ * descriptor.
+ */
+export function setColumnFormat(id: number | string, format: object | null): void {
+  db.prepare(
+    "UPDATE columns SET format = ?, updated_at = datetime('now') WHERE id = ?",
+  ).run(format ? JSON.stringify(format) : null, Number(id));
 }
 
 /**

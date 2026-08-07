@@ -21,6 +21,7 @@ import { SearchSettings, DEFAULT_SEARCH, type WebSearchSettings } from "./Search
 import { ModePicker } from "./ModePicker.tsx";
 import { RuleSettings } from "./RuleSettings.tsx";
 import { EnumOptions } from "./EnumOptions.tsx";
+import { FormatFields } from "./FormatFields.tsx";
 import type { RuleSet } from "@shared/validate.ts";
 import { ModelPicker } from "./ModelPicker.tsx";
 import { LookupSettings } from "./LookupSettings.tsx";
@@ -160,6 +161,7 @@ export function ColumnEditor({ sheetId, column, columns, sheets, rowCount, onClo
   const [valueType, setValueType] = useState(column.valueType);
   const [enumValues, setEnumValues] = useState<string[]>(column.enumValues ?? []);
   const [enumError, setEnumError] = useState<string | null>(null);
+  const [format, setFormat] = useState<{ currency?: string; decimals?: number }>(column.format ?? {});
   const [errors, setErrors] = useState<string[]>([]);
   const [saved, setSaved] = useState<SavedScript | null>(null);
   const [samples, setSamples] = useState<Record<string, string | null>>({});
@@ -360,6 +362,7 @@ export function ColumnEditor({ sheetId, column, columns, sheets, rowCount, onClo
       setKind(c.kind);
       setValueType(c.valueType);
       setEnumValues(c.enumValues ?? []);
+      setFormat(c.format ?? {});
       setModel(c.model ?? "auto");
       setPrompt(c.prompt ?? "");
       promptLatest.current = c.prompt ?? "";
@@ -497,6 +500,26 @@ export function ColumnEditor({ sheetId, column, columns, sheets, rowCount, onClo
       onSaved();
     } catch {
       setEnumError("Could not reach the engine to save the options.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /** Save the currency/percent display descriptor, adopting the server's cleaned version. */
+  const saveFormat = async (next: { currency?: string; decimals?: number }) => {
+    setFormat(next);
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/columns/${column.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ format: next }),
+      }).then((r) => r.json());
+      if (res.error) return;
+      if (res.column) setFormat(res.column.format ?? {});
+      onSaved();
+    } catch {
+      /* the descriptor stays on screen for this session rather than snapping back */
     } finally {
       setBusy(false);
     }
@@ -1576,6 +1599,12 @@ export function ColumnEditor({ sheetId, column, columns, sheets, rowCount, onClo
                 {enumError && <div className="cc-modal__error" role="alert">{enumError}</div>}
                 <EnumOptions value={enumValues} onChange={(next) => { void saveEnumValues(next); }} disabled={busy} />
               </>
+            )}
+
+            {/* The display half of a currency/percent column — the symbol and decimals. Only these
+                two types carry it; the value stays a plain number underneath. */}
+            {(valueType === "currency" || valueType === "percent") && (
+              <FormatFields kind={valueType} value={format} onChange={(next) => { void saveFormat(next); }} disabled={busy} />
             )}
 
             {/* Rules live under the type, because they are the second half of the same question:

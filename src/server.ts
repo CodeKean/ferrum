@@ -33,7 +33,7 @@ import {
   moveSheet, nextRowPosition, readWindow, renameColumn, renameSheet, setCellValue,
   duplicateColumn, setColumnDescription, setColumnSendConfig, setColumnWaterfall, setColumnWidth, setColumnColor,
   setColumnAgent, setColumnAllowedTools, setColumnAutoRun, setColumnAutoRunBudget, setColumnMaxBudget, setColumnFrozen, setColumnHttpConfig, setColumnMcpConfig, setColumnMcpServers, setColumnFirstModel, setColumnKind, setColumnModel, setColumnPrompt,
-  setColumnValueType, setColumnEnumValues, unpinCell, setPrimaryColumn, setSheetKind, rowLabelColumn,
+  setColumnValueType, setColumnEnumValues, setColumnFormat, unpinCell, setPrimaryColumn, setSheetKind, rowLabelColumn,
   type ReadOptions,
 } from "./store.ts";
 import { proposeSetup, safeHttp, storeRefs, type SetupArea, type WaterfallStepProposal } from "./setup/aiSetup.ts";
@@ -90,6 +90,7 @@ import { applyColumnTemplate, checkColumnTemplate, deleteColumnTemplate, listCol
 import { estimateRun, perRowCost, MAX_TOOL_CALLS } from "./estimate.ts";
 import { notReadyReason } from "./columnReady.ts";
 import { normalizeEnumValues } from "./enumValues.ts";
+import { normalizeFormat } from "./valueFormat.ts";
 import { DEFAULT_HTTP, normalizeHttpConfig } from "./http/httpColumn.ts";
 import { normalizeMcpConfig } from "./mcp/mcpColumn.ts";
 import { listMcpServers, saveMcpServer, deleteMcpServer, getMcpServer } from "./mcp/servers.ts";
@@ -2403,6 +2404,12 @@ export function createServer(bootId: string) {
       setColumnEnumValues(id, values);
       record(before.sheetId, "column.field", `Set the options for "${before.name}"`,
         { columnId: Number(id), field: "enum_values", from: before.enumValues ?? [], to: values });
+    }
+    if (req.body?.format !== undefined) {
+      // How a currency/percent column is shown. Normalised in one tested place (a valid ISO code,
+      // clamped decimals), so a junk descriptor cannot reach the grid formatter. Presentation, not
+      // recorded as an undo step, for the same reason width and colour are not.
+      setColumnFormat(id, normalizeFormat(req.body.format));
     }
     if (req.body?.kind !== undefined) {
       // The lane is what a column costs. An unrecognised one written straight through would either

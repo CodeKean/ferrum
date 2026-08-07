@@ -1642,6 +1642,10 @@ export function SheetGrid({
                             width={colWidthCss(c)}
                             colIndex={ci + 2}
                             cellKey={`${index}:${ci}`}
+                            /* So a currency/percent cell shows "$29.00" / "29%". Both come straight
+                               off the stable column object, so they do not defeat the cell's memo. */
+                            valueType={c.valueType}
+                            format={c.format}
                             active={active?.row === index && active.col === ci}
                             /* A single cell is not "a selection" — the focus ring already says
                                where you are, and tinting it as well would mean the grid always

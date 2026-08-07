@@ -1,0 +1,28 @@
+.cc-fmt {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  margin-top: var(--s-3);
+}
+
+.cc-fmt__row {
+  display: flex;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+}
+
+.cc-fmt__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+}
+
+.cc-fmt__label {
+  font-size: 11px;
+  color: var(--ink-mute);
+}
+
+/* Content-width fields — a 3-letter code and a small integer never need the full drawer width, and
+   stretching them leaves a void beside the input. */
+.cc-fmt__code { width: 6ch; text-transform: uppercase; }
+.cc-fmt__dec { width: 7ch; }

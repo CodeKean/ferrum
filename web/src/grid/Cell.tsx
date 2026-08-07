@@ -10,6 +10,8 @@
 import { memo, useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 import { cellStore, clock, type CellRecord } from "../store/cellStore.ts";
 import { STATUS_META } from "../types.ts";
+import { formatDisplay, type ValueFormat } from "@shared/valueFormat.ts";
+import type { ValueType } from "@shared/types.ts";
 import { IconPlay, IconStop, IconExpand, IconAlert, IconStale, IconPencilMark } from "../ui/Icon.tsx";
 import "./Cell.css";
 
@@ -70,6 +72,15 @@ interface Props {
   onCancelEdit?: () => void;
   /** Start editing this cell. */
   onEdit?: () => void;
+  /**
+   * The column's data type and display descriptor, so a currency/percent cell shows "$29.00" / "29%"
+   * rather than the bare number the engine stores. DISPLAY ONLY — the value edited, sorted, filtered
+   * and copied is always the stored number; formatting is the last step before the pixels.
+   *
+   * Both are stable references off the columns array, so they do not defeat the cell's memo.
+   */
+  valueType?: ValueType;
+  format?: ValueFormat;
 }
 
 const EMPTY: CellRecord = { id: "", status: "empty", value: null, rev: -1 };
@@ -84,6 +95,7 @@ function elapsedLabel(startedAt: number, now: number): string {
 export const Cell = memo(function Cell({
   rowId, columnId, width, colIndex, cellKey, active, selected, edges, fillCorner,
   onSelectOver, onFillStart, onOpen, editing, seed, onCommit, onCancelEdit, onEdit,
+  valueType, format,
 }: Props) {
   const subscribe = useCallback(
     (l: () => void) => cellStore.subscribeCell(rowId, columnId, l),
@@ -141,7 +153,7 @@ export const Cell = memo(function Cell({
       <span className="cc-cell__value truncate">
         {editing
           ? <CellInput seed={seed ?? ""} onCommit={onCommit} onCancel={onCancelEdit} />
-          : isRunning ? <Elapsed startedAt={cell.startedAt} /> : <Value cell={cell} />}
+          : isRunning ? <Elapsed startedAt={cell.startedAt} /> : <Value cell={cell} valueType={valueType} format={format} />}
       </span>
 
       {/* What is true of this cell ALONGSIDE its status, in the corner.
@@ -400,7 +412,7 @@ function skipTitle(message?: string): string {
   return `${message}\n\nRunning the column again will skip it again. Fill the column it needs, or mark that reference optional.`;
 }
 
-function Value({ cell }: { cell: CellRecord }) {
+function Value({ cell, valueType, format }: { cell: CellRecord; valueType?: ValueType; format?: ValueFormat }) {
   if (cell.status === "queued") return <span className="cc-cell__meta">Queued</span>;
   // The message first, falling back to the class. A cell reading "timeout" names the bucket it fell
   // into; "The model stopped without answering" is the thing the user can act on.
@@ -450,5 +462,9 @@ function Value({ cell }: { cell: CellRecord }) {
     );
   }
   if (cell.value == null || cell.value === "") return null;
-  return <span title={cell.value.length > 40 ? cell.value : undefined}>{cell.value}</span>;
+  // The one place formatting happens. A currency/percent column shows "$29.00" / "29%"; every other
+  // type is returned unchanged by formatDisplay. The title stays the RAW value, so a hover and a
+  // copy both give the number rather than the decorated string.
+  const shown = formatDisplay(cell.value, valueType ?? "text", format);
+  return <span title={cell.value.length > 40 || shown !== cell.value ? cell.value : undefined}>{shown}</span>;
 }

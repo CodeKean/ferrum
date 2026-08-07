@@ -42,6 +42,8 @@ export interface Column {
   valueType: ValueType;
   /** The allowed values of an `enum` column. Empty or absent means no constraint (behaves as text). */
   enumValues?: string[];
+  /** Display descriptor for a `currency`/`percent` column — symbol and decimals. Presentation only. */
+  format?: { currency?: string; decimals?: number };
   /** The instruction an `ai` or `agent` column runs on every row. */
   prompt?: string | null;
   /** Which model this column runs on, or "auto" to follow the engine default. */

@@ -141,6 +141,11 @@ export interface Column {
   enumValues?: string[];
   jsonSchema?: object;
   /**
+   * How a `currency` or `percent` value is DISPLAYED — the symbol and decimals. Never affects what is
+   * stored (a plain number), only the pixels. Shaped by ValueFormat in valueFormat.ts.
+   */
+  format?: { currency?: string; decimals?: number };
+  /**
    * What this column is for, in the author's words.
    *
    * The column has always had somewhere to put this and nowhere to say it. On a sheet with thirty
