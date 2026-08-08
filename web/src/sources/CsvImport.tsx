@@ -75,8 +75,42 @@ const DELIMITER_NAME: Record<string, string> = {
 /** Same normalization the engine keys columns by, so the auto-aim agrees with what import would do. */
 const keyOf = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
 
+/** A byte count in the largest unit that keeps it short — GB for the files this progress is FOR. */
+function fmtSize(bytes: number): string {
+  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+  if (bytes >= 1024 ** 2) return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
+  return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+}
+
+/**
+ * POST the file to the upload route, reporting how much of it has been SENT.
+ *
+ * `fetch` cannot report upload progress; only XHR's `upload.onprogress` can. The route streams the
+ * body to disk, so progress here tracks the real slow operation — the bytes crossing to the engine
+ * and landing on disk — rather than a spinner that says nothing while a gigabyte transfers. The
+ * response shape is the upload route's JSON, unchanged.
+ */
+function uploadCsv(
+  f: File,
+  onProgress: (fraction: number) => void,
+): Promise<{ path?: string; bytes?: number; preview?: Preview; error?: string }> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "/api/csv/upload");
+    xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded / e.total); };
+    xhr.onload = () => {
+      try { resolve(JSON.parse(xhr.responseText)); }
+      catch { reject(new Error("The engine's answer could not be read.")); }
+    };
+    xhr.onerror = () => reject(new Error("The upload could not reach the engine."));
+    xhr.send(f);
+  });
+}
+
 export function CsvImport({ sheetId, columns, onImported }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
+  /** The in-flight import's aborter, so the Cancel button can stop it. null when not importing. */
+  const abortRef = useRef<AbortController | null>(null);
   const [file, setFile] = useState<{ name: string; path: string; bytes: number } | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [mappings, setMappings] = useState<Mapping[]>([]);
@@ -86,6 +120,9 @@ export function CsvImport({ sheetId, columns, onImported }: Props) {
   const [busy, setBusy] = useState<"upload" | "import" | null>(null);
   /** Rows written so far during an import, streamed from the engine. null when not importing. */
   const [progress, setProgress] = useState<number | null>(null);
+  /** Fraction (0–1) of the file's bytes sent to the engine during the upload, and the total to send. */
+  const [uploadFrac, setUploadFrac] = useState(0);
+  const [uploadTotal, setUploadTotal] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
 
@@ -94,26 +131,33 @@ export function CsvImport({ sheetId, columns, onImported }: Props) {
     setBusy("upload");
     setError(null);
     setResult(null);
+    setUploadFrac(0);
+    setUploadTotal(f.size);
     try {
-      const res = await fetch("/api/csv/upload", { method: "POST", body: f }).then((r) => r.json());
-      if (res.error) { setError(res.error); setPreview(null); return; }
-      setFile({ name: f.name, path: res.path, bytes: res.bytes });
-      setPreview(res.preview);
+      // XHR, not fetch: only XHR reports UPLOAD progress, and on a multi-gigabyte file the bytes take
+      // real time to reach the engine and be written to disk — a bar that moves is the difference
+      // between "working" and "frozen".
+      const res = await uploadCsv(f, setUploadFrac);
+      if (res.error || !res.path || !res.preview) { setError(res.error ?? "Could not read that file."); setPreview(null); return; }
+      const preview = res.preview;
+      setFile({ name: f.name, path: res.path, bytes: res.bytes ?? f.size });
+      setPreview(preview);
       // Pre-aim each CSV column at an existing column when the names match. The engine would do the
       // same quietly for "new" targets, but a default the screen SHOWS is one the user can veto.
       const byKey = new Map(columns.map((c) => [keyOf(c.name), String(c.id)]));
       setMappings(
-        (res.preview.headers as string[]).map((h) => ({
+        preview.headers.map((h) => ({
           target: byKey.get(keyOf(h)) ?? "new",
           name: h,
         })),
       );
       // An email-ish column is the natural dedupe key; suggested, never forced.
-      setDedupeOn((res.preview.headers as string[]).findIndex((h) => /email/i.test(h)));
+      setDedupeOn(preview.headers.findIndex((h) => /email/i.test(h)));
     } catch {
       setError("Could not read that file.");
     } finally {
       setBusy(null);
+      setUploadFrac(0);
     }
   };
 
@@ -122,9 +166,12 @@ export function CsvImport({ sheetId, columns, onImported }: Props) {
     setBusy("import");
     setError(null);
     setProgress(0);
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
     try {
       const res = await fetch(`/api/sheets/${sheetId}/import`, {
         method: "POST",
+        signal: ctrl.signal,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           path: file.path,
@@ -164,22 +211,35 @@ export function CsvImport({ sheetId, columns, onImported }: Props) {
           const ev = JSON.parse(raw) as
             | { type: "progress"; rows: number }
             | { type: "done"; result: Result }
+            | { type: "cancelled" }
             | { type: "error"; error: string };
           if (ev.type === "progress") setProgress(ev.rows);
           else if (ev.type === "done") done = ev.result;
           else if (ev.type === "error") streamError = ev.error;
+          // "cancelled" needs no handling — the abort path below already reset the screen.
         }
       }
 
       if (streamError) { setError(streamError); return; }
       if (done) { setResult(done); onImported(); }
-    } catch {
-      setError("Could not reach the engine.");
+    } catch (e) {
+      // The Cancel button aborts the fetch, which lands here. It is not an error: the engine rolled
+      // the rows back, so the screen goes back to the mapping with a plain note and the grid refreshes.
+      if (e instanceof DOMException && e.name === "AbortError") {
+        setError("Import cancelled — nothing was added to the table.");
+        onImported();
+      } else {
+        setError("Could not reach the engine.");
+      }
     } finally {
+      abortRef.current = null;
       setBusy(null);
       setProgress(null);
     }
   };
+
+  /** Cancel a running import: abort the request, which the engine sees and rolls back. */
+  const cancelImport = () => abortRef.current?.abort();
 
   if (result) {
     return (
@@ -268,8 +328,25 @@ export function CsvImport({ sheetId, columns, onImported }: Props) {
           onChange={(e) => { const f = e.target.files?.[0]; if (f) void take(f); }}
         />
         <p className="cc-csv__droptext">
-          {busy === "upload" ? "Reading…" : file ? file.name : "Drop a CSV here, or"}
+          {busy === "upload"
+            ? uploadFrac < 1
+              ? `Uploading ${fmtSize(uploadTotal * uploadFrac)} of ${fmtSize(uploadTotal)} · ${Math.round(uploadFrac * 100)}%`
+              : "Reading the file…"
+            : file ? file.name : "Drop a CSV here, or"}
         </p>
+        {busy === "upload" && (
+          <div
+            className="cc-csv__bar"
+            role="progressbar"
+            aria-valuenow={Math.round(uploadFrac * 100)}
+            aria-valuemin={0}
+            aria-valuemax={100}
+          >
+            {/* At 100% the bytes are in; the fill sits full while the engine sniffs the head, which is
+                what "Reading the file…" above is covering. */}
+            <div className="cc-csv__bar-fill" style={{ width: `${Math.round(uploadFrac * 100)}%` }} />
+          </div>
+        )}
         {busy !== "upload" && (
           <button className="cc-btn" onClick={() => fileRef.current?.click()}>
             <IconPlus /> <span>{file ? "Choose a different file" : "Choose a file"}</span>
@@ -406,19 +483,25 @@ export function CsvImport({ sheetId, columns, onImported }: Props) {
           </div>
 
           <div className="cc-csv__foot">
-            <span className="cc-csv__meta mono">
+            <span className={`cc-csv__meta mono${busy === "import" ? " cc-csv__meta--live" : ""}`}>
               {busy === "import"
                 ? `${(progress ?? 0).toLocaleString()} rows imported…`
                 : `${(file!.bytes / 1024 / 1024).toFixed(1)} MB · showing ${Math.min(5, preview.sampleRows.length)} rows`}
             </span>
-            <button
-              className="cc-btn cc-btn--primary"
-              onClick={() => void doImport()}
-              disabled={busy === "import" || landing === 0}
-              title={landing === 0 ? "Every column is being left out — nothing would arrive." : undefined}
-            >
-              {busy === "import" ? "Importing…" : "Import into this table"}
-            </button>
+            {busy === "import" ? (
+              <button className="cc-btn cc-btn--danger" onClick={cancelImport}>
+                Cancel
+              </button>
+            ) : (
+              <button
+                className="cc-btn cc-btn--primary"
+                onClick={() => void doImport()}
+                disabled={landing === 0}
+                title={landing === 0 ? "Every column is being left out — nothing would arrive." : undefined}
+              >
+                Import into this table
+              </button>
+            )}
           </div>
         </>
       )}

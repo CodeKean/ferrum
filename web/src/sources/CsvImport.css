@@ -73,12 +73,32 @@
 /* Meta left, action right — the strip spans its width rather than packing at one end. */
 .cc-csv__foot { display: flex; align-items: center; gap: var(--s-3); }
 .cc-csv__meta { flex: 1 1 auto; min-width: 0; font-size: 10.5px; color: var(--ink-faint); }
+/* The live row count during an import — in the brand teal and a size up, so it reads as the thing
+   that is happening rather than fine print you have to hunt for. */
+.cc-csv__meta--live { color: var(--primary); font-weight: 600; font-size: 12px; }
+
+/* Upload progress: a slim track that fills in the brand teal as the file's bytes reach the engine. */
+.cc-csv__bar {
+  width: min(320px, 70%);
+  height: 5px;
+  margin-top: var(--s-2);
+  border-radius: 999px;
+  background: var(--hairline);
+  overflow: hidden;
+}
+.cc-csv__bar-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--primary);
+  transition: width 120ms linear;
+}
 
 .cc-csv__done { display: flex; flex-direction: column; gap: var(--s-2); align-items: flex-start; }
 .cc-csv__note { margin: 0; font-size: 12px; color: var(--ink-mute); }
 
 @media (prefers-reduced-motion: reduce) {
   .cc-csv__drop { transition: none; }
+  .cc-csv__bar-fill { transition: none; }
 }
 
 /* ── the mapping table: one row per CSV column, deciding where it lands ─────── */

@@ -52,7 +52,7 @@ import {
   createSource, deleteSource, deliver, findByToken, listDeliveries, listSources, rotateToken,
   updateSource, MAX_BODY_BYTES,
 } from "./sources/webhook.ts";
-import { exportCsv, importCsv, previewCsv } from "./csv.ts";
+import { exportCsv, ImportCancelled, importCsv, previewCsv } from "./csv.ts";
 import { isColumnKind, isSheetKind, isValueType } from "./types.ts";
 import { checkKey, normalizeAgentSettings, searchCostUsd } from "./providers/openrouter.ts";
 import { catalogAge, listModels, type CatalogModel } from "./providers/catalog.ts";
@@ -5539,7 +5539,13 @@ export function createServer(bootId: string) {
     res.setHeader("Content-Type", "application/x-ndjson");
     res.setHeader("Cache-Control", "no-store");
     res.setHeader("X-Accel-Buffering", "no"); // no proxy may collect the progress into one lump
-    const line = (obj: unknown) => res.write(JSON.stringify(obj) + "\n");
+    const line = (obj: unknown) => { if (!res.writableEnded) res.write(JSON.stringify(obj) + "\n"); };
+
+    // The Cancel button aborts the fetch, which drops this connection. `close` firing before the
+    // response has ended is that abort — so the import is told to stop, and it rolls back everything
+    // it wrote. A `close` AFTER `res.end()` is just the normal end of a finished response.
+    const canceller = new AbortController();
+    res.on("close", () => { if (!res.writableEnded) canceller.abort(); });
 
     let lastPing = 0;
     try {
@@ -5552,8 +5558,9 @@ export function createServer(bootId: string) {
         // Asked for explicitly or not at all. Its sibling is the `override` flag on a single cell
         // edit; this is the same decision taken once for a whole file, so it is never inferred.
         overwriteComputed: req.body?.overwriteComputed === true,
+        signal: canceller.signal,
         onProgress: (rows) => {
-          // Throttled: a fast import calls this every 500 rows, and a line per batch on a ten-million
+          // Throttled: a fast import calls this every batch, and a line per batch on a ten-million
           // row file is tens of thousands of writes to say nothing new. At most one every 200ms.
           const now = Date.now();
           if (now - lastPing < 200) return;
@@ -5566,9 +5573,12 @@ export function createServer(bootId: string) {
       noteRowsArrived(id);
       line({ type: "done", result: { ...result, rowCount: countRows(id) } });
     } catch (e) {
-      line({ type: "error", error: e instanceof Error ? e.message : String(e) });
+      // A cancel already rolled the rows back inside importCsv; there is usually no client left to
+      // tell, but if there is, name it plainly rather than as an error.
+      if (e instanceof ImportCancelled) { noteRowsArrived(id); line({ type: "cancelled" }); }
+      else line({ type: "error", error: e instanceof Error ? e.message : String(e) });
     }
-    res.end();
+    if (!res.writableEnded) res.end();
   }));
 
   app.get("/api/sheets/:id/export.csv", wrap((req, res) => {

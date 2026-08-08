@@ -17,7 +17,7 @@ import { parse } from "csv-parse/sync";
 import { db } from "./db.ts";
 import type { FilterGroup } from "./filter.ts";
 import { addColumn, countRows, createSheet, getCell, insertRows, listColumns, readWindow, setCellValue } from "./store.ts";
-import { detectEncoding, exportCsv, guardFormula, importCsv, previewCsv, trimToCharBoundary , unguardFormula} from "./csv.ts";
+import { detectEncoding, exportCsv, guardFormula, ImportCancelled, importCsv, previewCsv, trimToCharBoundary , unguardFormula} from "./csv.ts";
 
 const SAMPLE_BYTES = 64 * 1024;
 
@@ -257,6 +257,25 @@ test("an import that fails part way leaves nothing behind, and says how far it g
   // The retry is the second half of the property: a rollback that only half worked shows up here.
   await assert.rejects(() => importCsv(sheet.id, path, { onProgress: failAfterFirstBatch }));
   assert.equal(countRows(sheet.id), 0, "and retrying cannot double them");
+});
+
+test("a cancelled import rolls back every row it had written", async () => {
+  // Cancel is the Cancel button: the request is aborted, the engine sees it between batches and
+  // stops. It must leave the table exactly as it was — the same all-or-nothing a failure gets — so
+  // the cancelled rows cannot be re-imported into a doubled copy.
+  let csv = "Company,Note\r\n";
+  for (let i = 0; i < 6000; i++) csv += `company-${i},note\r\n`; // several batches at BATCH=2000
+  const path = fixture(csv);
+
+  const sheet = createSheet("csv-cancel");
+  const controller = new AbortController();
+  // Abort the moment the first batch lands, so there ARE committed rows to undo.
+  await assert.rejects(
+    () => importCsv(sheet.id, path, { signal: controller.signal, onProgress: () => controller.abort() }),
+    (e: Error) => e instanceof ImportCancelled,
+  );
+  assert.equal(countRows(sheet.id), 0, "nothing kept");
+  assert.deepEqual(gridValues(sheet.id), []);
 });
 
 test("every column of an imported row can still be written to", async () => {
