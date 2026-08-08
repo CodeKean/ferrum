@@ -182,6 +182,10 @@ export function ColumnEditor({ sheetId, column, columns, sheets, rowCount, onClo
   // How many rows a try covers. Three is a starting point, not a limit — three rows is not enough to
   // see whether a rule holds up on the messy middle of a real sheet.
   const [tryRows, setTryRows] = useState(3);
+  // A try on a model/HTTP/MCP column — unlike a rule dry-run, this one spends and fills the cells for
+  // real. Its own busy flag and note, kept apart from the rule footer's dry-run state.
+  const [trying, setTrying] = useState(false);
+  const [tryNote, setTryNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   // Whether the existing rule has come back yet. Save stays disabled until it has: saving into an
   // editor that has not finished loading would write a blank rule over a working one.
@@ -1089,6 +1093,37 @@ export function ColumnEditor({ sheetId, column, columns, sheets, rowCount, onClo
     }
   };
 
+  /**
+   * Run this column on the first few rows, for real, and let them fill in the grid.
+   *
+   * The point is to see the ACTUAL output — the email, the extracted value — on real rows, and to
+   * iterate: tweak the instruction, try again, watch it change. So unlike the rule dry-run this
+   * spends and writes, and unlike the run dialog's sample it is about the answer, not the cost. It
+   * reuses the ordinary run pipeline scoped to rows 1..N, so the cells stream into the grid live.
+   */
+  const runTry = async () => {
+    setTrying(true);
+    setTryNote(null);
+    try {
+      // The newest instruction is what gets tried. Blur has usually flushed it already, but a click
+      // straight from the field can beat the save — so the latest is persisted here before the run,
+      // or the try would quietly run the previous prompt and the edit would look like it did nothing.
+      if (kind === "ai" || kind === "agent") await savePrompt(promptLatest.current);
+      const res = await fetch(`/api/sheets/${sheetId}/runs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scope: { columnIds: [Number(column.id)], fromRow: 1, toRow: tryRows } }),
+      }).then((r) => r.json());
+      if (res.error) { setTryNote(res.error); return; }
+      setTryNote(`Running the first ${tryRows} ${tryRows === 1 ? "row" : "rows"} — they fill in the grid as they finish.`);
+      onSaved();
+    } catch {
+      setTryNote("Could not reach the engine to try this column.");
+    } finally {
+      setTrying(false);
+    }
+  };
+
   return (
     <aside
       className={`cc-drawer${leaving ? " cc-drawer--leaving" : ""}`}
@@ -1865,11 +1900,46 @@ export function ColumnEditor({ sheetId, column, columns, sheets, rowCount, onClo
            * question "have my changes been kept?" had no answer anywhere except a hint under one
            * field, and the dead Save button beside it answered "no".
            */
-          <span className="cc-foot__meta cc-foot__autosave">
-            {gone ? "This column is gone — nothing is being saved."
-              : settingsSaving ? "Saving…"
-              : "Saved. Changes here are kept as you make them."}
-          </span>
+          <>
+            <span className="cc-foot__meta cc-foot__autosave">
+              {tryNote ? tryNote
+                : gone ? "This column is gone — nothing is being saved."
+                : settingsSaving ? "Saving…"
+                : "Saved. Changes here are kept as you make them."}
+            </span>
+            {/* Try a few rows for real, right here — the way to see the actual output (the email, the
+                extracted value) and iterate on it, instead of committing to a whole run first. Only on
+                the lanes where a try produces a value to look at; a `send` column would fire real
+                messages, so it is deliberately not offered one. */}
+            {(kind === "ai" || kind === "agent" || kind === "http" || kind === "mcp") && !gone && (
+              <span className="cc-try">
+                <label className="cc-try__label" htmlFor="cc-try-rows">Try</label>
+                <input
+                  id="cc-try-rows"
+                  className="cc-input cc-input--num cc-try__n"
+                  type="number"
+                  min={1}
+                  max={TRY_MAX}
+                  size={6}
+                  value={tryRows}
+                  disabled={trying}
+                  onChange={(e) => setTryRows(clampTry(Number(e.target.value)))}
+                />
+                <button
+                  className="cc-btn"
+                  onClick={runTry}
+                  disabled={trying || rowCount === 0 || ((kind === "ai" || kind === "agent") && !prompt.trim())}
+                  title={
+                    rowCount === 0 ? "This table has no rows yet — add a few first."
+                    : (kind === "ai" || kind === "agent") && !prompt.trim() ? "Write the instruction above first."
+                    : `Run the first ${tryRows} ${tryRows === 1 ? "row" : "rows"} for real and fill them into the grid — this costs what those rows cost.`
+                  }
+                >
+                  <IconPlay /> <span>{trying ? "Running…" : tryRows === 1 ? "row" : "rows"}</span>
+                </button>
+              </span>
+            )}
+          </>
         )}
       </footer>
 
