@@ -112,6 +112,13 @@ Referencing columns in a prompt — this is not formatting, it changes what runs
   So when the user asks for a column that "reads every column", the prompt must actually reference
   each of those columns with /, not list their names.
 
+Adding a column (add_column):
+  Put the new column's name in the "name" field. "columnNames" is only for a dedupe rule and is
+  ignored here — a name left there means the column is created with no name, so it is not created.
+  If the column is "ai" or "agent", it MUST include its "prompt" in the same action, written with
+  /references as above. Adding the column and setting its instruction are ONE action, not two. An ai
+  or agent column with no prompt does nothing on every row, so it is refused rather than created.
+
 A change you describe in words is a change that does not happen. The words are not wired to anything
 — only the actions array is — so:
   If you are proposing a change, it MUST be in the actions array. Describing it in the reply and
@@ -138,8 +145,8 @@ const TOOL_SCHEMA = {
         properties: {
           kind: { type: "string", enum: ["add_column", "set_prompt", "set_mode", "set_dedupe"] },
           why: { type: "string", description: "One line, in the user's terms, on what this achieves." },
-          name: { type: "string" },
-          columnId: { type: "number" },
+          name: { type: "string", description: "add_column: the new column's name. Goes HERE, not in columnNames." },
+          columnId: { type: "number", description: "set_prompt / set_mode: the id of the existing column to change." },
           // Derived, not written out again. This list was the third hand-maintained copy of the
           // column kinds and, like the other two, it had gone stale: `send` existed in the product
           // and in none of them, so the assistant could not propose the largest feature in the app.
@@ -276,18 +283,30 @@ export function parseReply(raw: unknown, sheetId: string): AssistantReply {
 
   for (const r of Array.isArray(a.actions) ? a.actions : []) {
     const why = String(r?.why ?? "").trim();
-    if (r?.kind === "add_column" && String(r.name ?? "").trim()) {
+    if (r?.kind === "add_column") {
+      // The name sometimes lands in `columnNames` — the dedupe field — with `name` left empty. It is
+      // the single most common way this action arrives malformed, and the intent is unambiguous, so
+      // it is salvaged rather than dropped whole.
+      const name = String(r.name ?? "").trim() || String(r.columnNames?.[0] ?? "").trim();
+      const columnKind = isColumnKind(r.columnKind) ? r.columnKind : "static";
       const prompt = r.prompt ? String(r.prompt) : undefined;
-      if (prompt && prompt.length > MAX_PROMPT) continue;
-      actions.push({
-        kind: "add_column",
-        name: String(r.name).trim(),
-        columnKind: isColumnKind(r.columnKind) ? r.columnKind : "static",
-        valueType: isValueType(r.valueType) ? r.valueType : "text",
-        prompt,
-        http: r.http && typeof r.http === "object" ? r.http : undefined,
-        why,
-      });
+      // The two kinds whose entire job is the instruction must arrive WITH one. An AI or agent column
+      // created with no prompt does nothing on every row — the exact silent no-op this panel exists to
+      // prevent — so it is not offered, and is counted below like any other change that did not fit.
+      const promptOk = columnKind === "ai" || columnKind === "agent"
+        ? !!(prompt && prompt.trim())
+        : true;
+      if (name && promptOk && !(prompt && prompt.length > MAX_PROMPT)) {
+        actions.push({
+          kind: "add_column",
+          name,
+          columnKind,
+          valueType: isValueType(r.valueType) ? r.valueType : "text",
+          prompt,
+          http: r.http && typeof r.http === "object" ? r.http : undefined,
+          why,
+        });
+      }
     } else if (
       r?.kind === "set_prompt" && valid.has(Number(r.columnId)) &&
       String(r.prompt ?? "").trim() && String(r.prompt).length <= MAX_PROMPT

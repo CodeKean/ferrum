@@ -116,6 +116,45 @@ test("an empty answer is refused, so the chat never shows a blank bubble", () =>
   assert.throws(() => parseReply({ reply: "   ", actions: [] }, f.sheet.id), /empty answer/i);
 });
 
+test("a new column's name is salvaged when the model puts it in the dedupe field", () => {
+  // The single most common way add_column arrives malformed: the name lands in `columnNames` — the
+  // field that belongs to a dedupe rule — and `name` is left empty, so the whole proposal used to be
+  // dropped and the user's "add an email column" produced nothing but a "1 didn't fit" count.
+  const f = fixture("as-salvage");
+  const out = parseReply({
+    reply: "Adds it.",
+    actions: [{ kind: "add_column", columnKind: "ai", columnNames: ["Cold Email"],
+      prompt: "Write to /Company.", why: "email" }],
+  }, f.sheet.id);
+  assert.equal(out.dropped, 0);
+  assert.equal(out.actions.length, 1);
+  const a = out.actions[0]!;
+  assert.equal(a.kind, "add_column");
+  assert.equal(a.kind === "add_column" && a.name, "Cold Email");
+});
+
+test("an ai column proposed with no instruction is refused, not created empty", () => {
+  // An ai or agent column with no prompt does nothing on every row — the exact silent no-op the
+  // propose-then-apply panel exists to prevent. It is counted, so the transcript stays honest.
+  const f = fixture("as-noprompt");
+  const out = parseReply({
+    reply: "Adds it.",
+    actions: [{ kind: "add_column", name: "Cold Email", columnKind: "ai", why: "email" }],
+  }, f.sheet.id);
+  assert.equal(out.actions.length, 0, "not offered");
+  assert.equal(out.dropped, 1, "and counted, not silently gone");
+});
+
+test("a static column with no instruction is fine — only ai and agent need one", () => {
+  const f = fixture("as-static-noprompt");
+  const out = parseReply({
+    reply: "Adds it.",
+    actions: [{ kind: "add_column", name: "Notes", columnKind: "static", why: "a place to type" }],
+  }, f.sheet.id);
+  assert.equal(out.actions.length, 1);
+  assert.equal(out.dropped, 0);
+});
+
 test("adding a column creates it and does NOT run it", () => {
   // An assistant that can start a paid run from a sentence is one bad interpretation away from an
   // expensive afternoon.
@@ -282,7 +321,7 @@ test("a proposal this table cannot take is COUNTED, not silently dropped", () =>
       reply: "Pointing the industry column at the website instead.",
       actions: [
         { kind: "set_prompt", columnId: 99999, prompt: "look at /Website", why: "more reliable" },
-        { kind: "add_column", name: "Industry", columnKind: "ai", valueType: "text", why: "so you can segment" },
+        { kind: "add_column", name: "Industry", columnKind: "ai", valueType: "text", prompt: "What industry is /Company in?", why: "so you can segment" },
       ],
     },
     f.sheet.id,
