@@ -46,6 +46,13 @@ interface Bubble {
   dropped?: number;
 }
 
+/** One stage of an answer in flight, named as it happens so a longer wait reads as work. */
+interface Step {
+  phase: "draft" | "check" | "revise" | "done";
+  label: string;
+  round?: number;
+}
+
 interface Props {
   sheetId: string;
   columns: Column[];
@@ -75,6 +82,8 @@ export function Assistant({ sheetId, columns, onClose, onChanged }: Props) {
   const [bubbles, setBubbles] = useState<Bubble[]>([]);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
+  /** The steps of the answer currently in flight, in order — the last is the one happening now. */
+  const [steps, setSteps] = useState<Step[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [showContext, setShowContext] = useState(false);
   const [context, setContext] = useState<string | null>(null);
@@ -154,7 +163,19 @@ export function Assistant({ sheetId, columns, onClose, onChanged }: Props) {
     setBubbles(history);
     setDraft("");
     setBusy(true);
+    setSteps([]);
     setError(null);
+
+    // The answer arrives as a stream of newline-delimited JSON, not one response: `step` lines while
+    // it plans and checks itself, then a single `done` or `error`. Read line by line so each step can
+    // be shown the moment it starts rather than all at once when it finishes.
+    const fail = (msg: string) => {
+      setError(msg);
+      // Nothing was said, so nothing stays said. The words go back in the box, where fixing whatever
+      // the error named and pressing Send once more is the whole recovery.
+      setBubbles(prevBubbles);
+      setDraft(prevDraft || text);
+    };
     try {
       // Only the new question goes up. The engine owns the transcript now and reads the history from
       // its own store — sending the browser's copy meant the model's memory was whatever this panel
@@ -164,25 +185,56 @@ export function Assistant({ sheetId, columns, onClose, onChanged }: Props) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text }),
-      }).then((r) => r.json());
-      if (res.error) {
-        setError(res.error);
-        // Nothing was said, so nothing stays said. The words go back in the box, where fixing
-        // whatever the error named and pressing Send once more is the whole recovery.
-        setBubbles(prevBubbles);
-        setDraft(prevDraft || text);
+      });
+      // A pre-stream refusal (no such table, empty question) still answers as plain JSON.
+      if (!res.ok || !res.body) {
+        const j = await res.json().catch(() => null);
+        fail(j?.error ?? "Could not reach the engine.");
         return;
       }
-      setBubbles([
-        ...history.map((b, i) => (i === history.length - 1 ? { ...b, id: res.userTurnId } : b)),
-        { id: res.turnId, role: "assistant", text: res.reply, actions: res.actions ?? [], applied: {}, dropped: res.dropped ?? 0 },
-      ]);
+
+      const reader = res.body.getReader();
+      const dec = new TextDecoder();
+      let buf = "";
+      let settled = false;
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        let nl: number;
+        while ((nl = buf.indexOf("\n")) >= 0) {
+          const raw = buf.slice(0, nl).trim();
+          buf = buf.slice(nl + 1);
+          if (!raw) continue;
+          const msg = JSON.parse(raw) as
+            | { type: "step"; phase: Step["phase"]; label: string; round?: number }
+            | { type: "done"; reply: string; actions?: Action[]; dropped?: number; userTurnId?: number; turnId?: number }
+            | { type: "error"; error: string };
+
+          if (msg.type === "step") {
+            // The terminal "Ready" step is not shown — the finished answer replaces the whole strip a
+            // beat later, and a checkmark that appears and vanishes reads as a flicker.
+            if (msg.phase !== "done") setSteps((prev) => [...prev, { phase: msg.phase, label: msg.label, round: msg.round }]);
+          } else if (msg.type === "done") {
+            settled = true;
+            setBubbles([
+              ...history.map((b, i) => (i === history.length - 1 ? { ...b, id: msg.userTurnId } : b)),
+              { id: msg.turnId, role: "assistant", text: msg.reply, actions: msg.actions ?? [], applied: {}, dropped: msg.dropped ?? 0 },
+            ]);
+          } else if (msg.type === "error") {
+            settled = true;
+            fail(msg.error);
+          }
+        }
+      }
+      // The stream ended without a terminal line — a dropped connection mid-answer. Put things back
+      // rather than leave the question sitting there looking asked with no answer coming.
+      if (!settled) fail("The answer was cut off. Try again.");
     } catch {
-      setError("Could not reach the engine.");
-      setBubbles(prevBubbles);
-      setDraft(prevDraft || text);
+      fail("Could not reach the engine.");
     } finally {
       setBusy(false);
+      setSteps([]);
     }
   }, [bubbles, draft, sheetId]);
 
@@ -255,8 +307,8 @@ export function Assistant({ sheetId, columns, onClose, onChanged }: Props) {
             the starters having been dismissed by something the user did not do. */}
         {loading && (
           <>
-            <div className="cc-as__bubble cc-as__bubble--user"><span className="cc-skel" style={{ width: "55%" }} /></div>
-            <div className="cc-as__bubble cc-as__bubble--assistant"><span className="cc-skel" style={{ width: "80%" }} /></div>
+            <div className="cc-as__bubble cc-as__bubble--user"><span className="cc-as__skel" style={{ width: "55%" }} /></div>
+            <div className="cc-as__bubble cc-as__bubble--assistant"><span className="cc-as__skel" style={{ width: "80%" }} /></div>
           </>
         )}
 
@@ -314,8 +366,31 @@ export function Assistant({ sheetId, columns, onClose, onChanged }: Props) {
         ))}
 
         {busy && (
-          <div className="cc-as__bubble cc-as__bubble--assistant">
-            <span className="cc-skel" style={{ width: "70%" }} />
+          <div className="cc-as__thinking" role="status" aria-live="polite">
+            {steps.length === 0 ? (
+              <div className="cc-as__step cc-as__step--active">
+                <span className="cc-as__stepdot" />
+                <span className="cc-as__steplabel">Thinking…</span>
+              </div>
+            ) : (
+              steps.map((s, i) => {
+                const active = i === steps.length - 1;
+                return (
+                  <div key={i} className={`cc-as__step ${active ? "cc-as__step--active" : "cc-as__step--done"}`}>
+                    <span className="cc-as__stepdot">
+                      {!active && (
+                        <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M2.5 6.5l2.5 2.5 4.5-5.5" />
+                        </svg>
+                      )}
+                    </span>
+                    <span className="cc-as__steplabel">
+                      {s.label}{s.round && s.round > 1 ? ` · round ${s.round}` : ""}
+                    </span>
+                  </div>
+                );
+              })
+            )}
           </div>
         )}
 

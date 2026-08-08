@@ -206,3 +206,59 @@
 }
 
 .cc-as__confirm { margin: 0; font-size: 12.5px; line-height: 1.55; color: var(--ink-secondary); }
+
+/* A skeleton that can actually be seen. The shared grid one is an 8px bar on a sunk background whose
+   only motion is a fade, which in this panel is barely there — a moving highlight band with real
+   contrast reads as loading rather than as a smudge. */
+.cc-as__skel {
+  display: block;
+  height: 13px;
+  border-radius: var(--r-xs);
+  background: linear-gradient(
+    90deg,
+    var(--canvas-sunk) 0%,
+    color-mix(in srgb, var(--ink) 14%, var(--canvas-sunk)) 45%,
+    var(--canvas-sunk) 90%
+  );
+  background-size: 200% 100%;
+  animation: cc-as-shimmer 1.3s ease-in-out infinite;
+}
+@keyframes cc-as-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* The answer's steps, named as they happen. A single spinner over a multi-round answer reads as a
+   hang; this shows the work — planning, checking against the request, improving — with the current
+   step pulsing and the finished ones ticked. */
+.cc-as__thinking {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  background: var(--canvas-soft);
+}
+.cc-as__step { display: flex; align-items: center; gap: var(--s-2); font-size: 12px; line-height: 1.4; }
+.cc-as__stepdot { flex: 0 0 auto; display: grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; }
+.cc-as__steplabel { min-width: 0; }
+
+.cc-as__step--done .cc-as__stepdot { background: var(--primary); color: #fff; }
+.cc-as__step--done .cc-as__steplabel { color: var(--ink-mute); }
+
+.cc-as__step--active .cc-as__stepdot {
+  background: transparent;
+  box-shadow: inset 0 0 0 2px var(--primary);
+  animation: cc-as-pulse 1.1s ease-in-out infinite;
+}
+.cc-as__step--active .cc-as__steplabel { color: var(--ink); font-weight: 500; }
+@keyframes cc-as-pulse {
+  0%, 100% { box-shadow: inset 0 0 0 2px var(--primary); opacity: 1; }
+  50% { box-shadow: inset 0 0 0 5px var(--primary); opacity: 0.5; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cc-as__skel { animation: none; background: color-mix(in srgb, var(--ink) 10%, var(--canvas-sunk)); }
+  .cc-as__step--active .cc-as__stepdot { animation: none; }
+}

@@ -1813,17 +1813,37 @@ export function createServer(bootId: string) {
     const prior: Message[] = loadConversation(sheetId).map((t) => ({ role: t.role, text: t.text }));
     const userTurn = appendTurn(sheetId, { role: "user", text });
 
-    let reply;
+    // Streamed as newline-delimited JSON, because the answer is no longer one call. It plans, then
+    // checks itself against the request, then improves — up to a few rounds — and a single spinner
+    // over all of that reads as a hang. A `step` line names each stage as it starts, then exactly one
+    // terminal line: `done` with the reply and actions, or `error` with the reason. Once the first
+    // byte is out the status is already 200, so a failure after that rides in an `error` line rather
+    // than a status code.
+    res.setHeader("Content-Type", "application/x-ndjson");
+    res.setHeader("Cache-Control", "no-store");
+    res.setHeader("X-Accel-Buffering", "no"); // no proxy may collect the steps into one lump
+    res.flushHeaders?.();
+    const line = (obj: unknown) => { if (!res.writableEnded) res.write(JSON.stringify(obj) + "\n"); };
+
+    // Closing the panel drops the connection; that abort reaches all the way down to the model calls,
+    // so a loop the user walked away from stops spending time on their behalf.
+    const canceller = new AbortController();
+    res.on("close", () => { if (!res.writableEnded) canceller.abort(); });
+
     try {
-      reply = await askAssistant(sheetId, [...prior, { role: "user" as const, text }].slice(-20));
+      const reply = await askAssistant(sheetId, [...prior, { role: "user" as const, text }].slice(-20), {
+        onStep: (s) => line({ type: "step", phase: s.phase, label: s.label, round: s.round }),
+        signal: canceller.signal,
+      });
+      const assistantTurn = appendTurn(sheetId, { role: "assistant", text: reply.reply, actions: reply.actions });
+      line({ type: "done", reply: reply.reply, actions: reply.actions, dropped: reply.dropped, userTurnId: userTurn, turnId: assistantTurn });
     } catch (e) {
-      // The question does not stay in the transcript if it was never answered. Left there it reads
-      // as asked-and-ignored, and asking again would send the failed turn to the model as context.
+      // The question does not stay in the transcript if it was never answered. Left there it reads as
+      // asked-and-ignored, and asking again would send the failed turn to the model as context.
       db.prepare("DELETE FROM assistant_messages WHERE id = ?").run(userTurn);
-      throw e;
+      line({ type: "error", error: e instanceof Error ? e.message : String(e) });
     }
-    const assistantTurn = appendTurn(sheetId, { role: "assistant", text: reply.reply, actions: reply.actions });
-    res.json({ ...reply, userTurnId: userTurn, turnId: assistantTurn });
+    if (!res.writableEnded) res.end();
   }));
 
   /** Apply ONE approved action. One at a time, so a good suggestion and a wrong one stay separable. */

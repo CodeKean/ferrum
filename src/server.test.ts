@@ -353,7 +353,10 @@ test("applying an assistant action goes through the same checks the proposal did
     body: { action: { kind: "set_prompt", columnId: Number(ai.id), prompt: "What industry is /Company in?", why: "" } },
   });
   assert.equal(ok.status, 200);
-  assert.equal(getColumn(ai.id)!.prompt, `What industry is {{col:${f.company.id}}} in?`);
+  // The assistant marks its references OPTIONAL (the trailing `?`), so a row missing the column still
+  // runs rather than being skipped — see storeRefsOptional. The hand-built PATCH above keeps them
+  // required; only what the assistant writes is softened this way.
+  assert.equal(getColumn(ai.id)!.prompt, `What industry is {{col:${f.company.id}?}} in?`);
 });
 
 test("an oversized delivery is refused without describing this machine", async () => {

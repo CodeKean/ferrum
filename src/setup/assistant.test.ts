@@ -11,7 +11,7 @@ import { db } from "../db.ts";
 import { addColumn, createSheet, insertRows, listColumns } from "../store.ts";
 import { undoState, undo } from "../undo.ts";
 import {
-  appendTurn, applyAction, clearConversation, deriveColumnName, describeTable, loadConversation, markApplied, parseReply,
+  appendTurn, applyAction, clearConversation, deriveColumnName, describeTable, isComplexAsk, loadConversation, markApplied, parseReply,
 } from "./assistant.ts";
 
 function fixture(name: string) {
@@ -133,6 +133,19 @@ test("a new column's name is salvaged when the model puts it in the dedupe field
   assert.equal(a.kind === "add_column" && a.name, "Cold Email");
 });
 
+test("a broad ask gets the full self-check loop; a narrow one gets a single pass", () => {
+  // The loop's depth is chosen from the ask, because a review is a whole extra model call. A one-line
+  // single-column request does not need three of them; a "read every column" request — broad, and the
+  // kind a first draft half-finishes — does.
+  const col = { kind: "add_column" as const, name: "Industry", columnKind: "ai" as const, valueType: "text" as const, why: "" };
+  const draft = (n: number) => ({ reply: "", actions: Array.from({ length: n }, () => ({ ...col })), dropped: 0 });
+  assert.equal(isComplexAsk("add a column for the industry", draft(1)), false, "short, one action → one pass");
+  assert.equal(isComplexAsk("read every column and write a personalized email", draft(1)), true, "'every' → full loop");
+  assert.equal(isComplexAsk("write a hyper-personalized email", draft(1)), true, "'hyper-personalized' → full loop");
+  // More than one proposed change is complex on its own, whatever the words were.
+  assert.equal(isComplexAsk("do it", draft(2)), true, "two actions → full loop");
+});
+
 test("a name is derived from the instruction's verb and object", () => {
   // "Write a cold email" is the "Cold Email" column; the adjectives that say HOW are dropped, the
   // deliverable is kept, and a reference never leaks into the name.
@@ -206,15 +219,35 @@ test("adding a column creates it and does NOT run it", () => {
   assert.equal(cols.length, before + 1);
   const made = cols.find((c) => c.name === "Headcount")!;
   assert.equal(made.kind, "ai");
-  // STORED, not display, form. `/Company` left verbatim is not a reference at all: the engine finds
-  // no dependency, the required-reference skip never fires, and every row asks about the literal
-  // string. It also has to survive someone renaming the column.
-  assert.equal(made.prompt, `How many people work at {{col:${f.company.id}}}?`);
+  // STORED, not display, form, and OPTIONAL (the trailing `?`). `/Company` left verbatim is not a
+  // reference at all: the engine finds no dependency and every row asks about the literal string. The
+  // assistant marks its references optional so a row missing a column still runs rather than being
+  // skipped — see storeRefsOptional. It also has to survive someone renaming the column.
+  assert.equal(made.prompt, `How many people work at {{col:${f.company.id}?}}?`);
   assert.match(said, /Nothing has run yet/);
 
   // Every cell is waiting, not running or done.
   const statuses = db.prepare("SELECT DISTINCT status FROM cells WHERE column_id = ?").all(Number(made.id)) as any[];
   assert.deepEqual(statuses.map((s) => s.status), ["empty"]);
+});
+
+test("every reference the assistant stores is optional, so a row missing a column still runs", () => {
+  // A required reference SKIPS any row where that column is empty. For a column that reads many
+  // others — "an email from every column" — that would skip nearly every row on a real table. So the
+  // assistant marks each one optional, both when adding a column and when changing one.
+  const f = fixture("as-optional");
+  applyAction(f.sheet.id, {
+    kind: "add_column", name: "Email", columnKind: "ai", valueType: "text",
+    prompt: "Write to /Company at /Domain.", why: "",
+  });
+  const made = listColumns(f.sheet.id).find((c) => c.name === "Email")!;
+  assert.equal(made.prompt, `Write to {{col:${f.company.id}?}} at {{col:${f.domain.id}?}}.`);
+
+  applyAction(f.sheet.id, {
+    kind: "set_prompt", columnId: Number(made.id), prompt: "Just /Company.", why: "",
+  });
+  const after = listColumns(f.sheet.id).find((c) => Number(c.id) === Number(made.id))!;
+  assert.equal(after.prompt, `Just {{col:${f.company.id}?}}.`, "a changed prompt is optional too");
 });
 
 test("a prompt the assistant wrote becomes a real dependency, not just text", () => {

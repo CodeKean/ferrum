@@ -35,6 +35,7 @@ import { addColumn, getSheet, listColumns, readWindow } from "../store.ts";
 import { setColumnHttpConfig, setColumnKind, setColumnPrompt, setColumnValueType } from "../store.ts";
 import { DEFAULT_HTTP, normalizeHttpConfig } from "../http/httpColumn.ts";
 import { safeHttp, storeRefs, refsToStored } from "./aiSetup.ts";
+import { parseRefNodes, serializeRefNodes } from "../refNodes.ts";
 import { rebuildDeps } from "../refs.ts";
 import { record } from "../undo.ts";
 import { setConfig as setDedupe, preview as previewDedupe } from "../dedupe.ts";
@@ -211,11 +212,138 @@ export function describeTable(sheetId: string): string {
  * see it. The assistant is a design surface like the setup panel, so it uses the same setup model,
  * chosen in Settings, subject to the same guard. Nothing in the app was passing it.
  */
+/**
+ * One thing the assistant is doing right now, streamed to the panel while it works.
+ *
+ * The panel used to show a single spinner for the whole wait, which on a multi-step answer is a long
+ * blank stare at nothing. These name each step as it happens — planning, checking against the
+ * request, improving — so a longer wait reads as work rather than a hang.
+ */
+export interface AssistantStep {
+  phase: "draft" | "check" | "revise" | "done";
+  label: string;
+  round?: number;
+}
+
+export interface AskOptions {
+  onStep?: (step: AssistantStep) => void;
+  signal?: AbortSignal;
+}
+
+// The most self-checking any one answer does. A first draft is followed by up to this many
+// review-and-improve rounds; the loop stops the moment a review is satisfied, so this is a ceiling,
+// not a count.
+const MAX_REVIEW_ROUNDS = 3;
+
+/**
+ * Does this ask deserve the full loop, or one quick check?
+ *
+ * The cost of a review is a whole extra model call, and on the free setup model that is seconds of
+ * wait. A one-line "add a column that finds the industry" does not need three of them; "read every
+ * column and write a personalized email" — broad, and the kind a first draft half-finishes — does.
+ * So the depth is chosen from the shape of the request rather than applied flat.
+ */
+export function isComplexAsk(userText: string, draft: AssistantReply): boolean {
+  if (draft.actions.length > 1) return true;
+  if (userText.length > 140) return true;
+  return /\b(every|all|each|entire|whole|comprehensive|and then|as well as)\b/i.test(userText)
+    || /hyper[- ]?personaliz/i.test(userText);
+}
+
+/** The proposal, as text the reviewer reads. JSON so a reference in a prompt survives verbatim. */
+function renderProposal(reply: string, actions: Action[]): string {
+  const out = [`Its reply to the user: ${reply}`, "", "The actions it proposes:"];
+  if (actions.length === 0) out.push("(none)");
+  else actions.forEach((a, i) => out.push(`${i + 1}. ${JSON.stringify(a)}`));
+  return out.join("\n");
+}
+
+const CRITIC_SYSTEM = `Another assistant proposed a change to a spreadsheet. Review it against the user's ORIGINAL request, before it is shown to them, and either approve it or return a corrected version.
+
+Judge only these, in order:
+  Scope — does it do everything the user asked, and nothing they did not? "Reads every column" means the prompt must reference the columns that matter, not two of them.
+  References — every column a prompt uses is written as /Column name, spelled exactly, never named in prose. A column named without the leading slash is not referenced at all: its value is never put in, and the column runs before that column is filled.
+  Shape — an ai or agent column carries its prompt; every column has a name; the mode suits the task.
+
+Rules:
+  If the proposal is already right, set complete to true and change nothing. Do not rewrite a good proposal for the sake of it.
+  If it is wrong, set complete to false and return the corrected reply and the FULL corrected list of actions, fixing only what is wrong and keeping the same action kinds and column ids.
+  Refer to a column in a prompt as /Column name — the column names are listed above.`;
+
+const CRITIC_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["complete"],
+  properties: {
+    complete: { type: "boolean", description: "true if the proposal already satisfies the request and needs no change." },
+    assessment: { type: "string", description: "One line: what was missing or wrong, or why it is already fine." },
+    reply: { type: "string", description: "The corrected reply to the user — only when complete is false." },
+    actions: TOOL_SCHEMA.properties.actions,
+  },
+} as const;
+
+/** One review pass. Returns whether the proposal is complete, and a correction when it is not. */
+async function critique(
+  provider: Parameters<typeof designCall>[0],
+  model: string,
+  sheetId: string,
+  userReq: string,
+  current: AssistantReply,
+  signal?: AbortSignal,
+): Promise<{ complete: boolean; reply?: string; actions?: unknown[] }> {
+  const lines = [
+    describeTable(sheetId),
+    "",
+    `The user's request: ${sanitize(userReq, 3000)}`,
+    "",
+    renderProposal(current.reply, current.actions),
+  ];
+  const res = await designCall(
+    provider,
+    model,
+    {
+      messages: [
+        { role: "system", content: CRITIC_SYSTEM },
+        { role: "user", content: lines.join("\n") },
+      ],
+      tools: [{ name: "review", description: "Approve, or return a corrected proposal.", parameters: CRITIC_SCHEMA as never }],
+      maxTokens: 1600,
+      temperature: 0,
+      signal: signal ?? AbortSignal.timeout(SETUP_TIMEOUT_MS),
+    },
+    "review",
+  );
+  const a = res.args as { complete?: unknown; reply?: unknown; actions?: unknown };
+  return {
+    complete: !!a.complete,
+    reply: typeof a.reply === "string" ? a.reply : undefined,
+    actions: Array.isArray(a.actions) ? a.actions : undefined,
+  };
+}
+
+/**
+ * `opts.model` is gone on purpose.
+ *
+ * It came straight off the request body, so a caller could name any model and the free-only guard —
+ * the setting whose whole promise is that designing a column cannot produce a charge — would never
+ * see it. The assistant is a design surface like the setup panel, so it uses the same setup model,
+ * chosen in Settings, subject to the same guard.
+ *
+ * ── It answers, then checks its own answer ──────────────────────────────────────────────────────
+ *
+ * A first draft is a first draft: on a broad ask it half-finishes — names columns instead of
+ * referencing them, misses one the user wanted, forgets a prompt. So a proposed CHANGE is reviewed
+ * against the original request and improved, up to a few rounds, stopping the moment a review is
+ * satisfied. A plain question is answered once — there is nothing to check it against. Every round
+ * is bounded and fails safe: a review that errors, times out, or would leave nothing to apply keeps
+ * the draft rather than losing it, so the loop can only match or beat the single-shot answer.
+ */
 export async function ask(
   sheetId: string,
   history: Message[],
-  signal?: AbortSignal,
+  opts: AskOptions = {},
 ): Promise<AssistantReply> {
+  const onStep = opts.onStep ?? (() => {});
   const last = [...history].reverse().find((m) => m.role === "user")?.text?.trim();
   if (!last) throw new Error("Ask something first.");
 
@@ -229,10 +357,12 @@ export async function ask(
   ];
 
   const { provider, model } = await resolveSetupProvider();
+
+  onStep({ phase: "draft", label: "Planning the change" });
   // Through the shared design call, which copes with a model that cannot be FORCED to answer with a
   // tool — a capability the catalogue does not publish, and one many free models lack. Without it a
   // perfectly good free model produced a 503 and the chat said "something went wrong inside Ferrum".
-  const res = await designCall(
+  const draftRes = await designCall(
     provider,
     model,
     {
@@ -243,14 +373,38 @@ export async function ask(
       tools: [{ name: "respond", description: "Answer, and optionally propose changes.", parameters: TOOL_SCHEMA as never }],
       maxTokens: 1600,
       temperature: 0,
-      // Its own deadline, like the setup panel's. A chat bubble stuck on "Thinking…" for two minutes
-      // reads as broken, and the provider default is two minutes.
-      signal: signal ?? AbortSignal.timeout(SETUP_TIMEOUT_MS),
+      signal: opts.signal ?? AbortSignal.timeout(SETUP_TIMEOUT_MS),
     },
     "respond",
   );
+  let current = parseReply(draftRes.args, sheetId);
 
-  return parseReply(res.args, sheetId);
+  // A question just gets answered: there is nothing to review it against, and a second call would
+  // only add a wait. Only a proposed change is worth checking.
+  if (current.actions.length > 0) {
+    const rounds = isComplexAsk(last, current) ? MAX_REVIEW_ROUNDS : 1;
+    for (let round = 1; round <= rounds; round++) {
+      onStep({ phase: "check", label: "Checking it against your request", round });
+      let verdict;
+      try {
+        verdict = await critique(provider, model, sheetId, last, current, opts.signal);
+      } catch {
+        // A review that errors or times out must never cost the draft — it is a real, usable answer.
+        break;
+      }
+      if (verdict.complete) break;
+
+      onStep({ phase: "revise", label: "Improving the proposal", round });
+      const revised = parseReply({ reply: verdict.reply ?? current.reply, actions: verdict.actions ?? [] }, sheetId);
+      // A review that leaves nothing to apply is worse than the draft it would replace — the draft had
+      // at least one usable change. Keep the draft and stop rather than adopt an empty revision.
+      if (revised.actions.length === 0) break;
+      current = revised;
+    }
+  }
+
+  onStep({ phase: "done", label: "Ready" });
+  return current;
 }
 
 // The action verbs a column instruction opens with, and the words that end the thing it acts on.
@@ -384,6 +538,24 @@ export function parseReply(raw: unknown, sheetId: string): AssistantReply {
 }
 
 /**
+ * Store `/Column` references AND mark every one optional.
+ *
+ * A stored `{{col:5}}` is REQUIRED: a row missing that column is SKIPPED and never runs. That is a
+ * fine default for a hand-built column with one or two references the user chose on purpose. It is
+ * the wrong default for a column the assistant fills with references to many columns at once — on a
+ * real table almost every row is missing SOMETHING, so required references would skip nearly every
+ * row and the column would fill in almost nothing. Marked optional (`{{col:5?}}`), the column runs on
+ * whatever the row actually has, which is what someone asking for "an email from every column" means.
+ */
+function storeRefsOptional(display: string, columns: RefLite[]): string {
+  const stored = storeRefs(display, columns);
+  return serializeRefNodes(
+    parseRefNodes(stored, columns).map((n) => (n.type === "ref" ? { ...n, optional: true } : n)),
+  );
+}
+type RefLite = { id: string | number; name: string };
+
+/**
  * Apply ONE approved action.
  *
  * One at a time on purpose: a reply can hold a good suggestion and a wrong one, and accepting them
@@ -402,7 +574,7 @@ export function applyAction(sheetId: string, action: Action): string {
         let note = `Added "${col.name}". Nothing has run yet — use Run when you are ready.`;
 
         if (action.prompt && (action.columnKind === "ai" || action.columnKind === "agent")) {
-          setColumnPrompt(col.id, storeRefs(action.prompt, others));
+          setColumnPrompt(col.id, storeRefsOptional(action.prompt, others));
         }
         if (action.http && action.columnKind === "http") {
           try {
@@ -434,7 +606,7 @@ export function applyAction(sheetId: string, action: Action): string {
       const cols = listColumns(sheetId);
       const col = cols.find((c) => Number(c.id) === action.columnId);
       if (!col) return "That column no longer exists.";
-      const next = storeRefs(action.prompt, cols.filter((c) => Number(c.id) !== action.columnId));
+      const next = storeRefsOptional(action.prompt, cols.filter((c) => Number(c.id) !== action.columnId));
       return tx(() => {
         setColumnPrompt(col.id, next);
         // A new instruction is a new set of references, so the edges are re-derived from it — the
