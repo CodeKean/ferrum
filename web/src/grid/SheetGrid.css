@@ -362,3 +362,79 @@ body.cc-dragging-col .cc-th__label, body.cc-dragging-col .cc-cell { cursor: grab
 .cc-tr .cc-grid__gutter { cursor: pointer; }
 .cc-tr .cc-grid__gutter:hover .cc-tr__num { color: var(--primary); }
 .cc-tr .cc-grid__gutter:active { background: var(--canvas-sunk); }
+
+/* ── row / column checkbox selection + bulk delete bar ──────────────────────────── */
+
+/* The checkbox overlays the number (rows) or the far-left of the header (columns): shown on hover,
+   in select mode, or when its row/column is selected — never widening the cell it lives in. */
+.cc-tr__check,
+.cc-th__check {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  width: 15px;
+  height: 15px;
+  padding: 0;
+  border: 1.5px solid var(--ink-faint);
+  border-radius: 4px;
+  background: var(--canvas);
+  color: transparent;               /* the tick, hidden until the box is checked */
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity 90ms ease, background 90ms ease, border-color 90ms ease;
+}
+.cc-tr__check { right: var(--s-2); top: 50%; transform: translateY(-50%); }
+.cc-th__check { left: 5px; top: 50%; transform: translateY(-50%); z-index: 1; }
+
+/* The visible box stays 15px, but the clickable area reaches ~9px past every edge so a
+   slightly-off click still lands the checkbox instead of opening the row/column behind it. */
+.cc-tr__check::before,
+.cc-th__check::before { content: ""; position: absolute; inset: -9px; }
+
+.cc-grid__gutter:hover .cc-tr__check,
+.cc-grid--rowselect .cc-tr__check,
+.cc-tr--sel .cc-tr__check,
+.cc-th:hover .cc-th__check,
+.cc-grid--colselect .cc-th__check,
+.cc-th--sel .cc-th__check { opacity: 1; }
+
+/* the number steps aside when its checkbox is showing */
+.cc-grid__gutter:hover .cc-tr__num,
+.cc-grid--rowselect .cc-tr__num,
+.cc-tr--sel .cc-tr__num { opacity: 0; }
+
+.cc-tr--sel .cc-tr__check,
+.cc-th--sel .cc-th__check { background: var(--primary); border-color: var(--primary); color: #fff; }
+.cc-tr__check:hover, .cc-th__check:hover { border-color: var(--primary); }
+
+.cc-tr--sel .cc-grid__gutter { background: var(--primary-tint); }
+.cc-th--sel { box-shadow: inset 0 0 0 2px var(--primary); }
+
+@media (prefers-reduced-motion: reduce) {
+  .cc-tr__check, .cc-th__check { transition: none; }
+}
+
+.cc-bulkbar {
+  position: fixed;
+  bottom: 22px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: 7px 8px 7px 16px;
+  background: var(--canvas);
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.24), 0 2px 8px rgba(0, 0, 0, 0.16);
+  animation: cc-bulkbar-in 130ms ease;
+}
+.cc-bulkbar__count { font-size: 12.5px; font-weight: 600; color: var(--ink); white-space: nowrap; }
+.cc-bulkbar__sep { width: 1px; height: 20px; background: var(--hairline); }
+
+@keyframes cc-bulkbar-in {
+  from { opacity: 0; transform: translate(-50%, 8px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+@media (prefers-reduced-motion: reduce) { .cc-bulkbar { animation: none; } }

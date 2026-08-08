@@ -1699,6 +1699,31 @@ export function App() {
             onMoveColumn={(c, to) => { void moveColumn(c, to); }}
             onAddRow={() => { void addRow(); }}
             onOpenRecord={(position) => setRecordAt(position)}
+            onDeleteRows={async (rowIds) => {
+              try {
+                const { deleted } = await api.deleteRows(sheet.id, rowIds);
+                // Same reasoning as the single delete: positions after a removed row shift, so the
+                // loaded window is no longer trustworthy — drop it and re-read.
+                cellStore.reset();
+                setOpenCell((c) => (c && rowIds.some((id) => c.cellId.startsWith(`${id}:`)) ? null : c));
+                bump();
+                await refreshSheet(sheet.id);
+                setToast(`${deleted} row${deleted === 1 ? "" : "s"} deleted — undo to bring ${deleted === 1 ? "it" : "them"} back.`);
+              } catch (e) {
+                setToast(e instanceof Error ? e.message : "Could not delete those rows.");
+              }
+            }}
+            onDeleteColumns={async (columnIds) => {
+              try {
+                const { deleted } = await api.deleteColumns(sheet.id, columnIds);
+                setEditing((cur) => (cur && columnIds.includes(Number(cur.id)) ? null : cur));
+                bump();
+                await refreshSheet(sheet.id);
+                setToast(`${deleted} column${deleted === 1 ? "" : "s"} deleted — undo to bring ${deleted === 1 ? "it" : "them"} back.`);
+              } catch (e) {
+                setToast(e instanceof Error ? e.message : "Could not delete those columns.");
+              }
+            }}
           />
           )}
 

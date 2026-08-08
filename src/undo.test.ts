@@ -7,8 +7,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { db } from "./db.ts";
-import { addColumn, countRows, createSheet, getSheet, insertRows, nextRowPosition, setCellValue } from "./store.ts";
-import { record, redo, undo, undoState } from "./undo.ts";
+import { addColumn, countRows, createSheet, deleteColumns, deleteRows, getSheet, insertRows, listColumns, nextRowPosition, setCellValue } from "./store.ts";
+import { record, redo, snapshotRow, undo, undoState } from "./undo.ts";
 
 function fixture(rows: number) {
   const sheet = createSheet(`ZZ undo ${Math.random().toString(36).slice(2)}`);
@@ -18,6 +18,55 @@ function fixture(rows: number) {
     .map((r) => Number(r.id));
   return { sheet, col, rowIds };
 }
+
+test("deleting several rows at once can be taken back, values and all", () => {
+  const f = fixture(5);
+  for (const id of f.rowIds) setCellValue(id, Number(f.col.id), `v${id}`);
+  const doomed = [f.rowIds[1]!, f.rowIds[3]!];
+  const snaps = doomed.map((id) => snapshotRow(id));
+
+  const removed = deleteRows(f.sheet.id, doomed);
+  assert.equal(removed, 2);
+  assert.equal(countRows(f.sheet.id), 3);
+  record(f.sheet.id, "rows.delete", "Delete 2 rows", { rows: snaps });
+
+  assert.equal(undo(f.sheet.id).ok, true);
+  assert.equal(countRows(f.sheet.id), 5, "both rows are back");
+  const cell = db.prepare("SELECT value_text FROM cells WHERE row_id = ? AND column_id = ?")
+    .get(doomed[0]!, Number(f.col.id)) as any;
+  assert.equal(cell?.value_text, `v${doomed[0]!}`, "and so is the value each row held");
+
+  assert.equal(redo(f.sheet.id).ok, true);
+  assert.equal(countRows(f.sheet.id), 3, "redo removes them again");
+});
+
+test("a bulk row delete cannot reach into another table", () => {
+  const a = fixture(3);
+  const b = fixture(3);
+  const removed = deleteRows(a.sheet.id, b.rowIds); // b's ids, a's sheet
+  assert.equal(removed, 0, "ids from another table are ignored, not deleted");
+  assert.equal(countRows(b.sheet.id), 3);
+});
+
+test("deleting several columns at once soft-deletes them, and undo brings them back in order", () => {
+  const sheet = createSheet(`ZZ cols ${Math.random().toString(36).slice(2)}`);
+  addColumn(sheet.id, { name: "A" });
+  const b = addColumn(sheet.id, { name: "B" });
+  addColumn(sheet.id, { name: "C" });
+  const doomed = listColumns(sheet.id).filter((c) => c.name !== "B").map((c) => Number(c.id));
+
+  const deletedAt = deleteColumns(sheet.id, doomed);
+  assert.ok(deletedAt, "a timestamp is returned for the undo entry");
+  assert.deepEqual(listColumns(sheet.id).map((c) => c.name), ["B"], "only B stays live");
+  record(sheet.id, "column.delete", "Delete 2 columns", { columnIds: doomed, deletedAt });
+
+  assert.equal(undo(sheet.id).ok, true);
+  assert.deepEqual(listColumns(sheet.id).map((c) => c.name), ["A", "B", "C"], "all back, in position order");
+  assert.ok(b);
+
+  assert.equal(redo(sheet.id).ok, true);
+  assert.deepEqual(listColumns(sheet.id).map((c) => c.name), ["B"], "redo removes them again");
+});
 
 test("adding rows can be taken back", () => {
   const f = fixture(5);

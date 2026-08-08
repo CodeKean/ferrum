@@ -50,6 +50,7 @@ export type UndoKind =
   | "column.rename"
   | "column.field"
   | "row.delete"
+  | "rows.delete"
   | "rows.add"
   | "cell.edit"
   | "cells.bulk"
@@ -219,10 +220,18 @@ function apply(kind: UndoKind, p: any, dir: "undo" | "redo"): void {
     }
 
     case "column.delete": {
-      // Soft-deleted, so the cells were never touched. Both directions are one UPDATE.
-      const changed = setColumnDeleted(Number(p.columnId), dir === "undo" ? null : p.deletedAt);
-      if (changed === 0) throw new Error("That column no longer exists.");
-      markColumnDirty(Number(p.columnId));
+      // Soft-deleted, so the cells were never touched. Both directions are one UPDATE each.
+      //
+      // A LIST or a single id: a bulk delete records `columnIds`, the single-column route still
+      // records `columnId`, and this reads either — the same shape `column.create` accepts, so undo
+      // of a five-column delete brings all five back together or fails as one.
+      const ids = (Array.isArray(p.columnIds) ? p.columnIds : [p.columnId]).map(Number);
+      let changed = 0;
+      for (const id of ids) {
+        changed += setColumnDeleted(id, dir === "undo" ? null : p.deletedAt);
+        markColumnDirty(id);
+      }
+      if (changed === 0) throw new Error(ids.length === 1 ? "That column no longer exists." : "Those columns no longer exist.");
       break;
     }
 
@@ -284,6 +293,25 @@ function apply(kind: UndoKind, p: any, dir: "undo" | "redo"): void {
       if (dir === "undo") restoreRow(p);
       else deleteRowHard(Number(p.row.id));
       break;
+
+    /**
+     * MANY rows deleted at once, reversed. One entry holds every snapshot, so a bulk delete is one
+     * press to take back rather than one press per row.
+     *
+     * Best-effort per row rather than all-or-nothing: a row that was independently restored (undo) or
+     * re-deleted (redo) in between is SKIPPED, not a throw that abandons the rest. Restoring nine of
+     * ten rows is the useful outcome; failing all ten because one came back another way is not.
+     */
+    case "rows.delete": {
+      const snaps: any[] = Array.isArray(p.rows) ? p.rows : [];
+      for (const s of snaps) {
+        const id = Number(s.row.id);
+        const present = db.prepare("SELECT 1 FROM rows WHERE id = ?").get(id);
+        if (dir === "undo") { if (!present) restoreRow(s); }
+        else if (present) deleteRowHard(id);
+      }
+      break;
+    }
 
     /**
      * ADDING rows, reversed.

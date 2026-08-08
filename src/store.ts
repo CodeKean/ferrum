@@ -1035,6 +1035,54 @@ export function deleteRow(rowId: number | string): string | null {
   return sheetId;
 }
 
+/**
+ * Delete many rows at once, scoped to ONE sheet.
+ *
+ * Scoped by `sheet_id` on purpose: the ids arrive from a request, and a stray id from another table
+ * must be ignored rather than deleted. One transaction and one statement per table, so selecting a
+ * hundred bad rows and deleting them is a couple of statements, not a hundred round trips. Returns
+ * how many rows were actually removed.
+ */
+export function deleteRows(sheetId: string, ids: Array<number | string>): number {
+  const nums = [...new Set(ids.map(Number))].filter((n) => Number.isFinite(n));
+  if (nums.length === 0) return 0;
+  const holes = nums.map(() => "?").join(",");
+  let removed = 0;
+  tx(() => {
+    // Cells first: a row with no cells is a valid (if empty) row, but a cell with no row is an orphan.
+    db.prepare(`DELETE FROM cells WHERE row_id IN (${holes}) AND row_id IN (SELECT id FROM rows WHERE sheet_id = ?)`)
+      .run(...nums, sheetId);
+    const res = db.prepare(`DELETE FROM rows WHERE id IN (${holes}) AND sheet_id = ?`).run(...nums, sheetId);
+    removed = Number(res.changes ?? 0);
+  });
+  if (removed > 0) {
+    invalidateRowCount(sheetId);
+    bumpDataVersion(sheetId);
+    markSheetDirty(sheetId);
+    invalidateRedo(sheetId);
+  }
+  return removed;
+}
+
+/**
+ * Soft-delete many columns at once, scoped to one sheet, with a SINGLE `deleted_at` so undo and redo
+ * move them together. Returns that timestamp (or null when nothing was live to delete), which the
+ * undo entry stores so a redo restores the same instant rather than a fresh one.
+ */
+export function deleteColumns(sheetId: string, ids: Array<number | string>): string | null {
+  const nums = [...new Set(ids.map(Number))].filter((n) => Number.isFinite(n));
+  if (nums.length === 0) return null;
+  const holes = nums.map(() => "?").join(",");
+  const res = db
+    .prepare(`UPDATE columns SET deleted_at = datetime('now') WHERE id IN (${holes}) AND sheet_id = ? AND deleted_at IS NULL`)
+    .run(...nums, sheetId);
+  if (Number(res.changes ?? 0) === 0) return null;
+  bumpDataVersion(sheetId);
+  const first = db.prepare(`SELECT deleted_at FROM columns WHERE id IN (${holes}) AND sheet_id = ? ORDER BY deleted_at DESC LIMIT 1`)
+    .get(...nums, sheetId) as any;
+  return first?.deleted_at ?? null;
+}
+
 /** Highest position in the sheet, or -1 when empty. An index seek on (sheet_id, position). */
 export function maxRowPosition(sheetId: string): number {
   const r = db.prepare("SELECT COALESCE(MAX(position), -1) AS p FROM rows WHERE sheet_id = ?").get(sheetId) as any;

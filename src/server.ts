@@ -29,7 +29,7 @@ import {
 import { currentSeq, emitRun, markCellsDirty, subscribe } from "./bus.ts";
 import { DATA_DIR, DB_PATH, TMP_DIR, isUnder, isUnderSyncRoot } from "./paths.ts";
 import {
-  addColumn, countRows, createSheet, deleteColumn, deleteRow, deleteSheet, getCell, getSheet,
+  addColumn, countRows, createSheet, deleteColumn, deleteColumns, deleteRow, deleteRows, deleteSheet, getCell, getSheet,
   duplicateSheet, getColumn, insertRows, listColumns, listSheets, listSiblingSheets, moveColumn,
   moveSheet, nextRowPosition, readWindow, renameColumn, renameSheet, setCellValue,
   duplicateColumn, setColumnDescription, setColumnSendConfig, setColumnWaterfall, setColumnWidth, setColumnColor,
@@ -4280,6 +4280,42 @@ export function createServer(bootId: string) {
     if (!sheetId || !snap) return res.status(404).json({ error: "Row not found" });
     record(sheetId, "row.delete", "Delete row", snap);
     res.json({ ok: true, sheetId });
+  }));
+
+  // Delete many rows in one go — the checkbox selection in the grid. POST, not DELETE, because the
+  // ids travel in the body and a DELETE body is stripped by enough proxies to be unreliable.
+  app.post("/api/sheets/:id/rows/delete", wrap((req, res) => {
+    const sheetId = param(req, "id");
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(Number).filter((n: number) => Number.isFinite(n)) : [];
+    if (ids.length === 0) return res.status(400).json({ error: "No rows were selected." });
+    // Snapshot FIRST, and only rows that actually belong to THIS sheet — a crafted id from another
+    // table is dropped here rather than deleted, and the snapshots are what Undo restores from.
+    type RowSnap = NonNullable<ReturnType<typeof snapshotRow>>;
+    const snaps = ids
+      .map((id: number) => snapshotRow(id))
+      .filter((s: RowSnap | null) => !!s && String(s.row.sheet_id) === sheetId) as RowSnap[];
+    if (snaps.length === 0) return res.status(404).json({ error: "None of those rows are in this table." });
+    const removed = deleteRows(sheetId, snaps.map((s) => Number(s.row.id)));
+    record(sheetId, "rows.delete", `Delete ${removed} row${removed === 1 ? "" : "s"}`, { rows: snaps });
+    res.json({ ok: true, deleted: removed });
+  }));
+
+  // Delete many columns in one go — the checkbox selection on the headers. Soft-deleted, exactly like
+  // the single-column route, so Undo is one UPDATE and the cells are never touched.
+  app.post("/api/sheets/:id/columns/delete", wrap((req, res) => {
+    const sheetId = param(req, "id");
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(Number).filter((n: number) => Number.isFinite(n)) : [];
+    if (ids.length === 0) return res.status(400).json({ error: "No columns were selected." });
+    type Col = NonNullable<ReturnType<typeof getColumn>>;
+    const cols = ids
+      .map((id: number) => getColumn(id))
+      .filter((c: Col | undefined | null) => !!c && String(c.sheetId) === sheetId) as Col[];
+    if (cols.length === 0) return res.status(404).json({ error: "None of those columns are in this table." });
+    const liveIds = cols.map((c) => Number(c.id));
+    const deletedAt = deleteColumns(sheetId, liveIds);
+    if (!deletedAt) return res.status(409).json({ error: "Those columns were already removed." });
+    record(sheetId, "column.delete", `Delete ${liveIds.length} column${liveIds.length === 1 ? "" : "s"}`, { columnIds: liveIds, deletedAt });
+    res.json({ ok: true, deleted: liveIds.length });
   }));
 
   // ───────────────────────────────────────────────────── cells

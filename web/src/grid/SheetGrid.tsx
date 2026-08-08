@@ -22,7 +22,7 @@ import { Popover } from "../ui/Popover.tsx";
 import { WhyEmpty } from "./WhyEmpty.tsx";
 import { useSession } from "../people/SessionGate.tsx";
 import { COLUMN_COLORS, colorBand, colorDot, knownColor } from "./columnColors.ts";
-import { IconCaretDown, IconCaretUp, IconPlay, IconPlus, IconMore } from "../ui/Icon.tsx";
+import { IconCaretDown, IconCaretUp, IconCheck, IconPlay, IconPlus, IconMore, IconTrash } from "../ui/Icon.tsx";
 import { columnBadge, sourceNameOf } from "../ui/columnBadge.ts";
 import {
   fillValues, fromClipboardText, isSingle, paintTargets, rectHas, rectOf, toClipboardText,
@@ -93,6 +93,10 @@ interface Props {
   onAddRow?: () => void;
   onRunRow?: (rowId: string) => void;
   onDeleteRow?: (rowId: string) => void;
+  /** Delete a checkbox-selected set of rows in one undoable step. Resolves once they are gone. */
+  onDeleteRows?: (rowIds: number[]) => Promise<void>;
+  /** Delete a checkbox-selected set of columns in one undoable step. */
+  onDeleteColumns?: (columnIds: number[]) => Promise<void>;
   /**
    * Say something brief to the user — a refused edit, a write the server rejected.
    *
@@ -133,7 +137,7 @@ export function SheetGrid({
   onRunScope, onRunRange, onExpandJson, onSendToTable, onRefreshDerived, onPinColumn, onMoveColumn,
   primaryColumnId, onSetPrimaryColumn,
   onAddRow, onInsertColumn, onDuplicateColumn, onSaveTemplate, onDescribeColumn, onFilterColumn, onDedupeColumn,
-  onNotice, onOverrideCell, onRowsAdded, onOpenRecord,
+  onNotice, onOverrideCell, onRowsAdded, onOpenRecord, onDeleteRows, onDeleteColumns,
 }: Props) {
   // Only decides whether to OFFER a control. Every one of these is checked again by the server on
   // the request itself, so this is presentation, not permission.
@@ -206,6 +210,69 @@ export function SheetGrid({
   const openCellRef = useRef(onOpenCell);
   openCellRef.current = onOpenCell;
   const openCell = useCallback((cellId: string, rect: DOMRect) => openCellRef.current(cellId, rect), []);
+
+  // ── row + column multi-select, for the checkbox bulk delete ────────────────────────────────────
+  //
+  // Two sets keyed by ID so a selection survives the virtual scroll (a row leaving the window does
+  // not leave the set), and one is emptied when the other gains a member — deleting rows and deleting
+  // columns are different actions, so the bulk bar is never ambiguous about which one it would do.
+  const [selRows, setSelRows] = useState<Set<number>>(new Set());
+  const [selCols, setSelCols] = useState<Set<number>>(new Set());
+  const [deleting, setDeleting] = useState(false);
+  const rowAnchor = useRef<number | null>(null); // by POSITION, for shift-range
+  const colAnchor = useRef<number | null>(null); // by column index
+
+  const clearSelection = useCallback(() => {
+    setSelRows(new Set()); setSelCols(new Set());
+    rowAnchor.current = null; colAnchor.current = null;
+  }, []);
+
+  // A new sheet is a new set of rows and columns; carrying a selection across would delete the wrong
+  // things. Cleared on sheet change and whenever the column set shrinks (a delete elsewhere).
+  useEffect(() => { clearSelection(); }, [sheetId, clearSelection]);
+
+  const pickRow = useCallback((pos: number, id: number, e: { shiftKey: boolean; metaKey: boolean; ctrlKey: boolean }) => {
+    setSelCols(new Set());
+    setSelRows((prev) => {
+      const next = new Set(prev);
+      if (e.shiftKey && rowAnchor.current != null) {
+        const lo = Math.min(rowAnchor.current, pos), hi = Math.max(rowAnchor.current, pos);
+        // By position across the loaded window: a visible range selects fully; rows scrolled far out
+        // of the window are not in the store to resolve, which is the honest limit of a virtual grid.
+        for (let p = lo; p <= hi; p++) { const r = cellStore.getRowByPosition(p); if (r) next.add(Number(r.id)); }
+      } else {
+        if (next.has(id)) next.delete(id); else next.add(id);
+        rowAnchor.current = pos;
+      }
+      return next;
+    });
+  }, []);
+
+  const pickCol = useCallback((index: number, id: number, e: { shiftKey: boolean; metaKey: boolean; ctrlKey: boolean }) => {
+    setSelRows(new Set());
+    setSelCols((prev) => {
+      const next = new Set(prev);
+      if (e.shiftKey && colAnchor.current != null) {
+        const lo = Math.min(colAnchor.current, index), hi = Math.max(colAnchor.current, index);
+        for (let i = lo; i <= hi; i++) { const col = columns[i]; if (col) next.add(Number(col.id)); }
+      } else {
+        if (next.has(id)) next.delete(id); else next.add(id);
+        colAnchor.current = index;
+      }
+      return next;
+    });
+  }, [columns]);
+
+  const confirmDelete = useCallback(async () => {
+    setDeleting(true);
+    try {
+      if (selRows.size > 0) await onDeleteRows?.([...selRows]);
+      else if (selCols.size > 0) await onDeleteColumns?.([...selCols]);
+      clearSelection();
+    } finally {
+      setDeleting(false);
+    }
+  }, [selRows, selCols, onDeleteRows, onDeleteColumns, clearSelection]);
 
   // Pinned columns, kept on screen while the rest scrolls under them.
   //
@@ -1418,7 +1485,7 @@ export function SheetGrid({
   };
 
   return (
-    <div className="cc-grid">
+    <div className={`cc-grid${selRows.size > 0 ? " cc-grid--rowselect" : ""}${selCols.size > 0 ? " cc-grid--colselect" : ""}`}>
       {/* aria-colcount counts EVERY column the grid renders — the row-number gutter, the data
           columns, and the add-column header — because each of them announces a colindex below.
           It said `columns.length + 1` while the header row held 13 columnheaders for 11 columns,
@@ -1477,7 +1544,7 @@ export function SheetGrid({
               return (
                 <div
                   key={c.id}
-                  className={`cc-th${pinLeft.has(c.id) ? " cc-th--pinned" : ""}${drag?.id === c.id ? " cc-th--dragging" : ""}`}
+                  className={`cc-th${pinLeft.has(c.id) ? " cc-th--pinned" : ""}${drag?.id === c.id ? " cc-th--dragging" : ""}${selCols.has(Number(c.id)) ? " cc-th--sel" : ""}`}
                   style={{ width: colWidthCss(c), background: colorBand(colColor(c)), ...pinStyle(c), zIndex: pinLeft.has(c.id) ? 4 : undefined }}
                   data-col-id={c.id}
                   role="columnheader"
@@ -1491,7 +1558,7 @@ export function SheetGrid({
                     // Left button only, and never from the resize grip or a header button — those
                     // own their own gestures.
                     if (e.button !== 0) return;
-                    if ((e.target as HTMLElement).closest(".cc-th__resize, .cc-th__menu, .cc-th__run, .cc-th__rename")) return;
+                    if ((e.target as HTMLElement).closest(".cc-th__resize, .cc-th__menu, .cc-th__run, .cc-th__rename, .cc-th__check")) return;
                     startDrag(c, columns.indexOf(c), e.clientX);
                   }}
                 >
@@ -1499,6 +1566,21 @@ export function SheetGrid({
                       "which side of this column", and a 34px tick at the top makes that guess. */}
                   {drag && drag.id !== c.id && drag.to === columns.indexOf(c) && (
                     <span className={`cc-th__drop${drag.from < columns.indexOf(c) ? " cc-th__drop--after" : ""}`} aria-hidden />
+                  )}
+                  {/* Select this column for a bulk delete. Hover-revealed, and it stays once anything is
+                      selected. stopPropagation so a click selects rather than starting a reorder drag. */}
+                  {renaming !== c.id && (onDeleteColumns || selCols.size > 0) && (
+                    <button
+                      type="button"
+                      className="cc-th__check"
+                      role="checkbox"
+                      aria-checked={selCols.has(Number(c.id))}
+                      aria-label={`Select the ${c.name} column`}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onClick={(e) => { e.stopPropagation(); pickCol(ci, Number(c.id), e); }}
+                    >
+                      <IconCheck size={12} />
+                    </button>
                   )}
                   {/* What kind of column this is, before its name.
                       Identical headers say nothing about which columns spend money per row, which
@@ -1599,7 +1681,7 @@ export function SheetGrid({
                   // this on its own: .cc-tr has will-change:transform, which makes every row its own
                   // STACKING CONTEXT, so the editor competed only inside its row and the next row
                   // painted over its bottom edge — the ring appeared open at the bottom.
-                  className={`cc-tr${editing?.row === index ? " cc-tr--editing" : ""}`}
+                  className={`cc-tr${editing?.row === index ? " cc-tr--editing" : ""}${row && selRows.has(Number(row.id)) ? " cc-tr--sel" : ""}`}
                   role="row"
                   aria-rowindex={index + 1}
                   style={{ transform: `translateY(${y}px)`, height: ROW_H }}
@@ -1615,6 +1697,21 @@ export function SheetGrid({
                     onClick={() => { if (row) onOpenRecord?.(index); }}
                     title="Open this row as a record"
                   >
+                    {/* The checkbox sits over the number: the number shows at rest, the box on hover or
+                        once anything is selected, and clicking it selects instead of opening the row. */}
+                    {row && (onDeleteRows || selRows.size > 0) && (
+                      <button
+                        type="button"
+                        className="cc-tr__check"
+                        role="checkbox"
+                        aria-checked={selRows.has(Number(row.id))}
+                        aria-label={`Select row ${index + 1}`}
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onClick={(e) => { e.stopPropagation(); pickRow(index, Number(row!.id), e); }}
+                      >
+                        <IconCheck size={12} />
+                      </button>
+                    )}
                     <span className="cc-tr__num mono">{index + 1}</span>
                   </div>
                   {row
@@ -1815,6 +1912,32 @@ export function SheetGrid({
           </div>
         </Popover>
       )}
+
+      {/* Bulk action bar. Floats over the grid while a selection is live; the delete is one undoable
+          step, so it acts on click rather than behind a confirm — the same snappiness Clay has, with
+          Undo as the safety net. Rows and columns are mutually exclusive, so it names exactly one. */}
+      {(selRows.size > 0 || selCols.size > 0) && (() => {
+        const rows = selRows.size > 0;
+        const n = rows ? selRows.size : selCols.size;
+        const noun = rows ? `row${n === 1 ? "" : "s"}` : `column${n === 1 ? "" : "s"}`;
+        return (
+          <div className="cc-bulkbar" role="region" aria-label="Selection actions">
+            <span className="cc-bulkbar__count mono">{n.toLocaleString()} {noun} selected</span>
+            <span className="cc-bulkbar__sep" aria-hidden />
+            <button
+              type="button"
+              className="cc-btn cc-btn--danger cc-btn--sm"
+              onClick={() => void confirmDelete()}
+              disabled={deleting}
+            >
+              <IconTrash size={13} /> <span>{deleting ? "Deleting…" : `Delete ${noun}`}</span>
+            </button>
+            <button type="button" className="cc-btn cc-btn--ghost cc-btn--sm" onClick={clearSelection} disabled={deleting}>
+              Clear
+            </button>
+          </div>
+        );
+      })()}
     </div>
   );
 }

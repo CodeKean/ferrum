@@ -551,6 +551,12 @@ export const api = {
   setColumnKind: (id: string, kind: Column["kind"]) =>
     req<{ column: Column }>(`/api/columns/${id}`, { method: "PATCH", body: JSON.stringify({ kind }) }),
   deleteRow: (id: string) => req<{ sheetId: string }>(`/api/rows/${id}`, { method: "DELETE" }),
+  /** Delete many rows at once — the grid's checkbox selection. Undoable as one step. */
+  deleteRows: (sheetId: string, ids: Array<string | number>) =>
+    req<{ deleted: number }>(`/api/sheets/${sheetId}/rows/delete`, { method: "POST", body: JSON.stringify({ ids }) }),
+  /** Delete many columns at once — the header checkbox selection. Soft-deleted, undoable as one step. */
+  deleteColumns: (sheetId: string, ids: Array<string | number>) =>
+    req<{ deleted: number }>(`/api/sheets/${sheetId}/columns/delete`, { method: "POST", body: JSON.stringify({ ids }) }),
 
   // ── links between tables ──────────────────────────────────────────────────────────────────────
   relations: (sheetId: string) => req<{ relations: Relation[] }>(`/api/sheets/${sheetId}/relations`),
