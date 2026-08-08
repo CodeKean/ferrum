@@ -133,6 +133,22 @@ test("a new column's name is salvaged when the model puts it in the dedupe field
   assert.equal(a.kind === "add_column" && a.name, "Cold Email");
 });
 
+test("a complete column with no name is named, not dropped", () => {
+  // On a wide table the model tends to write a full, correct prompt but leave the name off entirely
+  // (columnNames empty, name absent). Throwing away a column that has its instruction for want of a
+  // name it can simply be given is the failure the user hit: "nothing to apply" for a ready column.
+  const f = fixture("as-noname");
+  const out = parseReply({
+    reply: "Adds it.",
+    actions: [{ kind: "add_column", columnKind: "ai", valueType: "text",
+      prompt: "Write a cold email to /Company.", why: "email", columnNames: [] }],
+  }, f.sheet.id);
+  assert.equal(out.dropped, 0);
+  assert.equal(out.actions.length, 1);
+  const a = out.actions[0]!;
+  assert.equal(a.kind === "add_column" && a.name, "New column", "defaulted to the name the + button uses");
+});
+
 test("an ai column proposed with no instruction is refused, not created empty", () => {
   // An ai or agent column with no prompt does nothing on every row — the exact silent no-op the
   // propose-then-apply panel exists to prevent. It is counted, so the transcript stays honest.

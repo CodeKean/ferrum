@@ -284,10 +284,6 @@ export function parseReply(raw: unknown, sheetId: string): AssistantReply {
   for (const r of Array.isArray(a.actions) ? a.actions : []) {
     const why = String(r?.why ?? "").trim();
     if (r?.kind === "add_column") {
-      // The name sometimes lands in `columnNames` — the dedupe field — with `name` left empty. It is
-      // the single most common way this action arrives malformed, and the intent is unambiguous, so
-      // it is salvaged rather than dropped whole.
-      const name = String(r.name ?? "").trim() || String(r.columnNames?.[0] ?? "").trim();
       const columnKind = isColumnKind(r.columnKind) ? r.columnKind : "static";
       const prompt = r.prompt ? String(r.prompt) : undefined;
       // The two kinds whose entire job is the instruction must arrive WITH one. An AI or agent column
@@ -296,7 +292,14 @@ export function parseReply(raw: unknown, sheetId: string): AssistantReply {
       const promptOk = columnKind === "ai" || columnKind === "agent"
         ? !!(prompt && prompt.trim())
         : true;
-      if (name && promptOk && !(prompt && prompt.length > MAX_PROMPT)) {
+      // The name is the field the model most often gets wrong: it lands in `columnNames` (the dedupe
+      // field), or on a wide table is left off altogether. Neither is a reason to throw away a column
+      // that is otherwise complete — the right kind, and the instruction its kind needs. So the name
+      // is salvaged from `columnNames`, and, failing that, defaulted to the same "New column" the "+"
+      // button uses, which the user renames in place. Only `promptOk` still gates: a column with
+      // nothing to do is refused, a nameless one is simply named.
+      const name = String(r.name ?? "").trim() || String(r.columnNames?.[0] ?? "").trim() || "New column";
+      if (promptOk && !(prompt && prompt.length > MAX_PROMPT)) {
         actions.push({
           kind: "add_column",
           name,
