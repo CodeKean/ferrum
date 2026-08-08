@@ -253,6 +253,47 @@ export async function ask(
   return parseReply(res.args, sheetId);
 }
 
+// The action verbs a column instruction opens with, and the words that end the thing it acts on.
+const NAME_VERB = /\b(write|draft|compose|generate|create|make|craft|find|fetch|extract|pull|summari[sz]e|describe|classify|categori[sz]e|identify|determine|detect|calculate|compute|score|rate|rank|check|verify|validate|clean|normali[sz]e|translate|research|lookup|look up)\b/i;
+const NAME_STOP = new Set(
+  "to for from of in on at with about under over into as by per that which who whose whom based using and or but this these those their its your our it them".split(" "),
+);
+// Words that describe HOW, not WHAT — dropped so the name is the deliverable, not an adjective.
+const NAME_FILLER = new Set(
+  "a an the each one some hyper personalized personalised concise brief short detailed professional custom quick simple clean proper properly complete comprehensive relevant new full accurate good great nice perfect ideal truly very really well nicely tailored bespoke".split(" "),
+);
+
+/**
+ * A sensible column name from the instruction, when the model gave none.
+ *
+ * The name of an AI column is almost always the object of its verb — "write a cold email" is the
+ * "Cold Email" column, "summarise the company" is the "Company" column. This pulls that phrase out,
+ * drops the adjectives that say how rather than what, and Title-Cases two or three words of it.
+ * References are stripped first, so a name can never contain a `/column` or a `{{col:N}}`. Returns
+ * null when nothing clean comes out — the caller then falls back to the generic default.
+ */
+export function deriveColumnName(prompt?: string): string | null {
+  if (!prompt) return null;
+  const text = prompt.replace(/\{\{[^}]*\}\}/g, " ").replace(/\/[A-Za-z][\w -]*/g, " ");
+  const vm = NAME_VERB.exec(text);
+  if (!vm) return null;
+
+  const words = (text.slice(vm.index + vm[0].length).toLowerCase().match(/[a-z]+/g) ?? []);
+  const out: string[] = [];
+  for (const w of words) {
+    if (w.length < 2) continue;                       // possessive "s", stray letters
+    if (NAME_STOP.has(w)) break;                       // a preposition ends the phrase
+    if (out.length === 0 && NAME_FILLER.has(w)) continue; // skip leading adjectives
+    out.push(w);
+    if (out.length >= 3) break;
+  }
+  while (out.length && NAME_FILLER.has(out[out.length - 1]!)) out.pop();
+  if (out.length === 0) return null;
+
+  const name = out.map((w) => (w.length <= 2 ? w.toUpperCase() : w[0]!.toUpperCase() + w.slice(1))).join(" ");
+  return name.replace(/[^a-z]/gi, "").length >= 3 ? name.slice(0, 40) : null;
+}
+
 /**
  * Turn the model's answer into a reply and a list of actions this app will actually offer.
  *
@@ -298,7 +339,10 @@ export function parseReply(raw: unknown, sheetId: string): AssistantReply {
       // is salvaged from `columnNames`, and, failing that, defaulted to the same "New column" the "+"
       // button uses, which the user renames in place. Only `promptOk` still gates: a column with
       // nothing to do is refused, a nameless one is simply named.
-      const name = String(r.name ?? "").trim() || String(r.columnNames?.[0] ?? "").trim() || "New column";
+      const name = String(r.name ?? "").trim()
+        || String(r.columnNames?.[0] ?? "").trim()
+        || deriveColumnName(prompt)
+        || "New column";
       if (promptOk && !(prompt && prompt.length > MAX_PROMPT)) {
         actions.push({
           kind: "add_column",

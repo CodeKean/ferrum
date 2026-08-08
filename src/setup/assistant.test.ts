@@ -11,7 +11,7 @@ import { db } from "../db.ts";
 import { addColumn, createSheet, insertRows, listColumns } from "../store.ts";
 import { undoState, undo } from "../undo.ts";
 import {
-  appendTurn, applyAction, clearConversation, describeTable, loadConversation, markApplied, parseReply,
+  appendTurn, applyAction, clearConversation, deriveColumnName, describeTable, loadConversation, markApplied, parseReply,
 } from "./assistant.ts";
 
 function fixture(name: string) {
@@ -133,7 +133,18 @@ test("a new column's name is salvaged when the model puts it in the dedupe field
   assert.equal(a.kind === "add_column" && a.name, "Cold Email");
 });
 
-test("a complete column with no name is named, not dropped", () => {
+test("a name is derived from the instruction's verb and object", () => {
+  // "Write a cold email" is the "Cold Email" column; the adjectives that say HOW are dropped, the
+  // deliverable is kept, and a reference never leaks into the name.
+  assert.equal(deriveColumnName("Write a hyper-personalized cold email under 60 words to /Full name."), "Cold Email");
+  assert.equal(deriveColumnName("Write a personalized email to /Company."), "Email");
+  assert.equal(deriveColumnName("Summarise the company from /Description"), "Company");
+  // No verb to hang a name on — the caller falls back to the generic default rather than guessing.
+  assert.equal(deriveColumnName("How many people work at /Company?"), null);
+  assert.equal(deriveColumnName(undefined), null);
+});
+
+test("a complete column with no name is named from its prompt, not dropped", () => {
   // On a wide table the model tends to write a full, correct prompt but leave the name off entirely
   // (columnNames empty, name absent). Throwing away a column that has its instruction for want of a
   // name it can simply be given is the failure the user hit: "nothing to apply" for a ready column.
@@ -146,7 +157,17 @@ test("a complete column with no name is named, not dropped", () => {
   assert.equal(out.dropped, 0);
   assert.equal(out.actions.length, 1);
   const a = out.actions[0]!;
-  assert.equal(a.kind === "add_column" && a.name, "New column", "defaulted to the name the + button uses");
+  assert.equal(a.kind === "add_column" && a.name, "Cold Email", "named from what the prompt does");
+});
+
+test("a nameless column whose prompt yields nothing clean falls back to the generic default", () => {
+  const f = fixture("as-noname-fallback");
+  const out = parseReply({
+    reply: "Adds it.",
+    actions: [{ kind: "add_column", columnKind: "static", valueType: "text", why: "a place to type" }],
+  }, f.sheet.id);
+  assert.equal(out.actions.length, 1);
+  assert.equal(out.actions[0]!.kind === "add_column" && out.actions[0]!.name, "New column");
 });
 
 test("an ai column proposed with no instruction is refused, not created empty", () => {
