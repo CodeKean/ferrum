@@ -383,8 +383,12 @@ body.cc-dragging-col .cc-th__label, body.cc-dragging-col .cc-cell { cursor: grab
   cursor: pointer;
   transition: opacity 90ms ease, background 90ms ease, border-color 90ms ease;
 }
-.cc-tr__check { right: var(--s-2); top: 50%; transform: translateY(-50%); }
-.cc-th__check { left: 5px; top: 50%; transform: translateY(-50%); z-index: 1; }
+.cc-tr__check { right: var(--s-2); top: 50%; transform: translateY(-50%); z-index: 2; }
+.cc-th__check { left: 5px; top: 50%; transform: translateY(-50%); z-index: 2; }
+
+/* The row number is only a label — it must never eat a click meant for the checkbox
+   sitting under it, or clicking the box itself would fall through and open the row. */
+.cc-tr__num { pointer-events: none; }
 
 /* The visible box stays 15px, but the clickable area reaches ~9px past every edge so a
    slightly-off click still lands the checkbox instead of opening the row/column behind it. */
